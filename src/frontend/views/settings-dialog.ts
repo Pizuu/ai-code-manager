@@ -1,13 +1,16 @@
 /**
- * 设置对话框（FR-002/003）：Key 只进不出——输入框永远为空，已保存时只显示「已保存」。
+ * 设置对话框（FR-002/003、FR-110）：两个分区——「内置 agent」（提供方 / 模型 / Key / 权限）与「Agent CLI」。
+ * Key 只进不出——输入框永远为空，已保存时只显示「已保存」。
  */
 import type { PermissionMode, ProviderId, SettingsUpdate } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { clear, h } from '../lib/dom.ts';
 import { store } from '../store.ts';
+import { mountAgentCliSettings } from './agent-cli-settings.ts';
 
 const PROVIDER_LABELS: Readonly<Record<ProviderId, string>> = { openai: 'OpenAI 兼容（/chat/completions）', anthropic: 'Anthropic（Messages API）' };
-export const MODE_LABELS: Readonly<Record<PermissionMode, string>> = { ask: '每次询问', 'auto-edits': '自动批准编辑', plan: '仅规划（只读）' };
+import { MODE_LABELS } from './chat.ts';
+export { MODE_LABELS };
 
 function field(label: string, control: HTMLElement, help?: string): HTMLElement {
   return h('div', { class: 'field' }, h('label', {}, label), control, help ? h('div', { class: 'help' }, help) : null);
@@ -23,11 +26,25 @@ function options<T extends string>(labels: Readonly<Record<T, string>>, current:
   return sel;
 }
 
-export function openSettings(): void {
+export type SettingsTab = 'model' | 'cli';
+
+export function openSettings(tab: SettingsTab = 'model'): void {
   const dialog = document.getElementById('settings-dialog') as HTMLDialogElement;
   const s = store.state.settings;
   if (!s) return;
   clear(dialog);
+  const tabBtn = (id: SettingsTab, label: string) => h('button', { class: `chip${id === tab ? ' acc' : ''}`, attrs: { type: 'button' }, on: { click: () => openSettings(id) } }, label);
+  const tabs = h('div', { class: 'dtabs' }, tabBtn('model', '内置 agent（API）'), tabBtn('cli', 'Agent CLI'));
+  if (tab === 'cli') {
+    const body = h('div', { class: 'field' });
+    const form = h('form', { attrs: { method: 'dialog' } }, h('h3', {}, '设置'), tabs, body,
+      h('div', { class: 'actions' }, h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => dialog.close() } }, '关闭')));
+    form.addEventListener('submit', (ev) => ev.preventDefault());
+    dialog.append(form);
+    mountAgentCliSettings(body);
+    if (!dialog.open) dialog.showModal();
+    return;
+  }
 
   const provider = options(PROVIDER_LABELS, s.provider);
   const baseUrl = h('input', { attrs: { type: 'url', value: s.baseUrl, spellcheck: 'false' } });
@@ -36,7 +53,7 @@ export function openSettings(): void {
   const mode = options(MODE_LABELS, s.permissionMode);
   const err = h('div', { class: 'error-text' });
   const keyHelp = h('div', { class: 'help' });
-  const removeKey = h('button', { class: 'danger', attrs: { type: 'button' } }, '删除已保存的 Key');
+  const removeKey = h('button', { class: 'btn danger', attrs: { type: 'button' } }, '删除已保存的 Key');
 
   const refreshKeyState = () => {
     const p = provider.value as ProviderId;
@@ -62,15 +79,16 @@ export function openSettings(): void {
 
   const form = h('form', { attrs: { method: 'dialog' } },
     h('h3', {}, '设置'),
+    tabs,
     field('模型提供方', provider),
     field('Base URL', baseUrl, '切换提供方时若仍为默认地址会自动更新；兼容端点可填写自定义地址。'),
     field('模型', model),
     h('div', { class: 'field' }, h('label', {}, 'API Key'), key, keyHelp, h('div', {}, removeKey)),
-    field('权限模式', mode, '命令执行在任何模式下都需要逐条批准；「仅规划」禁止修改与执行。'),
+    field('权限模式', mode, '内置 agent：命令执行在任何模式下都需要逐条批准；「仅规划」禁止修改与执行。外部 CLI 的映射见「Agent CLI」分区。'),
     err,
     h('div', { class: 'actions' },
-      h('button', { attrs: { type: 'button' }, on: { click: () => dialog.close() } }, '取消'),
-      h('button', { class: 'primary', attrs: { type: 'submit' } }, '保存')),
+      h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => dialog.close() } }, '取消'),
+      h('button', { class: 'btn pri', attrs: { type: 'submit' } }, '保存')),
   );
 
   form.addEventListener('submit', async (ev) => {
@@ -92,5 +110,5 @@ export function openSettings(): void {
   });
 
   dialog.append(form);
-  dialog.showModal();
+  if (!dialog.open) dialog.showModal();
 }

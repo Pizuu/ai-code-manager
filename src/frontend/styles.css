@@ -309,3 +309,8 @@ input,select,textarea{font:inherit;color:inherit}
 .env-row input[type=text],.env-row input[type=password]{height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;background:var(--bg)}
 .check-out{font-size:12px;white-space:pre-wrap;border-radius:8px;padding:8px 10px;background:var(--panel)}
 .check-out.ok{background:var(--gsoft);color:var(--green)}.check-out.bad{background:var(--asoft2);color:var(--amber)}
+.ctxp .v.mono{white-space:pre-line}
+.ctxp details summary{list-style:none;cursor:pointer}
+.ctxp details summary::-webkit-details-marker{display:none}
+.ctxp .term{max-height:180px}
+.si .a .del{margin-left:4px}
