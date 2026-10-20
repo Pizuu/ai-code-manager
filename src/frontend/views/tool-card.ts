@@ -7,6 +7,7 @@ import type { ApprovalRequest, ToolCallRecord, ToolCallStatus } from '../../../c
 import { approvalPrompt, approvalText } from '../lib/approval-prompt.ts';
 import { h } from '../lib/dom.ts';
 import { icon } from '../lib/icons.ts';
+import { formatToolOutput, outputLineCount, toolLabel, toolParamRows, toolTarget } from '../lib/tool-card-text.ts';
 
 export const STATUS_LABELS: Readonly<Record<ToolCallStatus, string>> = {
   pending: '等待中',
@@ -54,10 +55,16 @@ export type DiffRenderer = (diff: string) => HTMLElement;
 const plainDiff: DiffRenderer = (diff) => h('pre', {}, diff);
 
 export function renderToolCard(call: ToolCallRecord, approval: ApprovalRequest | undefined, onDecide: DecideFn, renderDiff: DiffRenderer = plainDiff): HTMLElement {
+  const summary = toolSummary(call);
+  const target = toolTarget(call.name, call.input);
+  const label = toolLabel(call.name);
   const card = h('div', { class: 'verify tool', attrs: { 'data-call': call.id } },
     h('div', { class: 'h' },
-      h('span', { class: 'fx8' }, icon(call.name === 'agent_cli' ? 'route' : 'check'), h('span', { class: 'nm' }, call.name)),
-      h('span', { class: 'sm', title: toolSummary(call) }, toolSummary(call)),
+      h('span', { class: 'fx8' }, icon(call.name === 'agent_cli' ? 'route' : 'check'),
+        h('span', { class: 'nm' }, label),
+        // 未知工具的中文标签就是原名，此时不再重复显示
+        label === call.name ? null : h('span', { class: 'rn' }, call.name)),
+      h('span', { class: 'sm', title: summary }, h('span', { class: 'sml' }, target)),
       h('span', { class: `chip ${STATUS_CHIP[call.status]}` }, STATUS_LABELS[call.status])));
   if (call.diff) {
     const d = h('details', {}, h('summary', {}, 'Diff'), renderDiff(call.diff));
@@ -67,8 +74,21 @@ export function renderToolCard(call: ToolCallRecord, approval: ApprovalRequest |
   // write 类的完整内容已体现在 diff 中，参数区只显示路径与长度
   const content = str(call.input.content);
   const showInput = content && call.diff ? { ...call.input, content: `（${content.length} 字符，见 Diff）` } : call.input;
-  card.append(h('details', {}, h('summary', {}, '参数'), h('pre', {}, JSON.stringify(showInput, null, 2))));
-  if (call.output) card.append(h('details', {}, h('summary', {}, '结果'), h('pre', {}, call.output)));
+  const rows = toolParamRows(showInput);
+  if (rows.length) {
+    card.append(h('details', {},
+      h('summary', {}, `参数（${rows.length} 项）`),
+      h('div', { class: 'params' }, ...rows.map((r) => h('div', { class: 'prow' },
+        h('span', { class: 'k' }, r.label),
+        h('span', { class: 'v', title: r.value }, r.value))))));
+  }
+  if (call.output) {
+    const text = formatToolOutput(call.output);
+    const lines = outputLineCount(text);
+    card.append(h('details', {},
+      h('summary', {}, `结果（${lines} 行）`),
+      h('pre', {}, text)));
+  }
   if (call.status === 'awaiting-approval' && approval) {
     // 文案按种类区分（T128）；未知种类回退为权限名 + 模式，始终需要用户点击，不自动批准
     const p = approvalPrompt(approval, call.name);

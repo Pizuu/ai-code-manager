@@ -41,6 +41,7 @@ interface PwLocator {
   first(): PwLocator;
   locator(selector: string): PwLocator;
   filter(opts: { hasText: string | RegExp }): PwLocator;
+  evaluate<R, A>(fn: (el: Element, arg: A) => R | Promise<R>, arg: A): Promise<R>;
 }
 interface PwPage {
   locator(selector: string): PwLocator;
@@ -236,6 +237,18 @@ function toolCard(page: PwPage, callId: string): PwLocator {
   return page.locator(`.chat .verify.tool[data-call="${callId}"]`);
 }
 
+/**
+ * 工具卡片收在可折叠的「思考」区里（v1.8 主流对话样式，默认折叠）。
+ * 断言卡片内元素的「可见」之前先展开对应的思考区。
+ */
+async function openThinkOf(page: PwPage, callId: string): Promise<PwLocator> {
+  const think = toolCard(page, callId).locator('xpath=ancestor::details[1]');
+  if (!(await think.count())) return think;
+  const opened = await think.evaluate((el) => (el as HTMLDetailsElement).open, null);
+  if (!opened) await think.locator('.think-sum').click();
+  return think;
+}
+
 async function showSession(page: PwPage): Promise<void> {
   await page.locator('.explorer .nav a').filter({ hasText: '任务会话' }).click();
   await page.locator('#wb-session .comp textarea').waitFor({ state: 'visible' });
@@ -367,8 +380,14 @@ test('Electron 核心路径：选目录 → 提问 → 批准/拒绝编辑 → �
     await page.waitForFunction((name) => document.querySelector('.explorer .psel .pid')?.textContent?.includes(name), 'demo-project', { timeout: 10_000 });
     await showSession(page);
     await page.locator('.chat .ubub').filter({ hasText: '把 hello.txt 改成大写' }).waitFor({ state: 'visible', timeout: 10_000 });
+    // v1.8：思考区默认折叠（重启后没有待批准，也没有用户的展开选择）→ 断言前先展开
+    const thinkEdit1 = page.locator('.chat .verify.tool[data-call="call_edit1"]').locator('xpath=ancestor::details[1]');
+    assert.equal(await thinkEdit1.evaluate((el) => (el as HTMLDetailsElement).open, null), false, '思考区默认应折叠');
+    await openThinkOf(page, 'call_edit1');
     await toolCard(page, 'call_edit1').locator('.chip').filter({ hasText: '完成' }).waitFor({ timeout: 10_000 });
+    await openThinkOf(page, 'call_edit2');
     await toolCard(page, 'call_edit2').locator('.chip').filter({ hasText: '已拒绝' }).waitFor({ timeout: 10_000 });
+    await openThinkOf(page, 'call_cmd1');
     await toolCard(page, 'call_cmd1').locator('.chip').filter({ hasText: '完成' }).waitFor({ timeout: 10_000 });
     await page.locator('.chat .msg .md').filter({ hasText: '全部完成' }).waitFor({ state: 'visible', timeout: 10_000 });
     assert.equal(await page.locator('.chat .appr').count(), 0, '恢复后不应残留待批准按钮');

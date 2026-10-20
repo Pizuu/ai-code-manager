@@ -4,6 +4,7 @@
  */
 import type { AgentEvent, BoardCard, ChatMessage, Session } from '../../contracts/ipc.ts';
 import { api, errorText } from './api.ts';
+import { agentError, sessionErrorEntries, toolCallError } from './lib/error-log.ts';
 import { store } from './store.ts';
 import { mountBoard } from './views/board-view.ts';
 import type { ChatView } from './views/chat.ts';
@@ -50,6 +51,8 @@ function findMessage(id: string): ChatMessage | undefined {
 export async function selectSession(id: string): Promise<void> {
   store.state.current = await api.invoke('sessions:get', id);
   store.state.notices = [];
+  // P1-6：用持久化消息重建该会话的错误条目（重启后仍能看到「出错」与错误分区）
+  store.setErrors(id, sessionErrorEntries(store.state.current.messages));
   store.emit('current', 'todos');
 }
 
@@ -128,6 +131,17 @@ function handleEvent(e: AgentEvent): void {
     case 'terminal':
       store.appendTerminal({ toolCallId: e.toolCallId, stream: e.stream, data: e.data });
       return;
+    // v1.6：终端模式——输出与退出按会话记录（不限于当前会话，切回时仍在）。
+    case 'terminal-data':
+      store.appendTerminalOutput(e.sessionId, e.terminalId, e.data);
+      return;
+    case 'terminal-exit':
+      store.markTerminalExited(e.sessionId, e.terminalId, e.code);
+      return;
+    // P1-8：git 引用变化 → 重拉看板与 Git 快照
+    case 'git-changed':
+      void shell.refreshWorkspace();
+      return;
     default:
       break;
   }
@@ -155,6 +169,11 @@ function handleEvent(e: AgentEvent): void {
         else calls[i] = e.call;
         store.emit('messages');
       }
+      // P1-6：工具失败计入该会话的错误条目（「出错」状态 + 错误分区）
+      if (e.call.status === 'error') {
+        const entry = toolCallError(e.call, m?.createdAt ?? new Date().toISOString());
+        if (entry) store.addError(e.sessionId, entry);
+      }
       if (e.call.diff) {
         const p = e.call.input.path ?? e.call.input.filePath;
         store.upsertDiff({ toolCallId: e.call.id, path: typeof p === 'string' ? p : '', diff: e.call.diff, status: e.call.status });
@@ -166,6 +185,8 @@ function handleEvent(e: AgentEvent): void {
       store.emit('todos');
       break;
     case 'error':
+      // P1-6：Agent 报错计入该会话的错误条目（可追溯）
+      store.addError(e.sessionId, agentError(e.sessionId + ':' + e.message.slice(0, 64), e.message, new Date().toISOString()));
       chat.notify(e.message);
       break;
     default:
@@ -189,6 +210,12 @@ async function bootstrap(): Promise<void> {
       sessionView.openFile(rel);
     },
     onError: (t) => chat.notify(t),
+    // P0-3：点击活动徽标 / 状态栏计数 → 跳到该会话
+    onJumpToSession: (id) => {
+      shell.setView('session');
+      sessionView.showChat();
+      void selectSession(id).catch((e: unknown) => chat.notify(errorText(e)));
+    },
   });
   sessionView = mountSessionView(shell.views.session, {
     selectSession,
