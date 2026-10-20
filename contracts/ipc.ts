@@ -12,9 +12,12 @@ export const IPC_CONTRACT_VERSION = 'v1' as const;
  * 契约修订号：v1.1 = 功能 002（三板块 + Agent CLI）的纯增量扩展——只新增通道、类型与可选字段，
  * 未修改或删除任何 v1 字段，因此主版本保持 v1（宪法 II）。
  */
-export const IPC_CONTRACT_REVISION = 'v1.2' as const;
+export const IPC_CONTRACT_REVISION = 'v1.3' as const;
 // v1.2 = 功能 003（只读代码查看、配置空白）的纯增量：新增 `fs:read` 通道、`FileContent` 类型、`FILE_VIEW_LIMITS`
 // 常量与错误码 `E_NOT_CONFIGURED`；未修改或删除任何既有字段。
+// v1.3 = 任务卡 T-033（为接入 opencode serve 逐条审批做准备，ADR 0006 修订）的纯增量：`ApprovalKind` 新增
+// 'webfetch' | 'loop' | 'subagent' | 'external-dir' | 'other'，`ApprovalRequest` 新增可选字段 `url`、`tool`、`permission`、
+// `patterns`、`description`；既有 'edit' / 'command' 及其字段语义不变。
 
 // ───────────────────────── 基础模型 ─────────────────────────
 
@@ -162,14 +165,28 @@ export interface SpecTaskFile {
   tasks: SpecTask[];
 }
 
-export type ApprovalKind = 'edit' | 'command';
+/**
+ * 审批种类（宪法 九：写入与命令逐条批准）。
+ *
+ * - `edit`：写入 / 修改文件（内置 agent 的 edit_file / write_file，或 opencode `edit` 权限）。
+ * - `command`：执行命令（内置 agent 的 run_command、外部 CLI 每轮启动，或 opencode `bash` 权限）。
+ * - `webfetch`（v1.3）：抓取网页（opencode `webfetch` 权限）；读 `url`。
+ * - `loop`（v1.3）：同一工具以相同参数重复调用，疑似死循环，询问是否继续（opencode `doom_loop` 权限）；读 `tool`、`description`。
+ * - `subagent`（v1.3）：启动子 agent（opencode `task` 权限）；读 `description`（子任务说明）、`patterns`（子 agent 类型）。
+ * - `external-dir`（v1.3）：访问项目根以外的目录（opencode `external_directory` 权限）；读 `path`（绝对路径）、`patterns`。
+ *   宪法 十一要求项目根沙箱，提供方默认应直接拒绝此类权限；此种类仅用于「无法预先拒绝时」如实展示。
+ * - `other`（v1.3）：未知或未单独建模的权限（兜底，向前兼容外部 CLI 新增的权限名）；读 `permission`、`patterns`、`description`。
+ *
+ * 使用方（渲染进程）必须为不认识的种类回退到 `other` 的展示方式（显示 `permission` + `patterns`），不得静默批准或丢弃。
+ */
+export type ApprovalKind = 'edit' | 'command' | 'webfetch' | 'loop' | 'subagent' | 'external-dir' | 'other';
 
 export interface ApprovalRequest {
   id: string;
   sessionId: string;
   toolCallId: string;
   kind: ApprovalKind;
-  /** edit：目标文件相对路径。 */
+  /** edit：目标文件相对路径。external-dir（v1.3）：请求访问的项目外绝对路径。 */
   path?: string;
   /** edit：统一 diff。 */
   diff?: string;
@@ -177,6 +194,20 @@ export interface ApprovalRequest {
   command?: string;
   /** command：实际使用的 shell（powershell.exe / bash）。 */
   shell?: string;
+  // ── v1.3（T-033）：以下均为可选，旧种类不使用 ──
+  /** webfetch：将要抓取的完整 URL。例：https://opencode.ai/docs/cli/ */
+  url?: string;
+  /** loop：被重复调用的工具名。例：read */
+  tool?: string;
+  /**
+   * 外部 CLI 原始权限名（审计与兜底展示用），任何种类均可附带。
+   * 例：'webfetch'、'doom_loop'、'task'、'external_directory'、'skill'。
+   */
+  permission?: string;
+  /** 权限匹配模式（外部 CLI 原样给出），例：['https://example.com/*']、['/etc/*']、['general']。 */
+  patterns?: string[];
+  /** 面向用户的一句话说明（提供方生成或取自 CLI 元数据），例：子 agent 的任务描述、循环检测的说明。 */
+  description?: string;
 }
 
 // ───────────────────────── invoke 通道（渲染 → 主） ─────────────────────────

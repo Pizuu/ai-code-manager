@@ -66,6 +66,12 @@ description: "Task list for 002-workspace-boards"
 - [ ] T124 [lane:infra] 在 Windows x64 runner 上用真实 `npm install -g opencode-ai` 验证 `opencode.cmd` → `opencode.exe` 解析、PowerShell 路径含空格/中文、`taskkill /T /F` 停止，加入 windows-latest CI 作业 per FR-112, FR-113, SC-103 (partial：Windows 分支仅以模拟文件系统单测)
 - [x] T125 [lane:backend] 评估以 `opencode serve` + 权限事件实现逐条工具审批，替代「每轮批准」，落 ADR 修订 per FR-116、宪法 九 (missing：ADR 0006 已接受风险，目标 v0.3.0)
 
+> 增量（2026-10-20，T-022 评估结论 → ADR 0006 修订）：接入 `opencode serve` 逐条审批，契约先行。
+
+- [x] T126 [lane:contracts] 契约 v1.3：`ApprovalKind` 新增 `webfetch` / `loop` / `subagent` / `external-dir` / `other`，`ApprovalRequest` 新增可选 `url`、`tool`、`permission`、`patterns`、`description`，样例 contracts/fixtures/agent-events.sample.json（`ap-2`…`ap-6`）per FR-116、宪法 九（任务卡 T-033）
+- [ ] T127 [lane:backend] 以实验设置 `agentCli.opencodeMode = 'run' | 'serve'`（默认 `run`）接入 src/backend/agent-cli/opencode-serve.ts：`permission.asked` 映射 `edit`→edit、`bash`→command、`webfetch`→webfetch（`url`）、`doom_loop`→loop（`tool`）、`task`→subagent（`description`）、`external_directory`→external-dir（规则集默认 deny）、其余→other（`permission` + `patterns`），均附原始 `permission`；接线 src/backend/ipc/handlers.ts / validate.ts / settings-store.ts，集成测试覆盖两种模式与停止即拒绝 per FR-116、宪法 九、宪法 十一（依赖 T126；设置字段若需进 `PublicSettings` 须另开 contracts 增量）
+- [ ] T128 [lane:frontend] 任务会话视图为新审批种类渲染审批卡片 src/frontend/views/tool-card.ts（webfetch 显示 URL、loop 显示工具与说明、subagent 显示子任务说明、external-dir 醒目警示路径、other 及未知种类显示 `permission` + `patterns`，绝不默认批准），单测 tests/unit/frontend/ per 宪法 九（依赖 T126，可与 T127 并行，对照 agent-events 样例开发）
+
 ## Dependencies & Execution Order
 
 - T101–T103 → T104 → backend（T105→T106→T107→T108→T109→T110→T111/T112/T113→T114→T115）与 frontend（T116→T117→T118→T119→T120）→ T121 → T122

@@ -46,3 +46,4 @@
   5. 常驻进程：随机端口与密码、应用退出杀进程树、SSE 断线有限重连并复查 `GET /permission`。
 - 好处：逐条审批满足宪法 九；自动批准编辑模式下 bash 从 deny 提升为 ask；token 级流式（`message.part.delta`）。
 - 接入前置：contracts 卡扩展 `ApprovalRequest` 以承载 webfetch / doom_loop / task 等权限类型。
+- 进展（T-033，契约 v1.3）：`ApprovalKind` 已新增 `webfetch` / `loop`（doom_loop）/ `subagent`（task）/ `external-dir`（external_directory）/ `other`（未知权限兜底），原始权限名记入 `ApprovalRequest.permission`；接线见 specs/002-workspace-boards/tasks.md T127（backend）、T128（frontend）。
