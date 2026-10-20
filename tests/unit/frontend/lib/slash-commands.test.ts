@@ -10,7 +10,7 @@ test('/clear, /help and /model map to local actions', () => {
   assert.deepEqual(parseSlashCommand('/clear'), { kind: 'clear' });
   assert.equal(parseSlashCommand('/help').kind, 'help');
   assert.deepEqual(parseSlashCommand('/model'), { kind: 'model', model: null });
-  assert.deepEqual(parseSlashCommand('/model  gpt-4o-mini '), { kind: 'model', model: 'gpt-4o-mini' });
+  assert.deepEqual(parseSlashCommand('/model  my-model '), { kind: 'model', model: 'my-model' });
 });
 
 test('/init asks the agent to write AGENTS.md via write_file', () => {

@@ -2,16 +2,19 @@
  * 任务会话板块（FR-109、FR-111，ADR 0005）：原型 renderSession() 的三列 .sx——
  * 左列 .slist = 本机会话列表；中列 section.chat = 对话（chat.ts）；右列 .ctxp = 会话 / 任务上下文。
  * 会话标题含任务号（如 T-015）且看板中有该卡时，右列显示原型的「任务上下文」，否则显示「会话上下文」。
+ * 003：中列顶部标签页条 =「对话」+ 已打开的只读文件（code-view.ts）；未打开文件时隐藏标签条。
  */
 import type { BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentName, agentWho, isCli } from '../lib/agent-label.ts';
 import { hm, PR_LINE, STATUS_META } from '../lib/board-format.ts';
+import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
 import { decideApproval, MODE_LABELS, mountChat, type ChatView } from './chat.ts';
+import { mountCodeView } from './code-view.ts';
 import { renderDiff } from './diff-view.ts';
 import { refreshTasks } from './tasks-view.ts';
 import { STATUS_LABELS } from './tool-card.ts';
@@ -20,7 +23,20 @@ export interface SessionHooks {
   selectSession(id: string): Promise<void>;
   newSession(): Promise<void>;
   openBoard(): void;
+  /** 代码查看器「发送到任务会话」（整个文件引用）。 */
+  sendFile(relPath: string): void;
 }
+
+export interface SessionView {
+  chat: ChatView;
+  /** 打开（或激活）只读文件标签。 */
+  openFile(relPath: string): void;
+  /** 切回「对话」标签。 */
+  showChat(): void;
+}
+
+/** 同时保留的文件标签上限，超出关闭最早打开的。 */
+const MAX_FILE_TABS = 8;
 
 /** 会话标题中的任务号 → 看板任务卡。 */
 export function linkedCardFor(title: string | undefined, cards: readonly BoardCard[]): BoardCard | null {
@@ -28,7 +44,7 @@ export function linkedCardFor(title: string | undefined, cards: readonly BoardCa
   return id ? (cards.find((c) => c.id === id) ?? null) : null;
 }
 
-export function mountSessionView(container: HTMLElement, hooks: SessionHooks): ChatView {
+export function mountSessionView(container: HTMLElement, hooks: SessionHooks): SessionView {
   clear(container);
   let query = '';
   const linkedCard = () => linkedCardFor(store.state.current?.title, store.state.board?.available ? store.state.board.cards : []);
@@ -43,8 +59,56 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): C
     h('div', { class: 'mute foot' }, icon('pr'), h('div', { class: 'mt6' }, '一个会话 · 一个 agent', h('br'), '工具调用随会话本机持久化')));
 
   const chatCol = h('section', { class: 'chat' });
+  const codePane = h('section', { class: 'codev' });
+  codePane.hidden = true;
+  const ftabs = h('div', { class: 'ftabs', attrs: { role: 'tablist' } });
+  const mid = h('div', { class: 'mid' }, ftabs, chatCol, codePane);
   const ctxp = h('aside', { class: 'ctxp' });
-  container.append(h('div', { class: 'sx' }, slist, chatCol, ctxp));
+  container.append(h('div', { class: 'sx' }, slist, mid, ctxp));
+  const code = mountCodeView(codePane, { sendFile: hooks.sendFile });
+
+  // ── 中列标签页（对话 + 文件）──
+  const files: string[] = [];
+  let active: string | null = null; // null = 对话
+  const renderTabs = () => {
+    ftabs.hidden = files.length === 0;
+    const tab = (label: string, on: boolean, onClick: () => void, title: string, onClose?: () => void) => {
+      const el = h('div', { class: `ft${on ? ' on' : ''}`, title, attrs: { role: 'tab' }, on: { click: onClick } }, h('span', { class: 'nm' }, label));
+      if (onClose) el.append(h('button', { class: 'x', title: '关闭', attrs: { type: 'button' }, on: { click: (ev) => { ev.stopPropagation(); onClose(); } } }, '✕'));
+      return el;
+    };
+    ftabs.replaceChildren(
+      tab('对话', active === null, () => setActive(null), '任务会话对话'),
+      ...files.map((f) => {
+        const el = tab(f.split('/').pop() ?? f, active === f, () => setActive(f), f, () => closeFile(f));
+        for (const [k, v] of Object.entries(sendAttrs({ kind: 'file', path: f, dir: false }))) el.setAttribute(k, v);
+        return el;
+      }));
+  };
+  const setActive = (f: string | null) => {
+    const changed = active !== f;
+    active = f;
+    chatCol.hidden = f !== null;
+    codePane.hidden = f === null;
+    renderTabs();
+    if (f && changed) void code.show(f);
+  };
+  const openFile = (f: string) => {
+    if (!files.includes(f)) {
+      files.push(f);
+      if (files.length > MAX_FILE_TABS) files.shift();
+      active = null; // 强制重新读取
+    }
+    setActive(f);
+  };
+  const closeFile = (f: string) => {
+    const i = files.indexOf(f);
+    if (i === -1) return;
+    files.splice(i, 1);
+    if (active === f) setActive(files[i] ?? files[i - 1] ?? null);
+    else renderTabs();
+  };
+  renderTabs();
 
   const chat = mountChat(chatCol, {
     renderDiff,
@@ -205,5 +269,5 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): C
   renderList();
   renderCtx();
   void refreshTasks().catch(() => undefined);
-  return chat;
+  return { chat, openFile, showChat: () => setActive(null) };
 }

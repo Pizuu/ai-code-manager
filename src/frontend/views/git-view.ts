@@ -5,6 +5,7 @@
  */
 import type { BoardCard, GitSnapshot } from '../../../contracts/ipc.ts';
 import { PR_LINE, STATUS_META, ymdhm } from '../lib/board-format.ts';
+import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { layoutGraph } from '../lib/git-graph.ts';
 import { icon, svgEl } from '../lib/icons.ts';
@@ -27,7 +28,7 @@ function drawGraph(wrap: HTMLElement, g: GitSnapshot): void {
   for (const e of lay.edges) svg.append(svgEl('path', { d: e.d, fill: 'none', stroke: e.color, 'stroke-width': 1.5, ...(e.dashed ? { 'stroke-dasharray': '4 3' } : {}) }));
   const tip = h('div', { class: 'tip' });
   for (const n of lay.nodes) {
-    const c = svgEl('circle', { class: 'cn', cx: n.x, cy: n.y, r: n.r, fill: 'var(--bg)', stroke: n.color, 'stroke-width': 1.6 });
+    const c = svgEl('circle', { class: 'cn', cx: n.x, cy: n.y, r: n.r, fill: 'var(--bg)', stroke: n.color, 'stroke-width': 1.6, ...sendAttrs({ kind: 'commit', sha: n.commit.sha, subject: n.commit.subject }) });
     c.addEventListener('mouseenter', () => {
       tip.replaceChildren(
         h('div', { class: 'mono' }, `${n.commit.short}\u3000${ymdhm(n.commit.time)}`),
@@ -98,7 +99,7 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
       const tag = o.state === 'merged' ? h('span', { class: 'chip grn' }, '已合入') : o.state === 'review' ? h('span', { class: 'chip blu' }, '待审查') : h('span', { class: 'chip acc' }, '进行中');
       const lg = o.branch.startsWith('int/') ? h('span', { class: 'mute' }, 'check-lane：int/* 跳过')
         : c?.laneOk === true ? h('span', { class: 'grn' }, 'lane-guard ✓') : c?.laneOk === false ? h('span', { class: 'acc' }, 'lane-guard ✗') : h('span', { class: 'mute' }, 'lane-guard：暂无改动');
-      return h('div', { class: 'pr' }, h('span', { class: 'mute' }, icon('pr')),
+      return h('div', { class: 'pr', attrs: sendAttrs({ kind: 'branch', name: o.branch, sha: o.short, subject: c ? `${o.task ?? ''} ${c.title}`.trim() : o.subject }) }, h('span', { class: 'mute' }, icon('pr')),
         h('div', { class: 'm' },
           h('div', { class: 't' }, h('span', {}, `${PR_LINE} · ${o.task ?? '—'}\u3000${c ? c.title : o.subject}`), tag),
           h('div', { class: 'b' }, `${o.branch} → ${integ}${o.worktree ? `\u3000· worktree ${o.worktree}` : ''}`),
@@ -112,7 +113,7 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     const strip = h('div', { class: 'strip' }, icon('check'), h('span', {}, `已合入 ${integ}：`));
     g.merges.forEach((m, i) => {
       if (i) strip.append(h('span', { class: 'mute' }, '→'));
-      strip.append(h('span', {}, `${m.branch ?? '?'} · `, h('span', { class: 'mono' }, m.short)));
+      strip.append(h('span', { attrs: sendAttrs({ kind: 'commit', sha: m.sha, subject: m.subject }) }, `${m.branch ?? '?'} · `, h('span', { class: 'mono' }, m.short)));
     });
     if (!g.merges.length) strip.append(h('span', { class: 'mute' }, '暂无'));
     left.append(strip);
@@ -144,7 +145,7 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
           : c.status === 'ready' ? '前置已合入 · 尚未开分支' : `等待 ${c.unmetDeps.join('、')} 合入`;
       const box = h('input', { attrs: { type: 'checkbox', disabled: '' } });
       box.checked = c.status === 'merged';
-      queue.append(h('label', { class: 'q' }, box, h('div', {}, h('div', {}, `${c.title} / ${c.id}`), h('div', { class: 's' }, sub))));
+      queue.append(h('label', { class: 'q', attrs: sendAttrs({ kind: 'card', id: c.id, title: c.title, lane: c.lane, status: STATUS_META[c.status].label }) }, box, h('div', {}, h('div', {}, `${c.title} / ${c.id}`), h('div', { class: 's' }, sub))));
     }
     const viol = cards.filter((c) => c.laneOk === false);
     queue.append(h('div', { class: `note${viol.length ? '' : ' grn'}` }, ...(viol.length

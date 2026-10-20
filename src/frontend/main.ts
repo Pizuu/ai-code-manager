@@ -8,12 +8,38 @@ import { store } from './store.ts';
 import { mountBoard } from './views/board-view.ts';
 import type { ChatView } from './views/chat.ts';
 import { mountGit } from './views/git-view.ts';
-import { mountSessionView } from './views/session-view.ts';
+import { builtinMissing } from './lib/agent-config.ts';
+import { formatSendText } from './lib/context-send.ts';
+import { installContextMenu } from './views/context-menu.ts';
+import { mountSessionView, type SessionView } from './views/session-view.ts';
 import { openSettings } from './views/settings-dialog.ts';
-import { mountShell, type ShellView } from './views/shell.ts';
+import { mountShell, VIEW_TITLES, type ShellView } from './views/shell.ts';
 
 let chat: ChatView;
 let shell: ShellView;
+let sessionView: SessionView;
+
+/** 003：把带来源标注的内容插入任务会话输入框并切到任务会话（不自动发送）。 */
+function sendToSession(text: string): void {
+  shell.setView('session');
+  sessionView.showChat();
+  chat.insertBlock(text);
+}
+
+/** 右键选中文本的来源区域中文名。 */
+function originOf(el: Element): string {
+  if (el.closest('#settings-dialog')) return '设置';
+  if (el.closest('.explorer')) return '项目结构';
+  if (el.closest('.wh')) return '页头';
+  if (el.closest('.codev')) return '代码查看';
+  if (el.closest('.ctxp')) return '任务会话 · 上下文';
+  if (el.closest('.slist')) return '任务会话 · 会话列表';
+  if (el.closest('.chat')) return '任务会话 · 对话';
+  const id = el.closest('.ws-view')?.id;
+  if (id === 'wb-board') return VIEW_TITLES.board;
+  if (id === 'wb-git') return VIEW_TITLES.git;
+  return 'AI Code Manager';
+}
 
 function findMessage(id: string): ChatMessage | undefined {
   return store.state.current?.messages.find((m) => m.id === id);
@@ -32,6 +58,7 @@ async function newSession(): Promise<void> {
     store.emit('sessions');
     await selectSession(s.id);
     shell.setView('session');
+    sessionView.showChat();
   } catch (e) {
     chat.notify(errorText(e));
   }
@@ -55,6 +82,7 @@ async function openCard(card: BoardCard): Promise<void> {
   if (existing) {
     await selectSession(existing.id);
     shell.setView('session');
+    sessionView.showChat();
     return;
   }
   await newSession();
@@ -156,11 +184,18 @@ async function bootstrap(): Promise<void> {
     onOpenSettings: () => openSettings(),
     onFileClick: (rel) => {
       shell.setView('session');
-      chat.insertText(`@${rel} `);
+      sessionView.openFile(rel);
     },
     onError: (t) => chat.notify(t),
   });
-  chat = mountSessionView(shell.views.session, { selectSession, newSession, openBoard: () => shell.setView('board') });
+  sessionView = mountSessionView(shell.views.session, {
+    selectSession,
+    newSession,
+    openBoard: () => shell.setView('board'),
+    sendFile: (rel) => sendToSession(formatSendText({ kind: 'file', path: rel, dir: false })),
+  });
+  chat = sessionView.chat;
+  installContextMenu({ send: sendToSession, originOf });
   mountBoard(shell.views.board, { openGit: () => shell.setView('git'), openProject: () => void pickProject(), openCard: (c) => void openCard(c) });
   mountGit(shell.views.git, { openBoard: () => shell.setView('board'), openProject: () => void pickProject(), notify: (t) => chat.notify(t, 'info') });
   api.onEvent(handleEvent);
@@ -176,7 +211,8 @@ async function bootstrap(): Promise<void> {
   shell.setView(project ? 'board' : 'session');
   void shell.refreshWorkspace();
   const usesCli = (settings.defaultAgent ?? 'builtin') !== 'builtin';
-  if (!usesCli && !settings.hasApiKey[settings.provider]) openSettings();
+  // 003：配置默认空白，内置 agent 未配置时打开设置
+  if (!usesCli && builtinMissing(settings).length) openSettings();
 }
 
 bootstrap().catch((e: unknown) => {

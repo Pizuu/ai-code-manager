@@ -3,6 +3,7 @@
  */
 import type { BoardCard, BoardSnapshot } from '../../../contracts/ipc.ts';
 import { cardLines, COLUMNS, countBy, filterCards, frShort, hm, laneRows, STATUS_META, uniqueAssignees, type BoardFilter } from '../lib/board-format.ts';
+import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
@@ -24,7 +25,7 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
 
   const cardEl = (c: BoardCard, snap: BoardSnapshot) => {
     const l = cardLines(c, snap);
-    return h('a', { class: `card${l.hot ? ' hot' : ''}`, title: c.goal, on: { click: () => hooks.openCard(c) } },
+    return h('a', { class: `card${l.hot ? ' hot' : ''}`, title: c.goal, attrs: sendAttrs({ kind: 'card', id: c.id, title: c.title, lane: c.lane, status: STATUS_META[c.status].label }), on: { click: () => hooks.openCard(c) } },
       h('div', { class: 'r1' }, h('span', { class: 'id' }, `${c.id}\u3000·\u3000${frShort(c)}`), h('span', {}, c.assignee)),
       h('div', { class: 'tt' }, c.title),
       h('div', { class: 'r3' }, l.r3),

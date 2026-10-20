@@ -9,6 +9,9 @@ import { store } from '../store.ts';
 import { mountAgentCliSettings } from './agent-cli-settings.ts';
 
 const PROVIDER_LABELS: Readonly<Record<ProviderId, string>> = { openai: 'OpenAI 兼容（/chat/completions）', anthropic: 'Anthropic（Messages API）' };
+/** 003：只给示例 placeholder，值一律为空、由用户填写（不预填任何服务商地址或模型名）。 */
+const BASE_URL_PLACEHOLDER: Readonly<Record<ProviderId, string>> = { openai: '例：https://<你的服务地址>/v1', anthropic: '例：https://<你的服务地址>（会自动补 /v1/messages）' };
+const MODEL_PLACEHOLDER: Readonly<Record<ProviderId, string>> = { openai: '例：服务商文档中的模型 ID', anthropic: '例：服务商文档中的模型 ID' };
 import { MODE_LABELS } from './chat.ts';
 export { MODE_LABELS };
 
@@ -47,8 +50,8 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   }
 
   const provider = options(PROVIDER_LABELS, s.provider);
-  const baseUrl = h('input', { attrs: { type: 'url', value: s.baseUrl, spellcheck: 'false' } });
-  const model = h('input', { attrs: { type: 'text', value: s.model, spellcheck: 'false' } });
+  const baseUrl = h('input', { attrs: { type: 'url', value: s.baseUrl, spellcheck: 'false', placeholder: BASE_URL_PLACEHOLDER[s.provider] } });
+  const model = h('input', { attrs: { type: 'text', value: s.model, spellcheck: 'false', placeholder: MODEL_PLACEHOLDER[s.provider] } });
   const key = h('input', { attrs: { type: 'password', autocomplete: 'off', placeholder: '' } });
   const mode = options(MODE_LABELS, s.permissionMode);
   const err = h('div', { class: 'error-text' });
@@ -64,7 +67,12 @@ export function openSettings(tab: SettingsTab = 'model'): void {
       : '系统加密服务不可用，无法保存 Key。';
     removeKey.disabled = !saved;
   };
-  provider.addEventListener('change', refreshKeyState);
+  provider.addEventListener('change', () => {
+    const p = provider.value as ProviderId;
+    baseUrl.placeholder = BASE_URL_PLACEHOLDER[p];
+    model.placeholder = MODEL_PLACEHOLDER[p];
+    refreshKeyState();
+  });
   refreshKeyState();
 
   removeKey.addEventListener('click', async () => {
@@ -81,8 +89,8 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     h('h3', {}, '设置'),
     tabs,
     field('模型提供方', provider),
-    field('Base URL', baseUrl, '切换提供方时若仍为默认地址会自动更新；兼容端点可填写自定义地址。'),
-    field('模型', model),
+    field('Base URL', baseUrl, '必填，默认空白：填写你所用服务的接口地址（OpenAI 兼容端点或 Anthropic Messages API）。'),
+    field('模型', model, '必填，默认空白：按服务商文档填写模型 ID。也可用 /model <模型名> 切换。'),
     h('div', { class: 'field' }, h('label', {}, 'API Key'), key, keyHelp, h('div', {}, removeKey)),
     field('权限模式', mode, '内置 agent：命令执行在任何模式下都需要逐条批准；「仅规划」禁止修改与执行。外部 CLI 的映射见「Agent CLI」分区。'),
     err,
@@ -95,9 +103,7 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     ev.preventDefault();
     err.textContent = '';
     const p = provider.value as ProviderId;
-    const update: SettingsUpdate = { provider: p, permissionMode: mode.value as PermissionMode, model: model.value.trim() };
-    // 切换提供方且 Base URL 未改动时交给主进程换成新默认值
-    if (p === s.provider || baseUrl.value.trim() !== s.baseUrl) update.baseUrl = baseUrl.value.trim();
+    const update: SettingsUpdate = { provider: p, permissionMode: mode.value as PermissionMode, model: model.value.trim(), baseUrl: baseUrl.value.trim() };
     if (key.value.trim() !== '') update.apiKey = { provider: p, value: key.value.trim() };
     try {
       store.state.settings = await api.invoke('settings:set', update);

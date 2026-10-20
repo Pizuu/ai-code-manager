@@ -10,7 +10,7 @@ export interface AgentOption {
 
 export function builtinLabel(s: Pick<PublicSettings, 'provider' | 'model'> | null): string {
   if (!s) return '内置 Agent';
-  return `${s.provider === 'anthropic' ? 'Claude' : 'OpenAI 兼容'} · ${s.model}`;
+  return `${s.provider === 'anthropic' ? 'Claude' : 'OpenAI 兼容'} · ${s.model.trim() || '未配置'}`;
 }
 
 export function agentOptions(s: PublicSettings | null): AgentOption[] {

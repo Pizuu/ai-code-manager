@@ -4,7 +4,7 @@
  */
 import type { AgentCliConfig, AgentCliOutputFormat } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
-import { configToForm, formToInput, OPENCODE_FORM_PRESET, previewCommand, type AgentCliForm, type EnvRow } from '../lib/agent-cli-form.ts';
+import { configToForm, formToInput, OPENCODE_FORM_EXAMPLE, OPENCODE_FORM_PRESET, previewCommand, type AgentCliForm, type EnvRow } from '../lib/agent-cli-form.ts';
 import { agentOptions } from '../lib/agent-label.ts';
 import { clear, h } from '../lib/dom.ts';
 import { store } from '../store.ts';
@@ -36,7 +36,7 @@ export function mountAgentCliSettings(container: HTMLElement): void {
     });
     container.append(field('新会话默认 agent', def, '每个会话也可在任务会话顶部单独切换。'));
     const list = h('div', { class: 'cli-list' });
-    if (!clis.length) list.append(h('div', { class: 'check-out' }, '尚未添加外部 CLI。点「添加 opencode 预设」一键填好参数（需先安装 opencode）。'));
+    if (!clis.length) list.append(h('div', { class: 'check-out' }, '尚未添加外部 CLI。「添加 opencode 预设」只设定类型与字段说明，各项需自行填写（可点「按示例填写」，需先安装 opencode）。'));
     for (const c of clis) {
       const out = h('div', { class: 'check-out', attrs: { hidden: '' } });
       const check = h('button', { class: 'btn', attrs: { type: 'button' } }, '检查');
@@ -87,18 +87,20 @@ export function mountAgentCliSettings(container: HTMLElement): void {
     if (!editing) return renderList();
     const f = editing;
     clear(container);
-    const input = (value: string, type = 'text') => h('input', { attrs: { type, value, spellcheck: 'false' } });
-    const area = (value: string, rows = 4) => {
-      const t = h('textarea', { attrs: { rows: String(rows), spellcheck: 'false' } });
+    const isOc = f.preset === 'opencode';
+    const ex = (k: keyof typeof OPENCODE_FORM_EXAMPLE) => (isOc ? `例：${OPENCODE_FORM_EXAMPLE[k].split('\n').join(' ')}` : '');
+    const input = (value: string, placeholder = '', type = 'text') => h('input', { attrs: { type, value, spellcheck: 'false', placeholder } });
+    const area = (value: string, rows = 4, placeholder = '') => {
+      const t = h('textarea', { attrs: { rows: String(rows), spellcheck: 'false', placeholder } });
       t.value = value;
       return t;
     };
     const name = input(f.name);
-    const command = input(f.command);
-    const args = area(f.args, 5);
-    const resume = area(f.resumeArgs, 2);
-    const modelArgs = area(f.modelArgs, 2);
-    const model = input(f.model);
+    const command = input(f.command, isOc ? '例：opencode（或 opencode.exe 完整路径）' : '可执行文件名或绝对路径');
+    const args = area(f.args, 5, isOc ? '每行一个，例：\nrun\n--format\njson\n--dir\n{cwd}' : '每行一个参数');
+    const resume = area(f.resumeArgs, 2, ex('resumeArgs'));
+    const modelArgs = area(f.modelArgs, 2, ex('modelArgs'));
+    const model = input(f.model, isOc ? '例：<provider>/<model>；留空使用 CLI 自身默认' : '');
     const format = h('select');
     for (const [v, l] of Object.entries(FORMAT_LABELS)) format.append(h('option', { attrs: { value: v } }, l));
     format.value = f.outputFormat;
@@ -139,6 +141,14 @@ export function mountAgentCliSettings(container: HTMLElement): void {
     };
     for (const el of [name, command, args, resume, modelArgs, model, format]) el.addEventListener('input', updatePreview);
     updatePreview();
+    // 用户显式点击才填入 opencode 文档示例（不作为默认值；模型保持空白）
+    const fillExample = isOc ? h('button', { class: 'btn', attrs: { type: 'button' }, title: '把 opencode 官方文档的示例参数填入空白字段（模型仍留空）', on: { click: () => {
+      if (!command.value.trim()) command.value = OPENCODE_FORM_EXAMPLE.command;
+      if (!args.value.trim()) args.value = OPENCODE_FORM_EXAMPLE.args;
+      if (!resume.value.trim()) resume.value = OPENCODE_FORM_EXAMPLE.resumeArgs;
+      if (!modelArgs.value.trim()) modelArgs.value = OPENCODE_FORM_EXAMPLE.modelArgs;
+      updatePreview();
+    } } }, '按示例填写') : null;
     const err = h('div', { class: 'error-text' });
     const save = h('button', { class: 'btn pri', attrs: { type: 'button' } }, '保存');
     save.addEventListener('click', async () => {
@@ -158,12 +168,12 @@ export function mountAgentCliSettings(container: HTMLElement): void {
       field('参数模板（每行一个参数）', args, '占位符：{cwd} 项目根、{model} 模型、{session} CLI 会话 ID、{prompt} 消息。未使用 {prompt} 时消息以 `--` 分隔追加在末尾。'),
       field('续接参数（已有 CLI 会话时追加）', resume),
       field('模型参数（模型非空时追加）', modelArgs),
-      field('模型', model, 'opencode 格式：provider/model，例如 anthropic/claude-sonnet-4-5；留空使用 CLI 自身默认（opencode models 可列出）。'),
+      field('模型', model, 'opencode 格式：<provider>/<model>；留空使用 CLI 自身默认（opencode models 可列出）。'),
       field('输出格式', format),
       h('div', { class: 'field' }, h('label', {}, '环境变量（只注入该 CLI 子进程）'), envBox, h('div', {}, h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => addEnvRow({ name: '', secret: true }) } }, '＋ 添加变量'))),
       field('命令行预览', preview),
       err,
-      h('div', { class: 'actions' }, h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => { editing = null; renderList(); } } }, '返回'), save));
+      h('div', { class: 'actions' }, fillExample, h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => { editing = null; renderList(); } } }, '返回'), save));
   };
 
   renderList();
