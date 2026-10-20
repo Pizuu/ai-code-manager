@@ -21,6 +21,8 @@
 |---|---|---|---|---|---|
 | `ipc.ts` | v1 | Electron 主进程 ↔ 渲染进程（invoke 通道 + `agent:event` 事件 + `window.api` 桥） | backend ↔ frontend | 已冻结 2026-10-20 | `fixtures/session.sample.json`、`fixtures/agent-events.sample.json` |
 | `tools.ts` | v1 | Agent 核心 ↔ 大模型（工具 JSON Schema、上限） | backend → 模型 | 已冻结 2026-10-20 | `fixtures/openai-stream.sample.txt`、`fixtures/anthropic-stream.sample.txt` |
+| `ipc.ts` v1.1 增量（功能 002） | v1.1 | 同上：新增 `agentCli:*`、`sessions:setAgent`、`board:get`、`git:get` 通道与 Agent CLI / 看板 / Git 类型，及可选字段 `agent`、`cliSessions`、`agentClis`、`defaultAgent`；不改既有字段 | backend ↔ frontend | 已冻结 2026-10-20 | `fixtures/board.sample.json`、`fixtures/git.sample.json` |
+| opencode JSON 事件流（`opencode run --format json`） | opencode 1.19.x | 外部 CLI stdout → backend 解析器 | opencode → backend | 观测记录（第三方格式，非本项目可冻结） | `fixtures/opencode-run.sample.jsonl`、`fixtures/opencode-run-rejected.sample.jsonl`、`fixtures/opencode-error.sample.jsonl`（均为 opencode 1.19.3 真实输出） |
 | `tasks.md` 语法（见 `ipc.ts` 的 `SpecTask`） | v1 | 项目内 `specs/*/tasks.md` → Tasks 面板 | 文件 → backend 解析 → frontend | 已冻结 2026-10-20 | `fixtures/tasks.sample.md` |
 
 > 本项目的「线上格式」是 Electron 结构化克隆的 IPC 消息与模型 API 的 JSON，没有 HTTP API，因此不写 OpenAPI；工具参数直接以 JSON Schema 形式写在 `tools.ts` 的 `TOOL_DEFINITIONS` 中（运行时原样发送给模型）。

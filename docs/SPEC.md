@@ -15,6 +15,7 @@
 | 编号 | 功能 | 目录 | 状态 |
 |---|---|---|---|
 | 001 | 桌面 Agent MVP | `specs/001-agent-desktop/` | 已实现，converge 追加 2 项（T040 Electron E2E、T041 Windows 打包验证） |
+| 002 | 三板块工作台（泳道看板 / 任务会话 / Git 分支与集成）+ Agent CLI（opencode） | `specs/002-workspace-boards/` | 实施中 |
 
 ## 4. 需求编号
 
@@ -28,7 +29,7 @@
 
 | 契约 | 版本 | 说明 |
 |---|---|---|
-| `contracts/ipc.ts` | v1 | 主进程 ↔ 渲染进程 IPC |
+| `contracts/ipc.ts` | v1（修订 v1.1，功能 002 纯增量） | 主进程 ↔ 渲染进程 IPC；v1.1 增加 Agent CLI、泳道看板、Git 分支与集成 |
 | `contracts/tools.ts` | v1 | Agent ↔ 模型工具 Schema 与上限 |
 
 详见 `contracts/README.md`。
