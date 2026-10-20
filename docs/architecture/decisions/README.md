@@ -13,3 +13,4 @@
 | [0007](0007-simple-ui-changes-skip-tests.md) | 简单 UI 修改跳过测试 | 已采纳 |
 | [0008](0008-code-view-context-send-web-preview.md) | 只读代码查看、全局「发送到任务会话」与 Web 预览 UI 定位 | 已采纳 |
 | [0009](0009-claude-design-tokens.md) | 界面重新设计，对齐 Claude MCP Apps 设计规范 | 已采纳 |
+| [0010](0010-session-terminal-mode.md) | 任务会话的「对话 / 终端」双视图，与「全部允许（免审批）」权限模式 | 已采纳 |
