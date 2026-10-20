@@ -696,7 +696,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .nav a.parent-on{color:var(--color-text-primary)}
 /* Git 页：整页固定视口高度，不出现页级滚动；左栏提交图 / 列表、右栏按序集成各自滚动 */
 #wb-git:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
-#wb-git>.gtop{flex:none}
+#wb-git>.gx{padding-top:16px}
 #wb-git>.gx{flex:1;min-height:0;grid-template-rows:minmax(0,1fr);padding-bottom:16px}
 #wb-git .gcol{display:flex;flex-direction:column;min-height:0;min-width:0}
 #wb-git .gpanel{flex:1.1 1 0;min-height:150px;display:flex;flex-direction:column}

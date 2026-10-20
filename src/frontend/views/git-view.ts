@@ -183,21 +183,11 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     const openBranches = g.branches.filter((x) => x.kind !== 'main' && x.kind !== 'integration' && !x.mergedIntoIntegration);
     const mergedList = g.merges.slice().reverse();
 
-    // ── 顶部 ──
-    container.append(h('div', { class: 'gtop' },
-      h('div', {}, h('div', { class: 'fs12' }, '分支拓扑与集成队列')),
-      h('div', { class: 'fx8' },
-        h('button', { class: 'btn', on: { click: () => void navigator.clipboard.writeText(JSON.stringify({ git: g, board: b }, null, 1)).then(() => hooks.notify('已复制快照 JSON 到剪贴板。'), () => hooks.notify('复制失败。')) } }, '复制快照 JSON'),
-        h('button', { class: 'btn', on: { click: hooks.openAgents } }, 'Worktree 与 Agent'),
-        h('button', { class: 'btn', on: { click: hooks.openBoard } }, '看板'))));
-
     // T-040：整页固定高度，左栏提交图与列表、右栏按序集成各自滚动
     const left = h('div', { class: 'gcol' });
     // 分支图：竖向（新 → 旧），固定高度可滚动，与下方分支列表联动
     graphWrap = h('div', { attrs: { id: 'graph' } });
-    left.append(h('div', { class: 'panel w gpanel' },
-      h('div', { class: 'h' }, h('span', { class: 'mute' }, `提交自上而下（topo 顺序，最近 ${g.commits.length} 个）· 悬停 / 点击与下方列表联动`)),
-      graphWrap));
+    left.append(h('div', { class: 'panel w gpanel' }, graphWrap));
 
     // 提交与 PR
     left.append(h('div', { class: 'sec' }, h('span', {}, '提交与 Pull requests'), h('span', { class: 'mute' }, `${openBranches.length} 个未合入 · ${g.merges.length} 个已合入 · PR：暂无（本地仓库无远端）`)));
