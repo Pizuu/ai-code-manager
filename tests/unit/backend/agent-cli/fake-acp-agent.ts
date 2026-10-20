@@ -11,6 +11,7 @@
  * - die：prompt 后发一段文本、写 stderr 并以退出码 3 退出（不回复 prompt）
  * - hang：prompt 永不回复（peer 待答拒绝测试用）
  * - fsask：向客户端发 fs/read_text_file 请求，把收到的错误码以文本回显后 end_turn
+ * 另：FAKE_ACP_ECHO_MODEL=1 时，basic 场景在 prompt 开头回显最近一次 session/set_model 收到的 modelId（MODEL:<id>）。
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -31,6 +32,7 @@ const loadCap = process.env.FAKE_ACP_LOAD !== '0';
 let buf = '';
 let seq = 0;
 let currentSession = null;
+let lastModel = null;
 let clientSeq = 1000;
 const clientPending = new Map();
 let cancelWaiter = null;
@@ -100,6 +102,7 @@ async function runPrompt(id) {
     return;
   }
   // basic
+  if (process.env.FAKE_ACP_ECHO_MODEL === '1' && lastModel) textChunk('MODEL:' + lastModel + '\\n');
   textChunk('Hello ');
   textChunk('world');
   update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'echo' } });
@@ -138,6 +141,7 @@ process.stdin.on('data', (chunk) => {
         currentSession = p.sessionId;
         reply(id, {});
       } else if (msg.method === 'session/set_model') {
+        lastModel = p.modelId || null;
         reply(id, {});
       } else if (msg.method === 'session/prompt') {
         void runPrompt(id);

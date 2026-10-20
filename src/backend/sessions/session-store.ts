@@ -89,6 +89,16 @@ export class SessionStore {
     return next;
   }
 
+  /** v1.5：设置 / 清除会话级 CLI 模型覆盖（model 为 null 时删除字段，回到 CLI 配置的模型）。 */
+  async setCliModel(id: string, model: string | null): Promise<Session> {
+    const s = await this.get(id);
+    const next: Session = { ...s, updatedAt: new Date().toISOString() };
+    if (model) next.cliModel = model;
+    else delete next.cliModel;
+    await this.save(next);
+    return next;
+  }
+
   /** 按最近更新倒序；损坏的文件跳过并在控制台告警，不影响其余会话。 */
   async list(): Promise<SessionSummary[]> {
     let names: string[];

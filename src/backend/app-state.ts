@@ -49,6 +49,23 @@ export class AppState {
   project: ProjectInfo | null = null;
   readonly running = new Map<string, AbortController>();
   readonly approvals = new ApprovalRegistry();
+  /**
+   * 看板功能（规格）手动选择，按项目根保存（契约 v1.4 board:setFeature）。
+   * 无条目 = 自动（最新）。仅运行时内存，不持久化：AppState 本就无落盘机制，
+   * 重启后回到自动，与 project / running 等其它运行时状态一致。
+   */
+  private readonly boardFeatureByRoot = new Map<string, string>();
+
+  /** 该项目手动选择的功能 id；未选择返回 null（= 自动）。 */
+  boardFeatureFor(root: string): string | null {
+    return this.boardFeatureByRoot.get(root) ?? null;
+  }
+
+  /** 记录手动选择；featureId = null 清除选择，回到自动（最新）。 */
+  setBoardFeature(root: string, featureId: string | null): void {
+    if (featureId === null) this.boardFeatureByRoot.delete(root);
+    else this.boardFeatureByRoot.set(root, featureId);
+  }
 
   setProject(root: string | null): ProjectInfo | null {
     this.project = root ? { root, name: path.basename(root) || root } : null;

@@ -80,6 +80,39 @@ export function asBranchName(value: unknown): string {
   return name;
 }
 
+const FEATURE_ID_RE = /^\d{3}-[^/\\]+$/;
+
+/**
+ * v1.4：board:setFeature 的参数 { featureId }。null = 回到自动（最新）；
+ * 非 null 必须是 specs 目录 id 的形状（NNN- 前缀且不含路径分隔符，防路径注入），
+ * 真实存在性由 handler 再按该项目 specs 列表校验（不在列表内同样拒绝）。
+ */
+export function asFeatureSelection(value: unknown): string | null {
+  const v = asRecord(value, 'featureSelection');
+  const id = v.featureId;
+  if (id === null) return null;
+  if (typeof id !== 'string' || id.length > MAX_FIELD_CHARS || !FEATURE_ID_RE.test(id)) {
+    fail('featureId 必须是 specs 目录 id（NNN-*）或 null');
+  }
+  return id;
+}
+
+export const MAX_SESSION_MODEL_CHARS = 200;
+
+/**
+ * v1.5：agent:setSessionModel 的参数 { sessionId, model }。
+ * model 为 null / 缺省 / trim 后为空串 = 清除会话级覆盖（返回 null）；非空须为 trim 后 ≤200 字符的字符串。
+ */
+export function asSessionModelInput(value: unknown): { sessionId: string; model: string | null } {
+  const v = asRecord(value, 'sessionModel');
+  const sessionId = asSessionId(v.sessionId);
+  if (v.model === null || v.model === undefined) return { sessionId, model: null };
+  if (typeof v.model !== 'string') fail('model 必须是字符串或 null');
+  const model = v.model.trim();
+  if (model.length > MAX_SESSION_MODEL_CHARS) fail(`model 超过 ${MAX_SESSION_MODEL_CHARS} 字符`);
+  return { sessionId, model: model === '' ? null : model };
+}
+
 /** baseUrl：空字符串 = 清空（003 起默认空白，由用户填写）；非空须为 http(s) URL。 */
 function asHttpUrl(value: unknown): string {
   const raw = asString(value, 'baseUrl', { max: MAX_FIELD_CHARS, allowEmpty: true }).trim();

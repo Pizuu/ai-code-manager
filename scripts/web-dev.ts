@@ -130,6 +130,9 @@ api['agentCli:check'] = async (): Promise<AgentCliCheck> => ({
 // Agent CLI 例外三：detect 不做任何本机探测，直接返回空数组
 api['agentCli:detect'] = async (): Promise<AgentCliDetection[]> => [];
 
+// Agent CLI 例外四（v1.5）：models 不启动本机 CLI 枚举模型，直接返回空数组（与 detect 同口径）
+api['agentCli:models'] = async (): Promise<{ models: string[] }> => ({ models: [] });
+
 // Agent CLI 例外二：send 到外部 CLI 会话时在进入真实 handlers 前拒绝。
 // handlers 未暴露 CLI 执行器注入点（runCliTurn 为直接 import，resolveDeps 也无法携带拒绝理由），
 // 故在服务器分发层用真实 stores + effectiveAgent 判定后拦截：绝不启动真实 CLI 进程。

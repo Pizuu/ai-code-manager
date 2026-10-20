@@ -12,6 +12,7 @@
  * - 仅 Agent CLI 保持模拟（负责人决定）：
  *   - `agentCli:check` 恒返回 `{ ok: false, resolvedPath: null, version: null, message: 'Web 预览不检查、不启动本机 CLI。' }`；
  *   - `agentCli:detect` 恒返回空数组 `[]`（不做任何本机探测）；
+ *   - `agentCli:models` 恒返回 `{ models: [] }`（不启动本机 CLI 枚举模型，与 detect 同口径）；
  *   - `agent:send` 当会话 agent 为外部 CLI（cli:*）时被服务器拒绝（E_CLI 错误 + 同内容的 error 事件），绝不启动真实 CLI 进程；
  *   - `agentCli:save` / `agentCli:delete` 是设置数据，随 settings 真实落盘。
  * - `project:pick` 无系统对话框：恒返回 null（项目由 `--project` 参数在启动时确定）；
@@ -47,6 +48,7 @@ export const WEB_DEV_CHANNELS = [
   'sessions:delete',
   'sessions:clear',
   'sessions:setAgent',
+  'agent:setSessionModel',
   'agent:send',
   'agent:stop',
   'agent:approve',
@@ -55,7 +57,9 @@ export const WEB_DEV_CHANNELS = [
   'agentCli:delete',
   'agentCli:check',
   'agentCli:detect',
+  'agentCli:models',
   'board:get',
+  'board:setFeature',
   'git:get',
   'git:checkout',
 ] as const satisfies readonly IpcInvokeChannel[];

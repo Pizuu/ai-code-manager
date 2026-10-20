@@ -128,6 +128,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     if (!g?.available || g.branches.length === 0) return;
     if (!brMenu.hidden) { closeBrMenu(); return; }
     exMenu.hidden = true;
+    closeFeatMenu();
     brMenu.replaceChildren(...g.branches.map((b) => h('button', {
       class: `mi${b.current ? ' on' : ''}`,
       attrs: { type: 'button', role: 'menuitem', ...(b.current ? { disabled: '' } : {}) },
@@ -147,11 +148,61 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   // ── workspace header（原型 header()）──
   const crumbProject = h('span');
   const crumbFeature = h('b');
+  /** 规格名旁的切换指示（caret）；可选规格不足 2 个时隐藏，菜单逻辑在下方功能下拉一节。 */
+  const featCaret = h('span', { class: 'feat-caret', title: '切换功能规格' }, icon('caret', 12));
+  featCaret.hidden = true;
   const crumbChip = h('span', { class: 'chip' });
   const snapTime = h('span');
   const header = h('header', { class: 'wh' },
-    h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, '/', crumbFeature, crumbChip)),
+    h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, '/', crumbFeature, featCaret, crumbChip)),
     h('div', { class: 'wact' }, snapTime));
+
+  // ── 功能下拉：点击面包屑规格名（crumbFeature / caret）展开规格列表，选中走 board:setFeature 切换并全量同步 ──
+  const featMenu = h('div', { class: 'ctxmenu featmenu', attrs: { role: 'menu' } });
+  featMenu.hidden = true;
+  document.body.append(featMenu);
+  const closeFeatMenu = () => { featMenu.hidden = true; };
+  const selectFeature = async (featureId: string | null) => {
+    try {
+      store.state.board = await api.invoke('board:setFeature', { featureId });
+      // 全局同步：emit('workspace') 后页头（面包屑 / 快照时间）、状态栏与看板（.fo 标题、阶段、tasks 计数读 snap.feature）随返回快照重渲；
+      // setFeature 已返回完整新快照，不再叠加 refreshWorkspace 重拉（与 git:checkout 不同，那里看板数据还需按新分支重新推导）
+      store.emit('workspace');
+      hooks.onError(featureId ? `已切换到功能「${featureId}」。` : '已切换为自动选择最新功能。');
+    } catch (e) {
+      hooks.onError(errorText(e));
+    }
+  };
+  const toggleFeatMenu = (ev: Event) => {
+    ev.stopPropagation();
+    const b = store.state.board;
+    const features = b?.features ?? [];
+    if (!b || features.length <= 1) return;
+    if (!featMenu.hidden) { closeFeatMenu(); return; }
+    exMenu.hidden = true;
+    closeBrMenu();
+    const curId = b.feature?.id ?? null;
+    const latest = features.at(-1);
+    // 快照不区分「显式选了最新规格」与「自动（最新）」：当前规格即最新一项时 ✓ 落在底部「自动（最新）」行，
+    // 最新规格行本身仍可点击（显式钉住该规格，语义与自动不同但当前快照表现一致）
+    const autoOn = curId !== null && curId === latest?.id;
+    const featItem = (label: string, sub: string, on: boolean, run: () => void) => h('button', {
+      class: `mi${on ? ' on' : ''}`,
+      attrs: { type: 'button', role: 'menuitem', ...(on ? { disabled: '' } : {}) },
+      on: { click: () => { closeFeatMenu(); run(); } },
+    }, h('span', {}, on ? `✓ ${label}` : label), h('span', { class: 'mute' }, sub));
+    featMenu.replaceChildren(
+      ...features.map((ft) => featItem(ft.id, ft.title, !autoOn && ft.id === curId, () => void selectFeature(ft.id))),
+      featItem('自动（最新）', latest ? `${latest.id}${latest.title ? ` · ${latest.title}` : ''}` : '', autoOn, () => void selectFeature(null)));
+    const r = crumbFeature.getBoundingClientRect();
+    featMenu.hidden = false;
+    featMenu.style.left = `${Math.max(8, r.right - featMenu.offsetWidth)}px`;
+    featMenu.style.top = `${r.bottom + 4}px`;
+  };
+  crumbFeature.addEventListener('click', toggleFeatMenu);
+  featCaret.addEventListener('click', toggleFeatMenu);
+  document.addEventListener('click', (ev) => { if (!featMenu.hidden && !featMenu.contains(ev.target as Node)) closeFeatMenu(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeFeatMenu(); });
 
   const views: Record<ViewId, HTMLElement> = {
     board: h('div', { class: 'ws-view wb', attrs: { id: 'wb-board' } }),
@@ -184,6 +235,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     const f = b?.feature;
     crumbFeature.textContent = f ? f.id : '—';
     crumbFeature.title = f ? `${f.id}${f.title ? ` · ${f.title}` : ''}` : '';
+    const canSwitchFeature = (b?.features.length ?? 0) > 1;
+    featCaret.hidden = !canSwitchFeature;
+    crumbFeature.classList.toggle('feat-on', canSwitchFeature);
     const crumbBranch = g?.currentBranch ?? b?.integrationBranch ?? g?.integrationBranch ?? '';
     crumbChip.textContent = crumbBranch;
     crumbChip.hidden = crumbBranch === '';

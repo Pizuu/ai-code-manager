@@ -5,10 +5,11 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { AgentCliCheck, AgentCliDetection, AgentEvent, AgentRef, ApprovalRequest, GitSnapshot, IpcInvokeChannel, IpcInvokeMap, ProjectInfo, Session } from '../../../contracts/ipc.ts';
+import type { AgentCliCheck, AgentCliDetection, AgentEvent, AgentRef, ApprovalRequest, BoardSnapshot, GitSnapshot, IpcInvokeChannel, IpcInvokeMap, ProjectInfo, Session } from '../../../contracts/ipc.ts';
 import { AcpProcessManager, prepareAcpTurn, runAcpCliTurn, type PreparedAcpTurn } from '../agent-cli/acp-runner.ts';
-import { runCliTurn } from '../agent-cli/cli-runner.ts';
+import { runCliTurn, type CliRuntimeConfig } from '../agent-cli/cli-runner.ts';
 import { detectInstalledClis, probeCliVersion } from '../agent-cli/detect.ts';
+import { listOpencodeModels } from '../agent-cli/models.ts';
 import { installHint } from '../agent-cli/presets.ts';
 import { OpencodeServeManager, prepareServeTurn, runServeCliTurn, type PreparedServeTurn } from '../agent-cli/serve-runner.ts';
 import { defaultResolveDeps, resolveExecutable, type ResolveDeps } from '../agent-cli/resolve.ts';
@@ -23,16 +24,18 @@ import { readFileForView } from '../fs/file-view.ts';
 import { summarizeSession, type SessionStore } from '../sessions/session-store.ts';
 import { builtinConfigProblem, type SettingsStore } from '../settings/settings-store.ts';
 import { loadSpecTasks } from '../specs/tasks-parser.ts';
-import { buildBoard, readAgentsConfig } from '../workspace/board.ts';
+import { buildBoard, listFeatures, readAgentsConfig } from '../workspace/board.ts';
 import { emptyGitSnapshot, readGitSnapshot } from '../workspace/git-overview.ts';
 import { createGitRunner } from '../workspace/git.ts';
 import {
   asAgentRef,
   asBranchName,
   asCliId,
+  asFeatureSelection,
   asRelDir,
   asRelPath,
   asSessionId,
+  asSessionModelInput,
   ipcError,
   validateAgentCliInput,
   validateApprovalDecision,
@@ -78,6 +81,17 @@ export function effectiveAgent(session: Session, defaultAgent: AgentRef): AgentR
   return session.agent ?? defaultAgent ?? 'builtin';
 }
 
+/**
+ * v1.5：会话级 CLI 模型覆盖的叠加（纯函数）。session.cliModel 非空时覆盖 CLI 配置的 model，
+ * 否则原样返回。startCliTurn 是三条路径（ACP / serve / run）取 runtime 配置的唯一汇合点，
+ * 在那里叠加一次即全路生效：ACP 读 config.model 发 session/set_model、serve 以
+ * parseServeModel(config.model) 建会话、run 以 config.model 展开 modelArgs。
+ */
+export function effectiveCliRuntime(runtime: CliRuntimeConfig, session: Session): CliRuntimeConfig {
+  const override = session.cliModel?.trim();
+  return override ? { ...runtime, model: override } : runtime;
+}
+
 const VERSION_TIMEOUT_MS = 15_000;
 
 function runVersion(file: string, env: NodeJS.ProcessEnv, cwd: string): Promise<{ ok: boolean; out: string }> {
@@ -105,6 +119,14 @@ async function readAgentsMd(root: string | null): Promise<string | null> {
 function requireProject(state: AppState): ProjectInfo {
   if (!state.project) throw ipcError('E_NO_PROJECT', '请先打开项目文件夹。');
   return state.project;
+}
+
+/** 项目未打开时的看板快照（board:get / board:setFeature 共用同一口径：不抛错，返回不可用快照）。 */
+function noProjectBoard(now: string): BoardSnapshot {
+  return {
+    available: false, reason: '请先打开项目文件夹。', generatedAt: now, integrationBranch: 'dev', mainBranch: 'main',
+    maxParallel: null, lanes: [], shared: [], feature: null, features: [], cards: [], contractVersion: null, boardFile: null, conflicts: [],
+  };
 }
 
 /** 去掉内部错误码以外的细节，保证不会把 Key 等敏感值带到界面。 */
@@ -141,7 +163,9 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
   const startCliTurn = async (session: Session, cliId: string, text: string): Promise<void> => {
     const root = state.project?.root;
     if (!root) throw ipcError('E_NO_PROJECT', '外部 Agent CLI 只能在打开的项目中运行（工作目录 = 项目根），请先打开项目文件夹。');
-    const { runtime, executable } = await resolveCli(cliId);
+    const { runtime: baseRuntime, executable } = await resolveCli(cliId);
+    // v1.5：会话级模型覆盖在此一处叠加，turnDeps.config 供 ACP / serve / run 三路共用
+    const runtime = effectiveCliRuntime(baseRuntime, session);
     if (state.running.has(session.id)) throw ipcError('E_BUSY', '该会话正在运行，请等待完成或先停止。');
     const controller = new AbortController();
     state.running.set(session.id, controller);
@@ -319,6 +343,21 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       resolveDeps: resolveDeps(),
       probeVersion: (file, cwd) => probeCliVersion(file, cwd, deps.cliBaseEnv ?? process.env),
     }),
+    'agentCli:models': async (id): Promise<{ models: string[] }> => {
+      const cid = asCliId(id);
+      // 仅 opencode 条目（经 getAgentCliRuntime 归一化后 outputFormat 为 opencode-json）才枚举；
+      // 非 opencode、条目不存在、枚举失败一律空数组不抛错（契约 v1.5）。
+      const runtime = settings.getAgentCliRuntime(cid);
+      const meta = settings.getAgentCliCommand(cid);
+      if (!runtime || !meta || runtime.outputFormat !== 'opencode-json') return { models: [] };
+      const models = await listOpencodeModels({
+        command: meta.command,
+        resolveDeps: resolveDeps(),
+        env: { ...(deps.cliBaseEnv ?? process.env), ...runtime.env },
+        cwd: state.project?.root ?? undefined,
+      });
+      return { models };
+    },
     'sessions:setAgent': async (id, agent) => {
       const sid = asSessionId(id);
       const ref = asAgentRef(agent);
@@ -328,13 +367,31 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       emit({ type: 'session-updated', summary: summarizeSession(s) });
       return s;
     },
+    'agent:setSessionModel': async (arg) => {
+      const { sessionId, model } = asSessionModelInput(arg);
+      // 会话不存在时 SessionStore.get 抛 E_NOT_FOUND，与 sessions:get 等同类通道一致
+      const s = await sessions.setCliModel(sessionId, model);
+      emit({ type: 'session-updated', summary: summarizeSession(s) });
+      return s;
+    },
     'board:get': async () => {
       const now = new Date().toISOString();
-      if (!state.project) {
-        return { available: false, reason: '请先打开项目文件夹。', generatedAt: now, integrationBranch: 'dev', mainBranch: 'main', maxParallel: null, lanes: [], shared: [], feature: null, cards: [], contractVersion: null, boardFile: null, conflicts: [] };
-      }
+      if (!state.project) return noProjectBoard(now);
       const root = state.project.root;
-      return buildBoard(root, createGitRunner(root, deps.gitBin), await gitSnapshot(root), now);
+      return buildBoard(root, createGitRunner(root, deps.gitBin), await gitSnapshot(root), now, state.boardFeatureFor(root));
+    },
+    'board:setFeature': async (arg) => {
+      const now = new Date().toISOString();
+      if (!state.project) return noProjectBoard(now);
+      const root = state.project.root;
+      const featureId = asFeatureSelection(arg);
+      if (featureId !== null) {
+        // 第二道校验：必须是该项目 specs 下真实存在的目录 id（防路径注入 / 已删除目录）。
+        const known = await listFeatures(root);
+        if (!known.some((f) => f.id === featureId)) throw ipcError('E_VALIDATION', `功能（规格）不存在：${featureId}`);
+      }
+      state.setBoardFeature(root, featureId);
+      return buildBoard(root, createGitRunner(root, deps.gitBin), await gitSnapshot(root), now, featureId);
     },
     'git:get': async () => {
       if (!state.project) return emptyGitSnapshot({ mainBranch: 'main', integrationBranch: 'dev', branchPrefix: 'feat', maxParallel: null }, '请先打开项目文件夹。', new Date().toISOString());

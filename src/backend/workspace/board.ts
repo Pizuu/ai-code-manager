@@ -38,9 +38,32 @@ function specHeading(md: string | null): string {
   return (m?.[1] ?? '').replace(/^Feature Specification:\s*/i, '').trim();
 }
 
-async function readFeature(root: string): Promise<BoardFeature | null> {
-  const dirs = (await listDir(root, 'specs')).filter((d) => /^\d{3}-/.test(d));
-  const id = dirs.at(-1);
+/** specs/ 下的候选功能目录 id（NNN-* 前缀，升序；listDir 已排序）。 */
+export async function listFeatureDirs(root: string): Promise<string[]> {
+  return (await listDir(root, 'specs')).filter((d) => /^\d{3}-/.test(d));
+}
+
+/** 功能标题（只读 spec.md）：与 readFeature 相同的标题链——parseSpec 标题 || spec.md 一级标题 || id。 */
+async function readFeatureTitle(root: string, id: string): Promise<string> {
+  const specMd = await readText(root, `specs/${id}/spec.md`);
+  const spec = specMd ? parseSpec(specMd) : null;
+  return spec?.title || specHeading(specMd) || id;
+}
+
+/** 全部可选规格（id 升序）与各自标题；只读各目录的 spec.md，不解析 tasks / checklists。 */
+export async function listFeatures(root: string): Promise<{ id: string; title: string }[]> {
+  const out: { id: string; title: string }[] = [];
+  for (const id of await listFeatureDirs(root)) out.push({ id, title: await readFeatureTitle(root, id) });
+  return out;
+}
+
+/**
+ * 读取一个功能的完整看板数据：selectedId 命中 specs 列表时用它，
+ * 否则（未选 / 无效 / 已删除）回退最新（编号最大）。
+ */
+export async function readFeature(root: string, selectedId?: string | null): Promise<BoardFeature | null> {
+  const dirs = await listFeatureDirs(root);
+  const id = selectedId && dirs.includes(selectedId) ? selectedId : dirs.at(-1);
   if (!id) return null;
   const dir = `specs/${id}`;
   const specMd = await readText(root, `${dir}/spec.md`);
@@ -66,7 +89,7 @@ async function readFeature(root: string): Promise<BoardFeature | null> {
 export function emptyBoard(cfg: AgentsConfig, reason: string, now: string): BoardSnapshot {
   return {
     available: false, reason, generatedAt: now, integrationBranch: cfg.integrationBranch, mainBranch: cfg.mainBranch,
-    maxParallel: cfg.maxParallel, lanes: [], shared: [], feature: null, cards: [], contractVersion: null, boardFile: null, conflicts: [],
+    maxParallel: cfg.maxParallel, lanes: [], shared: [], feature: null, features: [], cards: [], contractVersion: null, boardFile: null, conflicts: [],
   };
 }
 
@@ -120,7 +143,7 @@ async function changedFiles(git: GitRunner, card: ParsedCard, facts: GitFacts, i
   return (await gitOut(git, ['diff', '--name-only', range, '--'])).split('\n').filter(Boolean);
 }
 
-export async function buildBoard(root: string, git: GitRunner, gitSnap: GitSnapshot, now: string): Promise<BoardSnapshot> {
+export async function buildBoard(root: string, git: GitRunner, gitSnap: GitSnapshot, now: string, selectedFeatureId?: string | null): Promise<BoardSnapshot> {
   const cfg = await readAgentsConfig(root);
   const lanesText = await readText(root, '.agents/lanes.conf');
   if (lanesText === null) return emptyBoard(cfg, '此项目未配置泳道（缺少 .agents/lanes.conf）。', now);
@@ -166,7 +189,7 @@ export async function buildBoard(root: string, git: GitRunner, gitSnap: GitSnaps
   return {
     available: true, generatedAt: now, integrationBranch: cfg.integrationBranch, mainBranch: cfg.mainBranch, maxParallel: cfg.maxParallel,
     lanes: lanesCfg.lanes.map((l) => ({ name: l.name, globs: l.globs, ownerRole: owners[l.name] ?? null })),
-    shared: lanesCfg.shared, feature: await readFeature(root), cards,
+    shared: lanesCfg.shared, feature: await readFeature(root, selectedFeatureId), features: await listFeatures(root), cards,
     contractVersion: ipc ? (/IPC_CONTRACT_REVISION\s*=\s*'([^']+)'/.exec(ipc)?.[1] ?? /IPC_CONTRACT_VERSION\s*=\s*'([^']+)'/.exec(ipc)?.[1] ?? null) : null,
     boardFile: boardMd !== null ? 'docs/tasks/BOARD.md' : null,
     conflicts,

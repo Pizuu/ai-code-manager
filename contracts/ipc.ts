@@ -12,12 +12,16 @@ export const IPC_CONTRACT_VERSION = 'v1' as const;
  * 契约修订号：v1.1 = 功能 002（三板块 + Agent CLI）的纯增量扩展——只新增通道、类型与可选字段，
  * 未修改或删除任何 v1 字段，因此主版本保持 v1（宪法 II）。
  */
-export const IPC_CONTRACT_REVISION = 'v1.3' as const;
+export const IPC_CONTRACT_REVISION = 'v1.5' as const;
 // v1.2 = 功能 003（只读代码查看、配置空白）的纯增量：新增 `fs:read` 通道、`FileContent` 类型、`FILE_VIEW_LIMITS`
 // 常量与错误码 `E_NOT_CONFIGURED`；未修改或删除任何既有字段。
 // v1.3 = 任务卡 T-033（为接入 opencode serve 逐条审批做准备，ADR 0006 修订）的纯增量：`ApprovalKind` 新增
 // 'webfetch' | 'loop' | 'subagent' | 'external-dir' | 'other'，`ApprovalRequest` 新增可选字段 `url`、`tool`、`permission`、
 // `patterns`、`description`；既有 'edit' / 'command' 及其字段语义不变。
+// v1.4 = 看板功能（规格）切换的纯增量：新增 `board:setFeature` 通道，`BoardSnapshot` 新增 `features`
+// 字段（全部可选规格 id + 标题）；未修改或删除任何既有字段。
+// v1.5 = CLI 模型切换的纯增量：新增 `agent:setSessionModel`、`agentCli:models` 通道，`Session` 新增
+// 可选字段 `cliModel`（会话级 CLI 模型覆盖）；未修改或删除任何既有字段。
 
 // ───────────────────────── 基础模型 ─────────────────────────
 
@@ -144,6 +148,8 @@ export interface Session {
   agent?: AgentRef;
   /** v1.1：外部 CLI 的会话 ID（键 = AgentCliConfig.id），用于多轮续接同一 CLI 会话。 */
   cliSessions?: Record<string, string>;
+  /** v1.5：会话级 CLI 模型覆盖（agent:setSessionModel 写入）；缺省 / 空 = 用 CLI 配置自身的模型。下一轮起生效。 */
+  cliModel?: string;
 }
 
 /** 解析自 specs/<NNN>/tasks.md 的任务（FR-014）。 */
@@ -244,10 +250,16 @@ export interface IpcInvokeMap {
   'agentCli:check':   { args: [id: string];               result: AgentCliCheck };
   /** 扫描 PATH，检测本机已安装的热门 Agent CLI（设置页「自动检测」）。 */
   'agentCli:detect':  { args: [];                         result: AgentCliDetection[] };
+  /** v1.5：列出某 CLI 条目可用的模型 id（opencode 条目运行 `<exe> models` 解析）；非 opencode、条目不存在或任何失败返回空数组，不抛错。args 沿 agentCli:check / delete 的裸 id 风格。 */
+  'agentCli:models':  { args: [cliId: string];            result: { models: string[] } };
   /** 切换会话使用的 agent（运行中不可切换）。 */
   'sessions:setAgent': { args: [id: string, agent: AgentRef]; result: Session };
+  /** v1.5：设置会话级 CLI 模型覆盖（model 为 null 或空串 = 清除，回到 CLI 配置的模型）；返回更新后的会话，下一轮起生效。 */
+  'agent:setSessionModel': { args: [{ sessionId: string; model: string | null }]; result: Session };
   /** 泳道看板：读取当前项目的 lanes.conf / 任务卡 / BOARD.md / tasks.md 并与 git 交叉核对。 */
   'board:get':        { args: [];                         result: BoardSnapshot };
+  /** 切换看板展示的功能（规格）：featureId 为 specs/ 下的目录 id；null = 回到自动（最新）。返回切换后的快照。 */
+  'board:setFeature': { args: [{ featureId: string | null }]; result: BoardSnapshot };
   /** Git 分支与集成：主进程用 git CLI 只读采集。 */
   'git:get':          { args: [];                         result: GitSnapshot };
   /** 切换主工作区的当前分支（git checkout，参数数组不经 shell）；成功后返回最新快照，git 拒绝时抛 E_GIT（携带 git stderr）。 */
@@ -470,8 +482,10 @@ export interface BoardSnapshot {
   maxParallel: number | null;
   lanes: BoardLane[];
   shared: string[];
-  /** 最新（编号最大）的功能。 */
+  /** 当前展示的功能：手动选择（board:setFeature）优先，缺省为最新（编号最大）。 */
   feature: BoardFeature | null;
+  /** 全部可选规格（specs/ 下 NNN-* 目录，id 升序），供功能切换下拉；标题与 feature 的标题链同源。 */
+  features: { id: string; title: string }[];
   cards: BoardCard[];
   contractVersion: string | null;
   /** BOARD.md 相对路径，缺失为 null。 */

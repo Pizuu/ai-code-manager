@@ -73,11 +73,29 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const modeSel = h('select', { class: 'mode', title: '权限模式' });
   for (const [v, l] of Object.entries(MODE_LABELS)) modeSel.append(h('option', { attrs: { value: v } }, `权限：${l}`));
   const hint = h('span');
+  // CLI 模型切换器：占用 hint 的位置（.ft 第二个元素），仅 CLI 会话显示（内置 agent 会话仍用 hint 文案）。
+  // 生效模型 = session.cliModel（会话覆盖）?? 该 CLI 配置的 model ?? 'CLI 默认'。
+  const modelLabel = h('span');
+  const modelPick = h('span', { class: 'model-pick', title: '本会话的 CLI 模型（点击切换，下一轮生效）', attrs: { role: 'button', tabindex: '0' } },
+    h('span', { class: 'md-sel' }, modelLabel, h('span', { class: 'mute vmid' }, icon('caret'))));
+  modelPick.hidden = true;
+  const modelMenu = h('div', { class: 'ctxmenu model-menu', attrs: { role: 'menu' } });
+  modelMenu.hidden = true;
+  document.body.append(modelMenu);
+  /** 菜单当前锚定的会话与 CLI；会话切换后由 renderHeader 关闭过期菜单。 */
+  let modelMenuFor: { sessionId: string; cliId: string } | null = null;
+  let modelMenuMode: 'list' | 'custom' = 'list';
+  /** 最近一次 agentCli:models 的结果（null = 尚未拉到；拉取失败按空数组，静默）。 */
+  let modelCandidates: string[] | null = null;
+  const closeModelMenu = () => {
+    modelMenu.hidden = true;
+    modelMenuFor = null;
+  };
   const comp = h('div', { class: 'comp' },
     h('div', { class: 'ctx' }, ctxChip, ctxText),
     slashMenu,
     h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, h('span', { class: 'mute plus', title: '插入 @文件：在左侧项目结构中点击文件' }, '+'), h('span', { class: 'right' }, stopBtn, sendBtn))),
-    h('div', { class: 'ft' }, h('span', {}, 'Enter 发送 · Shift + Enter 换行'), hint, modeSel));
+    h('div', { class: 'ft' }, h('span', {}, 'Enter 发送 · Shift + Enter 换行'), hint, modelPick, modeSel));
   container.append(ctop, thd, log, comp);
 
   const pendingDeltas = new Set<string>();
@@ -150,7 +168,20 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     ctxText.textContent = `上下文：${card ? `${card.id} · ` : ''}${store.state.project ? `${store.state.project.name} · AGENTS.md` : '无项目'}`;
     textarea.placeholder = `回复 ${agentName(agent, st)}…（Enter 发送，Shift+Enter 换行，/ 查看命令）`;
     if (st) modeSel.value = st.permissionMode;
-    hint.textContent = cli ? '外部 CLI：每次询问 = 每轮批准命令行；仅规划 = 禁止编辑与命令' : agentSetupHint(agent, st) ? '请先在设置中配置 agent（左侧齿轮「设置」）' : '写入与命令执行前会请求批准';
+    // CLI 会话：底栏 hint 位置换成模型切换器；内置 agent 会话保持原 hint 文案。
+    if (cli && s) {
+      hint.hidden = true;
+      modelPick.hidden = false;
+      const override = s.cliModel?.trim() ? s.cliModel : undefined;
+      const cfgModel = st?.agentClis?.find((x) => x.id === agent.slice(4))?.model;
+      modelLabel.textContent = `模型：${override ?? (cfgModel ? cfgModel : 'CLI 默认')}`;
+    } else {
+      modelPick.hidden = true;
+      hint.hidden = false;
+      hint.textContent = cli ? '外部 CLI：每次询问 = 每轮批准命令行；仅规划 = 禁止编辑与命令' : agentSetupHint(agent, st) ? '请先在设置中配置 agent（左侧齿轮「设置」）' : '写入与命令执行前会请求批准';
+    }
+    // 菜单锚定的会话已切换（或不再是 CLI 会话）时关掉，避免对旧会话写模型。
+    if (modelMenuFor && (modelMenuFor.sessionId !== s?.id || !cli)) closeModelMenu();
   };
 
   const renderAll = () => {
@@ -202,6 +233,144 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     store.state.notices.push({ afterMessageId: last?.id ?? null, kind, text });
     renderAll();
   };
+
+  // ── CLI 模型切换（agent:setSessionModel 写会话覆盖；agentCli:models 拉候选，仅 opencode 有） ──
+  /** 切换只影响下一轮，不打断运行中的一轮（与 agentSel 切换 agent 的写回方式一致）。 */
+  const applySessionModel = async (model: string | null) => {
+    const s = store.state.current;
+    if (!s) return;
+    const sessionId = s.id;
+    closeModelMenu();
+    try {
+      const updated = await api.invoke('agent:setSessionModel', { sessionId, model });
+      if (store.state.current?.id === sessionId) {
+        store.state.current = updated;
+        store.emit('current');
+      }
+      notify(model ? `已切换本会话模型为 ${model}，下一条消息生效。` : '已清除本会话的模型覆盖，使用 CLI 默认，下一条消息生效。', 'info');
+    } catch (e) {
+      notify(errorText(e));
+      renderHeader();
+    }
+  };
+
+  const modelMenuItem = (label: string, sub: string, checked: boolean, fn: () => void) =>
+    h('button', { class: 'mi', attrs: { type: 'button', role: 'menuitem' }, on: { click: fn } },
+      h('span', {}, `${checked ? '✓ ' : ''}${label}`), sub ? h('span', { class: 'mute' }, sub) : null);
+
+  const positionModelMenu = () => {
+    const r = modelPick.getBoundingClientRect();
+    const { innerWidth: W, innerHeight: H } = window;
+    const rect = modelMenu.getBoundingClientRect();
+    modelMenu.style.left = `${Math.max(4, Math.min(r.left, W - rect.width - 4))}px`;
+    // 底栏在窗口底部，菜单优先向上展开；放不下再向下。
+    const above = r.top - rect.height - 4;
+    modelMenu.style.top = `${above >= 4 ? above : Math.max(4, Math.min(r.bottom + 4, H - rect.height - 4))}px`;
+  };
+
+  const buildModelMenu = (loading: boolean) => {
+    const s = store.state.current;
+    const target = modelMenuFor;
+    if (!s || !target) return;
+    modelMenuMode = 'list';
+    const cfg = settings()?.agentClis?.find((x) => x.id === target.cliId);
+    const override = s.cliModel?.trim() ? s.cliModel : undefined;
+    const cfgModel = cfg?.model?.trim() ? cfg.model : undefined;
+    const items: HTMLElement[] = [
+      modelMenuItem('CLI 默认', cfgModel ? `解析为配置模型 ${cfgModel}` : '使用 CLI 自身默认模型', !override, () => void applySessionModel(null)),
+    ];
+    if (cfgModel) items.push(modelMenuItem(cfgModel, '配置', override === cfgModel, () => void applySessionModel(cfgModel)));
+    if (loading) {
+      items.push(h('div', { class: 'mi dis' }, '加载模型…'));
+    } else {
+      for (const m of modelCandidates ?? []) {
+        if (m === cfgModel) continue;
+        items.push(modelMenuItem(m, '', override === m, () => void applySessionModel(m)));
+      }
+    }
+    const customCurrent = override && override !== cfgModel && !(modelCandidates ?? []).includes(override) ? `当前：${override}` : '';
+    items.push(modelMenuItem('自定义…', customCurrent, false, showCustomModelForm));
+    modelMenu.replaceChildren(...items);
+    positionModelMenu();
+  };
+
+  /** 「自定义…」：在菜单内输入任意 model 字符串（Enter 提交、Esc 回列表）。 */
+  const showCustomModelForm = () => {
+    const s = store.state.current;
+    if (!s || !modelMenuFor) return;
+    modelMenuMode = 'custom';
+    const input = h('input', { class: 'mi-input', attrs: { type: 'text', placeholder: '如 opencode/gpt-5', value: s.cliModel ?? '' } });
+    const back = () => buildModelMenu(false);
+    const submit = () => {
+      const v = input.value.trim();
+      if (!v) {
+        back();
+        return;
+      }
+      void applySessionModel(v);
+    };
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        submit();
+      } else if (ev.key === 'Escape') {
+        ev.stopPropagation();
+        back();
+      }
+    });
+    modelMenu.replaceChildren(
+      h('div', { class: 'mi-form' },
+        h('span', { class: 'mute' }, '自定义模型（仅本会话）'),
+        input,
+        h('div', { class: 'mi-btns' },
+          h('button', { attrs: { type: 'button' }, on: { click: back } }, '取消'),
+          h('button', { class: 'pri', attrs: { type: 'button' }, on: { click: submit } }, '确定'))));
+    positionModelMenu();
+    input.focus();
+    input.select();
+  };
+
+  const openModelMenu = () => {
+    const s = store.state.current;
+    const st = settings();
+    const agent = s?.agent ?? st?.defaultAgent ?? 'builtin';
+    if (!s || !isCli(agent, st)) return;
+    const target = { sessionId: s.id, cliId: agent.slice(4) };
+    modelMenuFor = target;
+    modelCandidates = null;
+    modelMenu.hidden = false;
+    buildModelMenu(true);
+    void (async () => {
+      // 拉取失败静默（then 的第二分支）：菜单只保留「CLI 默认 / 配置 / 自定义…」。
+      const list = await api.invoke('agentCli:models', target.cliId).then(
+        (r) => r.models,
+        () => [] as string[]);
+      if (modelMenuFor !== target) return;
+      modelCandidates = list;
+      if (!modelMenu.hidden && modelMenuMode === 'list') buildModelMenu(false);
+    })();
+  };
+
+  modelPick.addEventListener('click', () => {
+    if (modelMenu.hidden) openModelMenu();
+    else closeModelMenu();
+  });
+  modelPick.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      if (modelMenu.hidden) openModelMenu();
+      else closeModelMenu();
+    }
+  });
+  // 与全局右键菜单同款的关闭方式：点外 / Esc / 失焦 / 缩放时关闭（点切换器本身由其 click 切换，不在此关）。
+  document.addEventListener('mousedown', (ev) => {
+    if (!modelMenu.hidden && ev.target instanceof Node && !modelMenu.contains(ev.target) && !modelPick.contains(ev.target)) closeModelMenu();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !modelMenu.hidden) closeModelMenu();
+  });
+  window.addEventListener('blur', closeModelMenu);
+  window.addEventListener('resize', closeModelMenu);
 
   const renderSlashMenu = () => {
     const items = suggestCommands(textarea.value);
