@@ -14,7 +14,7 @@
 
 | 编号 | 功能 | 目录 | 状态 |
 |---|---|---|---|
-| 001 | 桌面 Agent MVP | `specs/001-agent-desktop/` | 已实现，converge 追加 1 项（E2E） |
+| 001 | 桌面 Agent MVP | `specs/001-agent-desktop/` | 已实现，converge 追加 2 项（T040 Electron E2E、T041 Windows 打包验证） |
 
 ## 4. 需求编号
 

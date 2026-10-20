@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-20
 
-**Status**: Implemented（converge 追加 1 项待办，见 tasks.md Phase 9）
+**Status**: Implemented（converge 追加 2 项待办 T040、T041，见 tasks.md Phase 9）
 
 **Input**: User description: "做一个类似 Claude Code 的 Windows 桌面应用：左侧会话列表 + 项目文件夹 + 文件树，中间流式对话与工具调用卡片，右侧 Diff / 终端 / Spec Kit 任务；支持 OpenAI 兼容与 Anthropic 接口；工具包括列目录、读文件、搜索、写/改文件（需批准）、执行命令（需批准）与待办；三种权限模式；斜杠命令 /init /clear /model /specify /plan /tasks /implement；会话本地持久化；中文界面，跟随系统主题；可打包为 Windows 安装包与便携版。"
 

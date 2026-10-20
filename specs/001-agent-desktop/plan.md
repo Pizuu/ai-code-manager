@@ -146,5 +146,5 @@ tests/
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
 | 宪法 六：无法「推送并开 PR」 | 交付环境没有 Git 远端；以本地分支 + `--no-ff` 合入 `dev` 保留同等的审查/泳道检查痕迹 | 伪造 PR 链接违反「没有证据不得声称完成」 |
-| E2E 暂缺（测试矩阵 ❌） | Electron GUI E2E 需要图形环境与 Electron 二进制，当前构建环境无法运行 | 用单元/集成测试覆盖核心路径；E2E 由 converge 追加为 T040 跟踪 |
+| E2E 暂缺（测试矩阵 ❌） | Electron GUI E2E 需要图形环境与 Electron 二进制，当前构建环境无法运行 | 用单元/集成测试覆盖核心路径；E2E 由 converge 追加为 T040、Windows 打包验证为 T041 跟踪 |
 | 共享热点文件任务无泳道 | package.json / tsconfig.json / eslint.config.mjs 按 lanes.conf 属 `@shared`，宪法 四要求每个任务带泳道 | 标 `[lane:@shared]` 并由 coordinator 在 `int/*` 分支执行；拆进某个 worker 泳道会违反 lanes.conf |
