@@ -3,6 +3,8 @@
  */
 import type {
   ApprovalRequest,
+  BoardSnapshot,
+  GitSnapshot,
   ProjectInfo,
   PublicSettings,
   Session,
@@ -42,9 +44,16 @@ export interface UiState {
   terminal: TerminalChunk[];
   tasks: SpecTaskFile[];
   notices: Notice[];
+  /** 002：当前板块与两个只读快照。 */
+  view: ViewId;
+  board: BoardSnapshot | null;
+  git: GitSnapshot | null;
+  workspaceError: string | null;
 }
 
-export type Topic = 'settings' | 'project' | 'sessions' | 'current' | 'messages' | 'running' | 'approvals' | 'diffs' | 'terminal' | 'tasks' | 'todos';
+export type ViewId = 'board' | 'session' | 'git';
+
+export type Topic = 'settings' | 'project' | 'sessions' | 'current' | 'messages' | 'running' | 'approvals' | 'diffs' | 'terminal' | 'tasks' | 'todos' | 'view' | 'workspace';
 
 /** 终端面板保留的最大片段数。 */
 const MAX_TERMINAL_CHUNKS = 5000;
@@ -61,6 +70,10 @@ class Store {
     terminal: [],
     tasks: [],
     notices: [],
+    view: 'session',
+    board: null,
+    git: null,
+    workspaceError: null,
   };
 
   private readonly listeners = new Map<Topic, Set<() => void>>();

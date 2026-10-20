@@ -4,11 +4,15 @@
 import type { AgentEvent, ChatMessage, Session } from '../../contracts/ipc.ts';
 import { api, errorText } from './api.ts';
 import { store } from './store.ts';
+import { h } from './lib/dom.ts';
+import { mountBoard } from './views/board-view.ts';
 import { mountChat, type ChatView } from './views/chat.ts';
 import { renderDiff } from './views/diff-view.ts';
+import { mountGit } from './views/git-view.ts';
 import { createModeSelector, mountRightPanel } from './views/right-panel.ts';
 import { openSettings } from './views/settings-dialog.ts';
-import { mountSidebar } from './views/sidebar.ts';
+import { mountShell } from './views/shell.ts';
+import { mountSessionsSection } from './views/sidebar.ts';
 
 let chat: ChatView;
 
@@ -107,14 +111,35 @@ async function bootstrap(): Promise<void> {
   ]);
   Object.assign(store.state, { settings, project, sessions });
 
-  const modeSelector = createModeSelector((t) => chat.notify(t));
-  chat = mountChat(document.getElementById('chat') as HTMLElement, { renderDiff, headerExtras: [modeSelector] });
-  mountSidebar(document.getElementById('sidebar') as HTMLElement, {
-    insertText: (t) => chat.insertText(t),
-    notify: (t) => chat.notify(t),
-    selectSession,
+  const shell = mountShell(document.getElementById('app') as HTMLElement, {
+    onNewSession: () => void newSession(),
+    onOpenSettings: openSettings,
+    onFileClick: (rel) => {
+      shell.setView('session');
+      chat.insertText(`@${rel} `);
+    },
+    onError: (t) => chat.notify(t),
   });
-  mountRightPanel(document.getElementById('right') as HTMLElement);
+  // 任务会话板块（T-016 过渡布局：沿用 001 的会话列表 / 对话 / 右栏组件，T-017 换成原型三列）
+  const listCol = h('div', { class: 'slist' });
+  const chatCol = h('section', { class: 'chat' });
+  const rightCol = h('aside', { class: 'ctxp' });
+  shell.views.session.append(h('div', { class: 'sx' }, listCol, chatCol, rightCol));
+  const modeSelector = createModeSelector((t) => chat.notify(t));
+  chat = mountChat(chatCol, { renderDiff, headerExtras: [modeSelector] });
+  mountSessionsSection(listCol, { insertText: (t) => chat.insertText(t), notify: (t) => chat.notify(t), selectSession });
+  mountRightPanel(rightCol);
+  mountBoard(shell.views.board, {
+    openGit: () => shell.setView('git'),
+    openProject: () => void api.invoke('project:pick').then((p) => { if (p) { store.state.project = p; store.emit('project'); } }),
+    openCard: () => shell.setView('session'),
+  });
+  mountGit(shell.views.git, {
+    openBoard: () => shell.setView('board'),
+    openProject: () => void api.invoke('project:pick').then((p) => { if (p) { store.state.project = p; store.emit('project'); } }),
+    notify: (t) => chat.notify(t, 'info'),
+  });
+  shell.setView('board');
   api.onEvent(handleEvent);
 
   const first = sessions[0];
@@ -124,8 +149,15 @@ async function bootstrap(): Promise<void> {
     store.state.sessions = [];
     store.emit('current');
   }
-  store.emit('settings', 'project', 'sessions');
-  if (!settings.hasApiKey[settings.provider]) openSettings();
+  store.emit('settings', 'sessions');
+  void shell.refreshWorkspace();
+}
+
+async function newSession(): Promise<void> {
+  const s = await api.invoke('sessions:create');
+  store.state.sessions.unshift({ id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: 0 });
+  store.emit('sessions');
+  await selectSession(s.id);
 }
 
 bootstrap().catch((e: unknown) => {
