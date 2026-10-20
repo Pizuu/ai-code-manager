@@ -26,7 +26,7 @@
 | Agent CLI（002） | `src/backend/agent-cli/` | 预设、可执行文件解析、参数模板与权限映射、opencode JSONL 解析、子进程运行与停止 |
 | 渲染进程 UI | `src/frontend/` | 工作台外框（图标栏、项目栏、页头、状态栏）+ 三个板块：泳道看板、任务会话（会话列表 / 对话与代码标签页 / 上下文）、Git 分支与集成；设置含 Agent CLI 分区；全局右键「发送到任务会话」（003） |
 | 只读代码查看（003） | `src/backend/fs/file-view.ts` + `src/frontend/views/code-view.ts` | `fs:read`：沙箱解析、截断 / 二进制 / 超大保护；渲染层行号 + 轻量高亮 |
-| Web 预览（003，仅开发） | `scripts/web-dev.ts` + `src/frontend/web/` | 浏览器运行同一套渲染层（类型擦除保持行号），只读通道走主进程只读函数，其余内存模拟；UI 定位模式；不进打包 |
+| Web 预览（003，仅开发） | `scripts/web-dev.ts` + `src/frontend/web/` | 浏览器运行同一套渲染层（类型擦除保持行号）；服务器进程内实例化真实后端（契约 web-dev v2），除 Agent CLI 外全部真实数据、SSE 推送事件；UI 定位模式；不进打包 |
 
 ## 关键决策
 

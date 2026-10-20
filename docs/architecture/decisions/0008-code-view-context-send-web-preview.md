@@ -28,3 +28,13 @@
 - 好：Web 预览与 Electron 渲染层是同一份源码；UI 定位给出精确到行的源位置；新增 IPC 只有一个只读通道。
 - 坏：`stripTypeScriptTypes` 在 Node 22 仍为实验特性（启动时有 ExperimentalWarning）；Web 预览的会话 / 设置为内存模拟，刷新即丢。
 - 接受的风险：Web 预览服务器能读取项目内文件（与 `fs:read` 同一沙箱），仅监听本机回环地址、仅开发使用。
+
+## 修订注记（2026-10-20，负责人决定）
+
+负责人决定：Web 预览除 Agent CLI 外改用真实数据，本 ADR 第 3 条与备选 4 的结论相应修订（契约 `contracts/web-dev.ts` 升 v2）：
+
+- `scripts/web-dev.ts` 在进程内实例化与桌面端相同的 `createHandlers` + `SettingsStore` + `SessionStore` + `AppState`：全部 invoke 通道经 `POST /__api/<通道>` 走真实逻辑、真实落盘；`agent:event` 经 `GET /__events`（SSE）推送。数据目录与桌面端 `userData` 等价，可用环境变量 `AICM_DATA_DIR` 覆盖。静态文件仍仅 GET / HEAD；服务器仍只监听 127.0.0.1 并校验 Host，写 / 事件端点另校验 Origin。
+- 例外仅 Agent CLI：`agentCli:check` 恒返回模拟结果；`agent:send` 到外部 CLI 会话在分发层被拒绝（E_CLI + error 事件），绝不启动真实 CLI 进程；`agentCli:save` / `delete` 随 settings 真实落盘。
+- `project:pick` 恒返回 null（项目由 `--project` 在启动时确定），`project:openRoot` 为 no-op。
+- Web 预览无 Electron safeStorage：API Key 与 CLI 敏感 env 不能在 Web 侧保存或解密使用（真实存储以 E_ENCRYPTION 拒绝），其余设置与会话数据真实落盘、与桌面端互通。
+- 原「Web 版不得写盘」的约束自此解除；Web 预览仍仅供开发、不进打包（第 5 条不变）。
