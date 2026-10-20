@@ -112,6 +112,7 @@ const CHECKS: readonly Check[] = [
   { name: 'POST → 405', method: 'POST', path: '/', expect: all(status(405), (r) => (r.headers.allow === 'GET, HEAD' ? null : `Allow 为 ${r.headers.allow ?? '空'}`)) },
   { name: 'GET /__api/agent:send → 405（API 只接受 POST）', path: apiPath('agent:send'), expect: all(status(405), (r) => (r.headers.allow === 'POST' ? null : `Allow 为 ${r.headers.allow ?? '空'}`)) },
   { name: 'POST /__api/nope:nope → 404（未知通道不放行）', method: 'POST', path: apiPath('nope:nope'), body: apiBody([]), expect: all(status(404), (r) => (r.body.includes('E_VALIDATION') ? null : '缺少 E_VALIDATION')) },
+  { name: 'POST terminal:open（未知会话）→ 4xx E_NOT_FOUND（v1.6 通道已开放）', method: 'POST', path: apiPath('terminal:open'), body: apiBody([{ sessionId: 'no-such-session' }]), expect: all((r) => (r.status === 404 ? null : `状态码 ${r.status}，应为 404`), (r) => (r.body.includes('E_NOT_FOUND') ? null : `缺少 E_NOT_FOUND：${r.body.slice(0, 120)}`)) },
   { name: 'POST fs:read ../../etc/passwd → 403 E_PATH_ESCAPE', method: 'POST', path: apiPath('fs:read'), body: apiBody(['../../etc/passwd']), expect: all(status(403), (r) => (r.body.includes('E_PATH_ESCAPE') ? null : '缺少 E_PATH_ESCAPE')) },
   { name: 'POST fs:read package.json → 200', method: 'POST', path: apiPath('fs:read'), body: apiBody(['package.json']), expect: all(status(200), (r) => (r.body.includes('ai-code-manager') ? null : '内容不含项目名')) },
   { name: '/package.json（不在白名单前缀）→ 404', path: '/package.json', expect: status(404) },
