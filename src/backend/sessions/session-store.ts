@@ -4,7 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Session, SessionSummary } from '../../../contracts/ipc.ts';
+import type { AgentRef, Session, SessionSummary } from '../../../contracts/ipc.ts';
 import { DEFAULT_SESSION_TITLE } from '../agent/agent-loop.ts';
 import { ipcError } from '../ipc/validate.ts';
 
@@ -15,7 +15,7 @@ export function newSessionId(now: number = Date.now()): string {
 }
 
 export function summarizeSession(s: Session): SessionSummary {
-  return { id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: s.messages.length };
+  return { id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: s.messages.length, ...(s.agent ? { agent: s.agent } : {}) };
 }
 
 export class SessionStore {
@@ -30,7 +30,7 @@ export class SessionStore {
     return path.join(this.dir, `${id}.json`);
   }
 
-  async create(projectPath: string | null): Promise<Session> {
+  async create(projectPath: string | null, agent?: AgentRef): Promise<Session> {
     const now = new Date().toISOString();
     const session: Session = {
       schemaVersion: 1,
@@ -41,6 +41,7 @@ export class SessionStore {
       updatedAt: now,
       messages: [],
       todos: [],
+      ...(agent && agent !== 'builtin' ? { agent } : {}),
     };
     await this.save(session);
     return session;
@@ -73,9 +74,19 @@ export class SessionStore {
 
   async clear(id: string): Promise<Session> {
     const s = await this.get(id);
-    const cleared: Session = { ...s, title: DEFAULT_SESSION_TITLE, messages: [], todos: [], updatedAt: new Date().toISOString() };
+    // 清空同时丢弃外部 CLI 的续接 ID，下一轮开启新的 CLI 会话
+    const { cliSessions: _drop, ...rest } = s;
+    void _drop;
+    const cleared: Session = { ...rest, title: DEFAULT_SESSION_TITLE, messages: [], todos: [], updatedAt: new Date().toISOString() };
     await this.save(cleared);
     return cleared;
+  }
+
+  async setAgent(id: string, agent: AgentRef): Promise<Session> {
+    const s = await this.get(id);
+    const next: Session = { ...s, agent, updatedAt: new Date().toISOString() };
+    await this.save(next);
+    return next;
   }
 
   /** 按最近更新倒序；损坏的文件跳过并在控制台告警，不影响其余会话。 */

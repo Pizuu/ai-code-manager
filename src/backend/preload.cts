@@ -23,6 +23,12 @@ const INVOKE_CHANNELS = [
   'agent:stop',
   'agent:approve',
   'tasks:list',
+  'agentCli:save',
+  'agentCli:delete',
+  'agentCli:check',
+  'sessions:setAgent',
+  'board:get',
+  'git:get',
 ] as const satisfies readonly IpcInvokeChannel[];
 
 // 编译期穷举检查：契约新增通道而此处遗漏时，类型变为 never 导致编译失败

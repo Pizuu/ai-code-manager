@@ -3,6 +3,10 @@
  * 失败抛出 `E_VALIDATION: …`，错误码定义见 contracts/ipc.ts 的 IpcErrorCode。
  */
 import type {
+  AgentCliInput,
+  AgentCliOutputFormat,
+  AgentCliPreset,
+  AgentRef,
   AgentSendRequest,
   ApprovalDecision,
   IpcErrorCode,
@@ -76,6 +80,7 @@ export function validateSettingsUpdate(value: unknown): SettingsUpdate {
   if (v.baseUrl !== undefined) out.baseUrl = asHttpUrl(v.baseUrl);
   if (v.model !== undefined) out.model = asString(v.model, 'model', { max: 200 }).trim();
   if (v.permissionMode !== undefined) out.permissionMode = asOneOf(v.permissionMode, MODES, 'permissionMode');
+  if (v.defaultAgent !== undefined) out.defaultAgent = asAgentRef(v.defaultAgent);
   if (v.apiKey !== undefined) {
     const k = asRecord(v.apiKey, 'apiKey');
     out.apiKey = {
@@ -98,4 +103,69 @@ export function validateApprovalDecision(value: unknown): ApprovalDecision {
   const v = asRecord(value, 'decision');
   if (typeof v.approved !== 'boolean') fail('approved 必须是布尔值');
   return { approvalId: asString(v.approvalId, 'approvalId', { max: 100 }), approved: v.approved };
+}
+
+// ───────── v1.1：Agent CLI（功能 002） ─────────
+
+const CLI_ID_RE = /^[a-z0-9-]{1,40}$/;
+const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,100}$/;
+const PRESETS: readonly AgentCliPreset[] = ['opencode', 'custom'];
+const FORMATS: readonly AgentCliOutputFormat[] = ['opencode-json', 'text'];
+const MAX_ARGS = 40;
+const MAX_ENV = 30;
+
+export function asCliId(value: unknown): string {
+  const id = asString(value, 'id', { max: 40 });
+  if (!CLI_ID_RE.test(id)) fail('Agent CLI id 格式非法');
+  return id;
+}
+
+export function asAgentRef(value: unknown): AgentRef {
+  const v = asString(value, 'agent', { max: 60 });
+  if (v === 'builtin') return 'builtin';
+  if (v.startsWith('cli:') && CLI_ID_RE.test(v.slice(4))) return v as AgentRef;
+  fail('agent 必须是 builtin 或 cli:<id>');
+}
+
+function asArgList(value: unknown, name: string): string[] {
+  if (!Array.isArray(value)) fail(`${name} 必须是字符串数组`);
+  if (value.length > MAX_ARGS) fail(`${name} 最多 ${MAX_ARGS} 项`);
+  return value.map((a, i) => {
+    const s = asString(a, `${name}[${i}]`, { max: 2_000, allowEmpty: true });
+    if (/[\0\r\n]/.test(s)) fail(`${name}[${i}] 不能包含换行或 NUL`);
+    return s;
+  });
+}
+
+export function validateAgentCliInput(value: unknown): AgentCliInput {
+  const v = asRecord(value, 'agentCli');
+  const command = asString(v.command, 'command', { max: 1_000 }).trim();
+  if (/[\0\r\n]/.test(command)) fail('command 不能包含换行或 NUL');
+  if (!Array.isArray(v.env)) fail('env 必须是数组');
+  if (v.env.length > MAX_ENV) fail(`env 最多 ${MAX_ENV} 项`);
+  const names = new Set<string>();
+  const env = (v.env as unknown[]).map((raw, i) => {
+    const e = asRecord(raw, `env[${i}]`);
+    const name = asString(e.name, `env[${i}].name`, { max: 101 }).trim();
+    if (!ENV_NAME_RE.test(name)) fail(`环境变量名非法：${name}`);
+    if (names.has(name)) fail(`环境变量重复：${name}`);
+    names.add(name);
+    if (typeof e.secret !== 'boolean') fail(`env[${i}].secret 必须是布尔值`);
+    const out: { name: string; secret: boolean; value?: string } = { name, secret: e.secret };
+    if (e.value !== undefined) out.value = asString(e.value, `env[${i}].value`, { max: 4_000, allowEmpty: true });
+    return out;
+  });
+  const input: AgentCliInput = {
+    name: asString(v.name, 'name', { max: 60 }).trim(),
+    preset: asOneOf(v.preset, PRESETS, 'preset'),
+    command,
+    args: asArgList(v.args, 'args'),
+    resumeArgs: asArgList(v.resumeArgs, 'resumeArgs'),
+    modelArgs: asArgList(v.modelArgs, 'modelArgs'),
+    model: asString(v.model ?? '', 'model', { max: 200, allowEmpty: true }).trim(),
+    outputFormat: asOneOf(v.outputFormat, FORMATS, 'outputFormat'),
+    env,
+  };
+  if (v.id !== undefined && v.id !== null && v.id !== '') input.id = asCliId(v.id);
+  return input;
 }
