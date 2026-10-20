@@ -1,7 +1,9 @@
 /**
  * opencode serve 逐条工具审批原型（FR-116、宪法 九，specs/002-workspace-boards T125，任务卡 T-022）。
  *
- * 只是原型：未接入现有 `opencode run --format json` 路径（cli-runner.ts），也不改 contracts/。
+ * T127（任务卡 T-034）起已在实验开关下接入：serve-runner.ts 负责常驻服务器与一轮对话，handlers.ts 按
+ * `opencodeMode`（后端内部设置 / 环境变量 AICM_OPENCODE_MODE，默认 run）选择；serve 启动失败回退到 run 模式（cli-runner.ts）。
+ * 权限映射使用契约 v1.3 的 ApprovalKind（见 toApprovalRequest）。
  *
  * ───────────────────────── 评估结论（实测 opencode-ai 1.19.3，2026-10-20，Linux 沙箱 + 本地假 OpenAI 兼容模型）─────────────────────────
  *
@@ -131,22 +133,46 @@ function relPath(root: string, p: string): string {
 }
 
 /**
- * opencode 权限请求 → 应用 ApprovalRequest。内容取自权限事件 metadata（工具 part 此时可能尚无 input）。
- * edit → kind edit（相对路径 + diff）；bash 与其他权限 → kind command（非 bash 的以 `[permission] patterns` 描述）。
+ * opencode 权限请求 → 应用 ApprovalRequest（契约 v1.3）。内容取自权限事件 metadata（工具 part 此时可能尚无 input）。
+ * 每种都附原始 `permission` 与 `patterns`：
+ * - edit → edit（相对路径 + diff）；bash → command；webfetch → webfetch（url）；doom_loop → loop（tool + 说明）；
+ *   task → subagent（子任务说明，patterns 为子 agent 类型）；external_directory → external-dir（项目外绝对路径；
+ *   规则集默认 deny，仅在仍被询问时如实展示）；其余 → other（说明 `opencode 权限：<名>`）。
  */
 export function toApprovalRequest(perm: ServePermissionRequest, opts: { approvalId: string; appSessionId: string; projectRoot: string }): ApprovalRequest {
   const toolCallId = perm.tool?.callID || perm.id;
-  const base = { id: opts.approvalId, sessionId: opts.appSessionId, toolCallId };
-  if (perm.permission === 'edit') {
-    const file = str(perm.metadata.filepath) || perm.patterns[0] || '';
-    const diff = str(perm.metadata.diff);
-    return { ...base, kind: 'edit', path: file ? relPath(opts.projectRoot, file) : '', ...(diff ? { diff } : {}) };
+  const md = perm.metadata;
+  const base = { id: opts.approvalId, sessionId: opts.appSessionId, toolCallId, permission: perm.permission, patterns: [...perm.patterns] };
+  const first = perm.patterns[0] ?? '';
+  switch (perm.permission) {
+    case 'edit': {
+      const file = str(md.filepath) || first;
+      const diff = str(md.diff);
+      return { ...base, kind: 'edit', path: file ? relPath(opts.projectRoot, file) : '', ...(diff ? { diff } : {}) };
+    }
+    case 'bash': {
+      const command = str(md.command) || perm.patterns.join('\n');
+      return { ...base, kind: 'command', command, shell: 'opencode bash 工具（opencode 自行执行）' };
+    }
+    case 'webfetch': {
+      const url = str(md.url) || first;
+      return { ...base, kind: 'webfetch', url };
+    }
+    case 'doom_loop': {
+      const tool = str(md.tool) || first || 'unknown';
+      return { ...base, kind: 'loop', tool, description: `工具 ${tool} 正以相同参数重复调用（疑似死循环），是否继续？` };
+    }
+    case 'task': {
+      const description = str(md.description) || str(md.prompt) || `启动子 agent：${first || 'general'}`;
+      return { ...base, kind: 'subagent', description };
+    }
+    case 'external_directory': {
+      const dir = str(md.parentDir) || str(md.filepath) || first.replace(/[\\/]\*+$/, '');
+      return { ...base, kind: 'external-dir', path: dir, description: '访问项目根以外的目录（项目根沙箱默认拒绝）' };
+    }
+    default:
+      return { ...base, kind: 'other', description: str(md.description) || `opencode 权限：${perm.permission}` };
   }
-  if (perm.permission === 'bash') {
-    const command = str(perm.metadata.command) || perm.patterns.join('\n');
-    return { ...base, kind: 'command', command, shell: 'opencode bash 工具（opencode 自行执行）' };
-  }
-  return { ...base, kind: 'command', command: `[${perm.permission}] ${perm.patterns.join(' ')}`.trim(), shell: `opencode 权限：${perm.permission}` };
 }
 
 /** SSE 增量解析器：喂入文本块，返回完整事件（仅 data 行，多行 data 以 \n 连接）。 */

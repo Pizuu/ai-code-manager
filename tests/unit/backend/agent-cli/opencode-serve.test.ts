@@ -250,22 +250,37 @@ test('serveRules: every mode sends an explicit ruleset; commands always ask unle
   assert.equal(action('ask', 'read'), 'allow');
 });
 
-test('toApprovalRequest maps real bash / edit permission events, and other permissions as described commands', () => {
+test('toApprovalRequest maps real bash / edit permission events to v1.3 kinds, always carrying permission + patterns', () => {
   const bash = parsePermissionRequest(REAL_PERM_BASH);
   const edit = parsePermissionRequest(REAL_PERM_EDIT);
   assert.ok(bash && edit);
   const b = toApprovalRequest(bash, { approvalId: 'a1', appSessionId: 'app-1', projectRoot: ROOT });
-  assert.deepEqual({ kind: b.kind, command: b.command, toolCallId: b.toolCallId, sessionId: b.sessionId }, { kind: 'command', command: 'echo hi > hi.txt', toolCallId: 'call_bash_1', sessionId: 'app-1' });
+  assert.deepEqual({ kind: b.kind, command: b.command, toolCallId: b.toolCallId, sessionId: b.sessionId, permission: b.permission, patterns: b.patterns }, { kind: 'command', command: 'echo hi > hi.txt', toolCallId: 'call_bash_1', sessionId: 'app-1', permission: 'bash', patterns: ['echo hi > hi.txt'] });
   const e = toApprovalRequest(edit, { approvalId: 'a2', appSessionId: 'app-1', projectRoot: ROOT });
   assert.equal(e.kind, 'edit');
   assert.equal(e.path, 'a.txt');
+  assert.equal(e.permission, 'edit');
+  assert.deepEqual(e.patterns, ['a.txt']);
   assert.match(e.diff ?? '', /^\+hello$/m);
-  const web = parsePermissionRequest({ id: 'per_x', sessionID: SID, permission: 'webfetch', patterns: ['https://example.com'], metadata: {}, always: [] });
-  assert.ok(web);
-  const w = toApprovalRequest(web, { approvalId: 'a3', appSessionId: 'app-1', projectRoot: ROOT });
-  assert.equal(w.kind, 'command');
-  assert.equal(w.command, '[webfetch] https://example.com');
-  assert.equal(w.toolCallId, 'per_x');
+  const mk = (permission: string, patterns: string[], metadata: Record<string, unknown> = {}) => {
+    const p = parsePermissionRequest({ id: 'per_x', sessionID: SID, permission, patterns, metadata, always: [] });
+    assert.ok(p);
+    return toApprovalRequest(p, { approvalId: 'a3', appSessionId: 'app-1', projectRoot: ROOT });
+  };
+  const w = mk('webfetch', ['https://example.com/*']);
+  assert.deepEqual({ kind: w.kind, url: w.url, permission: w.permission, toolCallId: w.toolCallId }, { kind: 'webfetch', url: 'https://example.com/*', permission: 'webfetch', toolCallId: 'per_x' });
+  assert.equal(mk('webfetch', ['x'], { url: 'https://opencode.ai/docs/cli/' }).url, 'https://opencode.ai/docs/cli/');
+  const l = mk('doom_loop', ['read']);
+  assert.deepEqual({ kind: l.kind, tool: l.tool }, { kind: 'loop', tool: 'read' });
+  assert.match(l.description ?? '', /read/);
+  const t = mk('task', ['general'], { description: '调研脚本', subagent_type: 'general' });
+  assert.deepEqual({ kind: t.kind, description: t.description, patterns: t.patterns }, { kind: 'subagent', description: '调研脚本', patterns: ['general'] });
+  assert.equal(mk('task', ['explore']).description, '启动子 agent：explore');
+  const x = mk('external_directory', ['/etc/*']);
+  assert.deepEqual({ kind: x.kind, path: x.path, patterns: x.patterns }, { kind: 'external-dir', path: '/etc', patterns: ['/etc/*'] });
+  assert.equal(mk('external_directory', ['/etc/*'], { filepath: '/etc/hosts', parentDir: '/etc' }).path, '/etc');
+  const o = mk('skill', ['pdf-tools']);
+  assert.deepEqual({ kind: o.kind, permission: o.permission, patterns: o.patterns, description: o.description }, { kind: 'other', permission: 'skill', patterns: ['pdf-tools'], description: 'opencode 权限：skill' });
   assert.equal(parsePermissionRequest({ id: 'nope', sessionID: SID }), null);
 });
 

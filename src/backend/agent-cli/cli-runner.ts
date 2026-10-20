@@ -70,7 +70,35 @@ export function diffForTool(root: string, ev: Extract<OpencodeEvent, { kind: 'to
   return undefined;
 }
 
-export async function runCliTurn(session: Session, userText: string, deps: CliTurnDeps): Promise<void> {
+/** 一轮 CLI 对话的助手消息与事件落地（run 与 serve 两种模式共用）。 */
+export interface CliTurnSink {
+  assistant: ChatMessage;
+  calls: ToolCallRecord[];
+  upsert(rec: ToolCallRecord): void;
+  appendText(t: string): void;
+  /** 增量文本（serve 模式 message.part.delta）；与同一 part 的整段 text 事件去重。 */
+  appendDelta(partId: string, delta: string): void;
+  handle(ev: OpencodeEvent): void;
+  terminal(toolCallId: string, stream: 'stdout' | 'stderr' | 'info', data: string): void;
+  readonly sawError: boolean;
+  save(): Promise<void>;
+}
+
+export interface CliTurnSinkDeps {
+  config: Pick<CliRuntimeConfig, 'id' | 'name'>;
+  projectRoot: string;
+  emit(event: AgentEvent): void;
+  persist(session: Session): Promise<void>;
+  newId(): string;
+  now(): string;
+  /** 续接 ID 写入 session.cliSessions 的键（run 模式 = CLI id）。 */
+  sessionKey: string;
+  /** 步骤结束等信息行写到哪个工具调用的终端。 */
+  infoToolCallId(): string;
+}
+
+/** 记录用户消息、设置标题并开始助手消息。 */
+export async function beginCliTurn(session: Session, userText: string, deps: CliTurnSinkDeps): Promise<CliTurnSink> {
   const agent: AgentRef = `cli:${deps.config.id}`;
   const sid = session.id;
   const save = async () => {
@@ -101,13 +129,90 @@ export async function runCliTurn(session: Session, userText: string, deps: CliTu
     assistant.content += t;
     deps.emit({ type: 'text-delta', sessionId: sid, messageId: assistant.id, delta: t });
   };
+  let sawError = false;
+  const partText = new Map<string, number>();
+  const terminal = (toolCallId: string, stream: 'stdout' | 'stderr' | 'info', data: string) => deps.emit({ type: 'terminal', sessionId: sid, toolCallId, stream, data });
+
+  const appendDelta = (partId: string, delta: string) => {
+    if (!delta) return;
+    const seen = partText.get(partId);
+    if (seen === undefined && assistant.content && !assistant.content.endsWith('\n')) appendText('\n\n');
+    appendText(delta);
+    partText.set(partId, (seen ?? 0) + delta.length);
+  };
+
+  const handle = (ev: OpencodeEvent) => {
+    if ('sessionId' in ev && ev.sessionId && session.cliSessions?.[deps.sessionKey] !== ev.sessionId) {
+      session.cliSessions = { ...(session.cliSessions ?? {}), [deps.sessionKey]: ev.sessionId };
+    }
+    switch (ev.kind) {
+      case 'text': {
+        const seen = partText.get(ev.partId);
+        if (seen === undefined) {
+          if (assistant.content && !assistant.content.endsWith('\n')) appendText('\n\n');
+          appendText(ev.text);
+        } else if (ev.text.length > seen) appendText(ev.text.slice(seen));
+        partText.set(ev.partId, Math.max(seen ?? 0, ev.text.length));
+        break;
+      }
+      case 'tool': {
+        const status = toolStatus(ev);
+        const diff = diffForTool(deps.projectRoot, ev);
+        const input = { ...ev.input };
+        if (typeof input.filePath === 'string') input.path = relPath(deps.projectRoot, input.filePath);
+        upsert({ id: ev.callId, name: ev.tool, input, status, output: ev.error || ev.output || ev.title, ...(diff ? { diff } : {}) });
+        if (ev.tool === 'bash' && (status === 'done' || status === 'error')) {
+          if (typeof ev.input.command === 'string') terminal(ev.callId, 'info', `$ ${ev.input.command}\n`);
+          if (ev.output) terminal(ev.callId, 'stdout', ev.output.endsWith('\n') ? ev.output : `${ev.output}\n`);
+        }
+        if (ev.tool === 'todowrite' && Array.isArray(ev.input.todos)) {
+          const todos: TodoItem[] = (ev.input.todos as unknown[]).map((t, i) => {
+            const r = (t ?? {}) as Record<string, unknown>;
+            return { id: typeof r.id === 'string' ? r.id : String(i + 1), content: typeof r.content === 'string' ? r.content : '', status: mapTodoStatus(r.status) };
+          });
+          session.todos = todos;
+          deps.emit({ type: 'todos', sessionId: sid, todos });
+        }
+        break;
+      }
+      case 'step-finish':
+        if (ev.tokens !== null) terminal(deps.infoToolCallId(), 'info', `[${deps.config.name}] 步骤结束（${ev.reason || 'stop'}）· tokens ${ev.tokens}\n`);
+        break;
+      case 'error':
+        sawError = true;
+        deps.emit({ type: 'error', sessionId: sid, message: `${deps.config.name}：${ev.message}` });
+        break;
+      case 'other':
+        terminal(deps.infoToolCallId(), 'stdout', `${ev.raw}\n`);
+        break;
+      case 'invalid':
+        if (ev.raw) terminal(deps.infoToolCallId(), 'stdout', `${ev.raw}\n`);
+        break;
+      default:
+        break;
+    }
+  };
+
+  return {
+    assistant, calls, upsert, appendText, appendDelta, handle, terminal, save,
+    get sawError() {
+      return sawError;
+    },
+  };
+}
+
+export async function runCliTurn(session: Session, userText: string, deps: CliTurnDeps): Promise<void> {
+  const sid = session.id;
+  let invokeId = '';
+  const sink = await beginCliTurn(session, userText, { ...deps, sessionKey: deps.config.id, infoToolCallId: () => invokeId });
+  const { upsert, appendText, handle, save, calls } = sink;
 
   const cliSession = session.cliSessions?.[deps.config.id] ?? null;
   const args = buildArgs({ config: deps.config, prompt: userText, cwd: deps.projectRoot, cliSessionId: cliSession, mode: deps.mode });
   const cmdline = formatCommandLine(deps.executable, args.map((a) => (a === userText ? (a.length > 120 ? `${a.slice(0, 120)}…` : a) : a)), deps.platform);
   const perm = describePermission(deps.config, deps.mode);
   const invoke: ToolCallRecord = { id: `cli-${deps.newId()}`, name: CLI_INVOKE_TOOL, input: { agent: deps.config.name, command: cmdline, cwd: deps.projectRoot, permission: perm }, status: 'pending' };
-
+  invokeId = invoke.id;
   if (needsTurnApproval(deps.mode)) {
     upsert({ ...invoke, status: 'awaiting-approval' });
     const approved = await deps.requestApproval({
@@ -135,62 +240,8 @@ export async function runCliTurn(session: Session, userText: string, deps: CliTu
   deps.signal.addEventListener('abort', onAbort, { once: true });
 
   let stderrTail = '';
-  let sawError = false;
   let buffer = '';
-  const partText = new Map<string, number>();
-  const terminal = (stream: 'stdout' | 'stderr' | 'info', data: string) => deps.emit({ type: 'terminal', sessionId: sid, toolCallId: invoke.id, stream, data });
-
-  const handle = (ev: OpencodeEvent) => {
-    if ('sessionId' in ev && ev.sessionId && session.cliSessions?.[deps.config.id] !== ev.sessionId) {
-      session.cliSessions = { ...(session.cliSessions ?? {}), [deps.config.id]: ev.sessionId };
-    }
-    switch (ev.kind) {
-      case 'text': {
-        const seen = partText.get(ev.partId);
-        if (seen === undefined) {
-          if (assistant.content && !assistant.content.endsWith('\n')) appendText('\n\n');
-          appendText(ev.text);
-        } else if (ev.text.length > seen) appendText(ev.text.slice(seen));
-        partText.set(ev.partId, Math.max(seen ?? 0, ev.text.length));
-        break;
-      }
-      case 'tool': {
-        const status = toolStatus(ev);
-        const diff = diffForTool(deps.projectRoot, ev);
-        const input = { ...ev.input };
-        if (typeof input.filePath === 'string') input.path = relPath(deps.projectRoot, input.filePath);
-        upsert({ id: ev.callId, name: ev.tool, input, status, output: ev.error || ev.output || ev.title, ...(diff ? { diff } : {}) });
-        if (ev.tool === 'bash' && (status === 'done' || status === 'error')) {
-          if (typeof ev.input.command === 'string') deps.emit({ type: 'terminal', sessionId: sid, toolCallId: ev.callId, stream: 'info', data: `$ ${ev.input.command}\n` });
-          if (ev.output) deps.emit({ type: 'terminal', sessionId: sid, toolCallId: ev.callId, stream: 'stdout', data: ev.output.endsWith('\n') ? ev.output : `${ev.output}\n` });
-        }
-        if (ev.tool === 'todowrite' && Array.isArray(ev.input.todos)) {
-          const todos: TodoItem[] = (ev.input.todos as unknown[]).map((t, i) => {
-            const r = (t ?? {}) as Record<string, unknown>;
-            return { id: typeof r.id === 'string' ? r.id : String(i + 1), content: typeof r.content === 'string' ? r.content : '', status: mapTodoStatus(r.status) };
-          });
-          session.todos = todos;
-          deps.emit({ type: 'todos', sessionId: sid, todos });
-        }
-        break;
-      }
-      case 'step-finish':
-        if (ev.tokens !== null) terminal('info', `[${deps.config.name}] 步骤结束（${ev.reason || 'stop'}）· tokens ${ev.tokens}\n`);
-        break;
-      case 'error':
-        sawError = true;
-        deps.emit({ type: 'error', sessionId: sid, message: `${deps.config.name}：${ev.message}` });
-        break;
-      case 'other':
-        terminal('stdout', `${ev.raw}\n`);
-        break;
-      case 'invalid':
-        if (ev.raw) terminal('stdout', `${ev.raw}\n`);
-        break;
-      default:
-        break;
-    }
-  };
+  const terminal = (stream: 'stdout' | 'stderr' | 'info', data: string) => sink.terminal(invoke.id, stream, data);
 
   child.stdout?.setEncoding('utf8');
   child.stderr?.setEncoding('utf8');
@@ -228,7 +279,7 @@ export async function runCliTurn(session: Session, userText: string, deps: CliTu
     upsert({ ...invoke, status: 'rejected', output: '已被用户停止（进程已结束）。' });
   } else if (code !== 0) {
     upsert({ ...invoke, status: 'error', output: `退出码 ${String(code)}` });
-    if (!sawError) deps.emit({ type: 'error', sessionId: sid, message: `${deps.config.name} 异常退出（退出码 ${String(code)}）${stderrTail.trim() ? `：${stderrTail.trim()}` : ''}` });
+    if (!sink.sawError) deps.emit({ type: 'error', sessionId: sid, message: `${deps.config.name} 异常退出（退出码 ${String(code)}）${stderrTail.trim() ? `：${stderrTail.trim()}` : ''}` });
   } else {
     upsert({ ...invoke, status: 'done', output: `完成（退出码 0）${session.cliSessions?.[deps.config.id] ? ` · 会话 ${session.cliSessions[deps.config.id]}` : ''}` });
   }

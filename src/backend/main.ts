@@ -9,6 +9,7 @@ import type { AgentEvent, IpcInvokeChannel } from '../../contracts/ipc.ts';
 import { AGENT_EVENT_CHANNEL } from '../../contracts/ipc.ts';
 import { AppState } from './app-state.ts';
 import { createHandlers } from './ipc/handlers.ts';
+import { OpencodeServeManager } from './agent-cli/serve-runner.ts';
 import { SessionStore } from './sessions/session-store.ts';
 import { SettingsStore, type KeyCipher } from './settings/settings-store.ts';
 import { resolveInsideRoot } from './tools/sandbox.ts';
@@ -109,7 +110,11 @@ async function bootstrap(): Promise<void> {
   const state = new AppState();
   await restoreLastProject(settings, state);
 
+  // T127（实验）：opencode serve 常驻进程在退出时结束进程树
+  const serveManager = new OpencodeServeManager({ platform: process.platform });
+  app.on('will-quit', () => serveManager.closeAll());
   const handlers = createHandlers({
+    serveManager,
     settings,
     sessions,
     state,

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { AgentCliConfig, AgentCliInput, AgentRef, PermissionMode, ProviderId, PublicSettings, SettingsUpdate } from '../../../contracts/ipc.ts';
 import type { CliRuntimeConfig } from '../agent-cli/cli-runner.ts';
+import { resolveOpencodeMode, type OpencodeMode } from '../agent-cli/serve-runner.ts';
 import { ipcError } from '../ipc/validate.ts';
 
 /** 可注入的加密器：生产实现包装 safeStorage，测试中用假实现。 */
@@ -41,6 +42,11 @@ interface StoredSettings {
   lastProjectPath: string | null;
   agentClis: StoredAgentCli[];
   defaultAgent: AgentRef;
+  /**
+   * 实验：opencode 接入方式（T127）。仅后端内部使用，不经 IPC、不进 PublicSettings
+   * （需要 contracts v1.4：PublicSettings.agentCli.opencodeMode）。缺省 = run。
+   */
+  opencodeMode?: OpencodeMode;
 }
 
 /** 主进程内部使用的非敏感设置。 */
@@ -95,7 +101,8 @@ export class SettingsStore {
   }
 
   getPublic(): PublicSettings {
-    const { encryptedKeys, agentClis, ...rest } = this.data;
+    const { encryptedKeys, agentClis, opencodeMode: _internal, ...rest } = this.data;
+    void _internal;
     return {
       ...rest,
       hasApiKey: { openai: Boolean(encryptedKeys.openai), anthropic: Boolean(encryptedKeys.anthropic) },
@@ -112,6 +119,17 @@ export class SettingsStore {
   getActive(): ActiveSettings {
     const { provider, baseUrl, model, permissionMode, lastProjectPath, defaultAgent } = this.data;
     return { provider, baseUrl, model, permissionMode, lastProjectPath, defaultAgent };
+  }
+
+  /** 实验开关：环境变量 AICM_OPENCODE_MODE（run / serve）优先，其次内部设置，默认 run。 */
+  getOpencodeMode(env: NodeJS.ProcessEnv = process.env): OpencodeMode {
+    return resolveOpencodeMode(env, this.data.opencodeMode);
+  }
+
+  /** 仅后端内部（契约 v1.4 前不经 IPC）：持久化 opencode 接入方式。 */
+  async setOpencodeMode(mode: OpencodeMode): Promise<void> {
+    this.data = { ...this.data, opencodeMode: mode };
+    await this.save();
   }
 
   hasAgentCli(id: string): boolean {

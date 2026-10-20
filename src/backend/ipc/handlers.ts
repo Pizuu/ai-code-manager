@@ -5,9 +5,10 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { AgentCliCheck, AgentEvent, AgentRef, GitSnapshot, IpcInvokeChannel, IpcInvokeMap, ProjectInfo, Session } from '../../../contracts/ipc.ts';
+import type { AgentCliCheck, AgentEvent, AgentRef, ApprovalRequest, GitSnapshot, IpcInvokeChannel, IpcInvokeMap, ProjectInfo, Session } from '../../../contracts/ipc.ts';
 import { runCliTurn } from '../agent-cli/cli-runner.ts';
 import { installHint } from '../agent-cli/presets.ts';
+import { OpencodeServeManager, prepareServeTurn, runServeCliTurn, type PreparedServeTurn } from '../agent-cli/serve-runner.ts';
 import { defaultResolveDeps, resolveExecutable, type ResolveDeps } from '../agent-cli/resolve.ts';
 import { runAgentTurn } from '../agent/agent-loop.ts';
 import { createAnthropicProvider } from '../agent/providers/anthropic.ts';
@@ -53,6 +54,13 @@ export interface HandlerDeps {
   resolveDeps?: ResolveDeps;
   gitBin?: string;
   cliBaseEnv?: NodeJS.ProcessEnv;
+  /**
+   * T127（实验）：opencode serve 常驻进程池；main.ts 传入并在退出时 closeAll()。缺省时内部新建。
+   * 模式由 settings.getOpencodeMode(modeEnv) 决定（AICM_OPENCODE_MODE 优先，默认 run）。
+   */
+  serveManager?: OpencodeServeManager;
+  /** 读取 AICM_OPENCODE_MODE 的环境（默认 process.env；测试注入）。 */
+  modeEnv?: NodeJS.ProcessEnv;
 }
 
 /** 解析会话实际使用的 agent。 */
@@ -99,6 +107,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
   const { settings, sessions, state, emit } = deps;
   const makeProvider = deps.providerFactory ?? defaultProviderFactory;
 
+  const serveManager = deps.serveManager ?? new OpencodeServeManager({ platform: deps.platform });
   const resolveDeps = () => deps.resolveDeps ?? defaultResolveDeps(deps.platform);
   let gitCache: { root: string; at: number; snap: GitSnapshot } | null = null;
   const gitSnapshot = async (root: string): Promise<GitSnapshot> => {
@@ -126,7 +135,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     const controller = new AbortController();
     state.running.set(session.id, controller);
     emit({ type: 'status', sessionId: session.id, running: true });
-    void runCliTurn(session, text, {
+    const turnDeps = {
       config: runtime,
       executable,
       projectRoot: root,
@@ -134,15 +143,31 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       platform: deps.platform,
       signal: controller.signal,
       emit,
-      requestApproval: (req) => {
+      requestApproval: (req: ApprovalRequest) => {
         emit({ type: 'approval-request', sessionId: session.id, approval: req });
         return state.approvals.request(req);
       },
-      persist: (s) => sessions.save(s),
+      persist: (s: Session) => sessions.save(s),
       newId: () => crypto.randomUUID(),
       now: () => new Date().toISOString(),
       ...(deps.cliBaseEnv ? { baseEnv: deps.cliBaseEnv } : {}),
-    })
+    };
+    const useServe = runtime.outputFormat === 'opencode-json' && settings.getOpencodeMode(deps.modeEnv ?? process.env) === 'serve';
+    const run = async () => {
+      if (useServe) {
+        let prepared: PreparedServeTurn | null = null;
+        try {
+          prepared = await prepareServeTurn(session, { ...turnDeps, manager: serveManager });
+        } catch (err) {
+          // 回退：此时尚未写入任何消息，改走默认的 run 模式（每轮批准）
+          emit({ type: 'error', sessionId: session.id, message: `opencode serve 模式（实验）启动失败，已回退到 run 模式：${publicErrorMessage(err)}` });
+        }
+        if (prepared) return runServeCliTurn(session, text, prepared, { ...turnDeps, manager: serveManager });
+        if (controller.signal.aborted) return;
+      }
+      return runCliTurn(session, text, turnDeps);
+    };
+    void run()
       .catch(async (err: unknown) => {
         emit({ type: 'error', sessionId: session.id, message: publicErrorMessage(err) });
         await sessions.save(session);
