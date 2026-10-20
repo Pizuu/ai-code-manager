@@ -41,15 +41,16 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   app.className = 'app';
 
   // ── rail（原型 rail()）──
+  // 板块图标与项目栏导航同序（泳道看板 → 任务会话 → Git 与集成，T-039）；切换项目入口在项目选择器与 ⋯ 菜单
+  const railView = {} as Record<ViewId, HTMLAnchorElement>;
   const railBtn = (name: IconName, title: string, onClick: () => void) => h('a', { class: 'ri', title, on: { click: onClick } }, icon(name));
+  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code' };
+  for (const [id, label] of NAV) railView[id] = railBtn(RAIL_ICON[id], label, () => setView(id));
   const rail = h('nav', { class: 'rail' },
     railBtn('side', '侧栏', () => explorer.toggleAttribute('hidden')),
     h('div', { class: 'gap26' }),
+    ...NAV.map(([id]) => railView[id]),
     railBtn('plus', '新建会话', () => hooks.onNewSession()),
-    railBtn('chat', '任务会话', () => setView('session')),
-    railBtn('box', '打开项目文件夹', () => void pickProject()),
-    railBtn('grid', '泳道看板', () => setView('board')),
-    railBtn('code', 'Git 与集成', () => setView('git')),
     h('div', { class: 'sp' }),
     h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
     h('div', { class: 'av', title: 'Owner（人类，未署名）' }, icon('grid', 14)),
@@ -59,7 +60,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const badge = h('div', { class: 'mono-badge' });
   const pname = h('b');
   const pdesc = h('span');
-  const psel = h('div', { class: 'psel', title: '切换项目文件夹', on: { click: () => void pickProject() } },
+  const psel = h('div', { class: 'psel', title: '点击打开项目文件夹', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
     badge, h('div', { class: 'pid' }, pname, pdesc), h('span', { class: 'mute' }, icon('caret')));
   const navloc = h('div', { class: 'navloc' });
   const navItems = {} as Record<ViewId, HTMLAnchorElement>;
@@ -105,11 +106,10 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const crumbProject = h('span');
   const crumbFeature = h('b');
   const crumbChip = h('span', { class: 'chip' });
-  const sub = h('div', { class: 'sub' });
   const snapTime = h('span');
   const refreshBtn = h('button', { class: 'btn', on: { click: () => void refreshWorkspace() } }, '刷新快照');
   const header = h('header', { class: 'wh' },
-    h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, '/', crumbFeature, crumbChip), sub),
+    h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, '/', crumbFeature, crumbChip)),
     h('div', { class: 'wact' }, snapTime, h('span', { class: 'chip', title: 'multi-agent.md：负责人 Owner = 人类；仓库未登记姓名' }, 'Owner · 人类（未署名）'), refreshBtn));
 
   const views: Record<ViewId, HTMLElement> = {
@@ -118,7 +118,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     git: h('div', { class: 'ws-view wb', attrs: { id: 'wb-git' } }),
   };
   const statusL = h('span');
-  const status = h('footer', { class: 'status' }, statusL);
+  /** Git 视图时显示的集成摘要（原 Git 顶部说明行，T-039）。 */
+  const statusR = h('span', { class: 'st-r' });
+  const status = h('footer', { class: 'status' }, statusL, statusR);
   const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, status);
   app.append(rail, explorer, ws);
 
@@ -149,7 +151,18 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     } else {
       statusL.replaceChildren(h('span', { class: 'dot' }), store.state.project ? (store.state.workspaceError ?? g?.reason ?? '读取中…') : '未打开项目');
     }
+    renderGitStatus();
     renderProject();
+  };
+
+  const renderGitStatus = () => {
+    const g = store.state.git;
+    statusR.hidden = store.state.view !== 'git' || !g?.available;
+    if (!g?.available) return;
+    const open = g.branches.filter((x) => x.kind !== 'main' && x.kind !== 'integration' && !x.mergedIntoIntegration).length;
+    const f = store.state.board?.feature;
+    statusR.textContent = `${f ? `${f.id} · ` : ''}${g.integrationBranch} 基线 ${g.integrationHead ?? '—'} · ${open} 未合入 · ${g.merges.length} 次合入`;
+    statusR.title = `${f ? `${f.id} · ${f.title}\n` : ''}任务分支合入后已删除，以合并提交追溯`;
   };
 
   const nodeAttrs = (n: FileNode) => sendAttrs({ kind: 'file', path: n.relPath, dir: n.kind === 'dir' });
@@ -211,9 +224,10 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     for (const id of Object.keys(views) as ViewId[]) {
       views[id].hidden = id !== v;
       navItems[id].classList.toggle('on', id === v);
+      railView[id].classList.toggle('on', id === v);
     }
     navloc.textContent = `当前 · ${VIEW_TITLES[v]}`;
-    sub.textContent = VIEW_TITLES[v];
+    renderGitStatus();
     store.emit('view');
     if (v !== 'session' && !store.state.board) void refreshWorkspace();
   };
