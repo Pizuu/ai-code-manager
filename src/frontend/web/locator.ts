@@ -270,6 +270,7 @@ export function mountLocator(): void {
       row('定位文本', text));
     panelOpen = true;
     barOpen = true;
+    highlight(el);
     editing = null;
     noteInput.value = '';
     actStatus.textContent = '';
@@ -333,7 +334,8 @@ export function mountLocator(): void {
     ev.stopImmediatePropagation();
   };
   document.addEventListener('mousemove', (ev) => {
-    if (!on || isUi(ev.target) || !(ev.target instanceof Element)) return;
+    // 选中元素后暂停悬停高亮，高亮框停在已选元素上；关闭卡片后恢复。
+    if (!on || barOpen || isUi(ev.target) || !(ev.target instanceof Element)) return;
     highlight(ev.target);
   }, true);
   for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'contextmenu', 'auxclick'] as const) document.addEventListener(type, block, true);
@@ -350,7 +352,8 @@ export function mountLocator(): void {
   }, true);
   document.addEventListener('scroll', () => {
     if (!on) return;
-    box.hidden = true;
+    if (barOpen && picked?.el.isConnected) highlight(picked.el);
+    else box.hidden = true;
     positionMarkers();
   }, true);
   window.addEventListener('resize', () => {
