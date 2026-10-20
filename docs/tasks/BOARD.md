@@ -1,8 +1,8 @@
 # 任务看板
 
 > 由 coordinator 维护。前置任务全部合入的卡即为 **ready**；来自不同泳道的 ready 卡可以同时派发。
-> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-019）。当前 ready：T-011（frontend）、T-012（infra）、T-015（backend）、T-016（frontend）——T-011 与 T-016 同泳道，不同时派发。
-> 002 注意：T-013（契约 v1.1）合入后到 T-015 合入前，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（有意的防漏机制，plan.md Complexity Tracking），两者须连续合入。集成分支已更名 `hark-dev`；任务分支合入后删除，状态以合并提交追溯。
+> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）。当前 ready：T-011（frontend）、T-012（infra）、T-021（infra）、T-022（backend）——T-012 与 T-021 同泳道，不同时派发。
+> 002 记录：T-013（契约 v1.1）合入提交 `1ec10b8` 到 T-015 合入提交 `ce20063` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（有意的防漏机制，plan.md Complexity Tracking）；二者已连续合入，其余每次合入后 `scripts/verify.sh` 为绿。集成分支已更名 `hark-dev`；任务分支合入后删除，状态以合并提交追溯。
 > 说明：T015（应用入口/preload/handlers）因依赖后续模块，从 T-004 移到 T-006 执行（flow-back 已同步卡片）。无 Git 远端，「PR」列为本地合入 `dev` 的分支名（见 plan.md Complexity Tracking）。
 
 | 编号 | 标题 | 泳道 | 前置 | 状态 | 执行者 | PR |
@@ -21,11 +21,14 @@
 | T-010 | 收尾：路线图与看板 | @shared | T-009 | done | coordinator | `int/T-010-closeout`（本地 --no-ff 合入） |
 | T-013 | 功能 002 规格、契约 v1.1 与 ADR | contracts | 无 | done | coordinator | `feat/contracts/T-013-spec-002`（本地 --no-ff 合入） |
 | T-014 | 002 拆卡与看板 | @shared | T-013 | done | coordinator | `int/T-014-split`（本地 --no-ff 合入） |
-| T-015 | 主进程：看板 / Git 读取与 Agent CLI | backend | T-014 | ready | coordinator | — |
-| T-016 | 渲染进程：原型外框、泳道看板、Git 视图 | frontend | T-014 | ready | coordinator | — |
-| T-017 | 渲染进程：任务会话板块与 Agent CLI 设置 | frontend | T-015, T-016 | blocked | coordinator | — |
-| T-018 | 002 用户与测试/安全文档 | docs | T-015, T-017 | blocked | coordinator | — |
-| T-019 | 002 收尾：路线图与看板 | @shared | T-018 | blocked | coordinator | — |
+| T-015 | 主进程：看板 / Git 读取与 Agent CLI | backend | T-014 | done | coordinator | `feat/backend/T-015-workspace-agent-cli`（本地 --no-ff 合入） |
+| T-016 | 渲染进程：原型外框、泳道看板、Git 视图 | frontend | T-014 | done | coordinator | `feat/frontend/T-016-shell-boards`（本地 --no-ff 合入） |
+| T-017 | 渲染进程：任务会话板块与 Agent CLI 设置 | frontend | T-015, T-016 | done | coordinator | `feat/frontend/T-017-session-cli`（本地 --no-ff 合入） |
+| T-018 | 002 用户与测试/安全文档 | docs | T-015, T-017 | done | coordinator | `feat/docs/T-018-docs-002`（本地 --no-ff 合入） |
+| T-019 | 002 收尾：路线图与看板 | @shared | T-018 | done | coordinator | `feat/contracts/T-019-converge` + `int/T-019-closeout`（本地 --no-ff 合入） |
+| T-020 | 三板块 Electron E2E | frontend | T-011 | blocked | （待派发） | — |
+| T-021 | Windows 实机验证 opencode 集成 | infra | T-019 | ready | （待派发） | — |
+| T-022 | 评估 opencode serve 逐条工具审批 | backend | T-019 | ready | （待派发） | — |
 
 ## 依赖图
 
@@ -51,4 +54,7 @@ graph LR
   T015 --> T018[T-018 docs]
   T017 --> T018
   T018 --> T019[T-019 @shared 收尾]
+  T011 --> T020[T-020 frontend 三板块 E2E]
+  T019 --> T021[T-021 infra Windows opencode]
+  T019 --> T022[T-022 backend serve 逐条审批]
 ```

@@ -56,7 +56,7 @@ description: "Task list for 002-workspace-boards"
 ## Phase 7: Polish
 
 - [x] T121 [lane:docs] README（三板块、Agent CLI/opencode 使用与安装）、CHANGELOG 0.2.0、docs/testing/test-matrix.md、docs/security/threat-model.md 与 security-checklist.md
-- [ ] T122 [lane:@shared] 收尾：ROADMAP.md、docs/tasks/BOARD.md 与卡片 flow-back
+- [x] T122 [lane:@shared] 收尾：ROADMAP.md、docs/tasks/BOARD.md 与卡片 flow-back
 
 ## Phase 8: Convergence
 
