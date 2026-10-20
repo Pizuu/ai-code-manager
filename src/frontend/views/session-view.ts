@@ -72,7 +72,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   };
   const list = h('div');
   const slist = h('div', { class: 'slist' },
-    h('div', { class: 'hd' }, h('span', {}, '项目会话'), count), search, list);
+    h('div', { class: 'hd' }, h('span', {}, '任务会话'), count), search, list);
 
   const chatCol = h('section', { class: 'chat' });
   const codePane = h('section', { class: 'codev' });
