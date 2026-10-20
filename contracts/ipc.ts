@@ -12,7 +12,7 @@ export const IPC_CONTRACT_VERSION = 'v1' as const;
  * 契约修订号：v1.1 = 功能 002（三板块 + Agent CLI）的纯增量扩展——只新增通道、类型与可选字段，
  * 未修改或删除任何 v1 字段，因此主版本保持 v1（宪法 II）。
  */
-export const IPC_CONTRACT_REVISION = 'v1.5' as const;
+export const IPC_CONTRACT_REVISION = 'v1.6' as const;
 // v1.2 = 功能 003（只读代码查看、配置空白）的纯增量：新增 `fs:read` 通道、`FileContent` 类型、`FILE_VIEW_LIMITS`
 // 常量与错误码 `E_NOT_CONFIGURED`；未修改或删除任何既有字段。
 // v1.3 = 任务卡 T-033（为接入 opencode serve 逐条审批做准备，ADR 0006 修订）的纯增量：`ApprovalKind` 新增
@@ -22,14 +22,27 @@ export const IPC_CONTRACT_REVISION = 'v1.5' as const;
 // 字段（全部可选规格 id + 标题）；未修改或删除任何既有字段。
 // v1.5 = CLI 模型切换的纯增量：新增 `agent:setSessionModel`、`agentCli:models` 通道，`Session` 新增
 // 可选字段 `cliModel`（会话级 CLI 模型覆盖）；未修改或删除任何既有字段。
+// v1.6 = 任务会话「终端模式」与「自动授权」的纯增量：
+//   - `PermissionMode` 新增枚举值 'allow-all'（新增枚举值 = 纯增量，既有值语义不变）；
+//   - 新增 `terminal:open` / `terminal:input` / `terminal:close` 三个通道与 `TerminalInfo` 等类型；
+//   - `AgentEvent` 新增 'terminal-data' / 'terminal-exit' 两个事件变体；
+//   - 未修改或删除任何既有字段。
 
 // ───────────────────────── 基础模型 ─────────────────────────
 
 /** 模型服务提供方。openai = 任何 OpenAI 兼容 /chat/completions 端点。 */
 export type ProviderId = 'openai' | 'anthropic';
 
-/** 权限模式（FR-009）。 */
-export type PermissionMode = 'ask' | 'auto-edits' | 'plan';
+/**
+ * 权限模式（FR-009）。
+ *
+ * - `ask`：每次询问——写入与命令都逐条批准。
+ * - `auto-edits`：自动批准编辑，命令仍逐条批准。
+ * - `plan`：仅规划（只读）——写入与命令一律拒绝。
+ * - `allow-all`（v1.6）：全部允许——写入与命令都不再询问（负责人决定，见 ADR 0010 与宪法 1.2.0 修订）。
+ *   项目根沙箱（宪法 十一）仍然生效：越界访问照旧拒绝。
+ */
+export type PermissionMode = 'ask' | 'auto-edits' | 'plan' | 'allow-all';
 
 /** 发往渲染进程的设置：不含密钥，只含是否已配置（FR-003）。 */
 export interface PublicSettings {
@@ -267,6 +280,17 @@ export interface IpcInvokeMap {
   // ── v1.2（功能 003）──
   /** 只读读取项目内文件供代码查看器显示；路径经项目根沙箱（宪法 十一），大文件截断 / 拒绝，二进制不返回内容。 */
   'fs:read':          { args: [relPath: string];          result: FileContent };
+  // ── v1.6（终端模式）──
+  /**
+   * 打开（或复用）某会话的终端。工作目录恒为当前项目根（宪法 十一）；命令由主进程按 kind 决定，
+   * 渲染进程不能指定路径或命令原文。已有终端时返回同一个（restart=true 时先结束后重开）。
+   * 未打开项目时返回 E_NO_PROJECT。
+   */
+  'terminal:open':    { args: [req: TerminalOpenRequest]; result: TerminalInfo };
+  /** 向终端写入输入（用户敲的命令 + 换行）。会话无终端时返回 E_NOT_FOUND。 */
+  'terminal:input':   { args: [req: TerminalInputRequest]; result: void };
+  /** 结束某会话的终端（幂等：已结束也返回成功）。 */
+  'terminal:close':   { args: [req: TerminalCloseRequest]; result: void };
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeMap;
@@ -279,6 +303,55 @@ export interface AgentSendRequest {
 export interface ApprovalDecision {
   approvalId: string;
   approved: boolean;
+}
+
+// ───────────────────────── v1.6：任务会话「终端模式」 ─────────────────────────
+
+/**
+ * 终端种类（v1.6）。
+ *
+ * - `shell`：项目根下的交互式 shell（Windows: PowerShell；POSIX: bash）。用户自行敲命令。
+ * - `cli`：以「可读输出」方式运行本会话选定的外部 Agent CLI（去掉 JSON 输出参数），用于在终端里观察 agent 干活。
+ *
+ * 两者的工作目录恒为项目根（宪法 十一），渲染进程不能指定路径或命令原文。
+ */
+export type TerminalKind = 'shell' | 'cli';
+
+/** 终端实例信息（v1.6）。一个会话至多一个终端。 */
+export interface TerminalInfo {
+  /** 终端 ID（主进程生成）。 */
+  id: string;
+  /** 所属会话 ID。 */
+  sessionId: string;
+  kind: TerminalKind;
+  /** 展示用程序名（PowerShell / bash / CLI 名称）。 */
+  program: string;
+  /** 工作目录（恒为项目根绝对路径）。 */
+  cwd: string;
+  /** 启动时间（ISO 8601）。 */
+  startedAt: string;
+  /** 进程是否仍在运行。 */
+  alive: boolean;
+}
+
+/** terminal:open 的参数。 */
+export interface TerminalOpenRequest {
+  sessionId: string;
+  /** 缺省 = 'shell'。 */
+  kind?: TerminalKind;
+  /** true = 结束旧终端并重开（缺省 = 复用已有终端）。 */
+  restart?: boolean;
+}
+
+/** terminal:input 的参数：data 为用户输入的原始文本（渲染进程负责补换行）。 */
+export interface TerminalInputRequest {
+  sessionId: string;
+  data: string;
+}
+
+/** terminal:close 的参数。 */
+export interface TerminalCloseRequest {
+  sessionId: string;
 }
 
 // ───────────────────────── 事件通道（主 → 渲染） ─────────────────────────
@@ -297,6 +370,11 @@ export type AgentEvent =
   | { type: 'session-updated'; summary: SessionSummary }
   | { type: 'status'; sessionId: string; running: boolean }
   | { type: 'error'; sessionId: string; message: string }
+  // ── v1.6（终端模式）──
+  /** 终端输出增量（原始字节按 UTF-8 解码后的文本，可能含 ANSI 转义序列，由渲染进程解析）。 */
+  | { type: 'terminal-data'; sessionId: string; terminalId: string; data: string }
+  /** 终端进程退出（code 为退出码，null = 被信号终止）。 */
+  | { type: 'terminal-exit'; sessionId: string; terminalId: string; code: number | null }
   ;
 
 export type AgentEventType = AgentEvent['type'];
