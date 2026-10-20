@@ -543,3 +543,6 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 }
 .ctxp .tk,.ctxp li,.ctxp .dlist{font-size:var(--font-caption)}
 .ctxp .v.mono{font-size:var(--font-caption)}
+/* 审批卡片：项目根以外的目录（T128）用 danger 语义色 */
+.verify.tool .appr.danger{margin:10px -12px -10px;padding:10px 12px;background:var(--color-background-danger);border-top-color:var(--color-border-danger);border-radius:0 0 var(--border-radius-lg) var(--border-radius-lg)}
+.verify.tool .appr.danger .q{color:var(--color-text-danger)}

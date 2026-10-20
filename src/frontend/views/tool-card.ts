@@ -4,6 +4,7 @@
  * 内置工具与外部 CLI 的工具（opencode 的 write / edit / bash / read …，以及启动记录 agent_cli）共用。
  */
 import type { ApprovalRequest, ToolCallRecord, ToolCallStatus } from '../../../contracts/ipc.ts';
+import { approvalPrompt, approvalText } from '../lib/approval-prompt.ts';
 import { h } from '../lib/dom.ts';
 import { icon } from '../lib/icons.ts';
 
@@ -69,11 +70,10 @@ export function renderToolCard(call: ToolCallRecord, approval: ApprovalRequest |
   card.append(h('details', {}, h('summary', {}, '参数'), h('pre', {}, JSON.stringify(showInput, null, 2))));
   if (call.output) card.append(h('details', {}, h('summary', {}, '结果'), h('pre', {}, call.output)));
   if (call.status === 'awaiting-approval' && approval) {
-    const q = approval.kind === 'command'
-      ? `${call.name === 'agent_cli' ? '启动外部 CLI' : `在 ${approval.shell ?? 'shell'} 中执行此命令`}？\n${approval.command ?? ''}`
-      : `应用对 ${approval.path ?? ''} 的修改？`;
-    card.append(h('div', { class: 'appr' },
-      h('span', { class: 'q' }, q),
+    // 文案按种类区分（T128）；未知种类回退为权限名 + 模式，始终需要用户点击，不自动批准
+    const p = approvalPrompt(approval, call.name);
+    card.append(h('div', { class: p.tone === 'danger' ? 'appr danger' : 'appr', attrs: { 'data-kind': String(approval.kind) } },
+      h('span', { class: 'q' }, approvalText(p)),
       h('button', { class: 'btn danger', on: { click: () => onDecide(approval.id, false) } }, '拒绝'),
       h('button', { class: 'btn pri', on: { click: () => onDecide(approval.id, true) } }, '批准')));
   }
