@@ -1,0 +1,18 @@
+/* Web 预览「UI 定位」样式（仅 npm run web 加载，不进打包）。 */
+.loc-bar{position:fixed;right:16px;bottom:44px;z-index:3000;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 8px;box-shadow:0 6px 24px rgba(0,0,0,.12);font:12px var(--sans)}
+.loc-chip{color:var(--mute);font-size:11px}
+.loc-toggle{border:1px solid var(--line);background:var(--bg);border-radius:7px;height:28px;padding:0 12px;cursor:pointer;font-weight:600;color:var(--ink2)}
+.loc-toggle.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.loc-active,.loc-active *{cursor:crosshair !important}
+.loc-box{position:fixed;z-index:2999;pointer-events:none;outline:2px solid #2C84DB;background:rgba(44,132,219,.10);border-radius:2px}
+.loc-tip{position:absolute;left:-2px;top:-24px;white-space:nowrap;background:#1B67B2;color:#fff;font:11px/22px var(--mono);padding:0 8px;border-radius:4px}
+.loc-tip.below{top:auto;bottom:-24px}
+.loc-panel{position:fixed;right:16px;bottom:96px;z-index:3001;width:520px;max-width:calc(100vw - 32px);background:var(--bg);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 32px rgba(0,0,0,.16);padding:12px 14px;font:12px/1.5 var(--sans);color:var(--ink)}
+.loc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.loc-x{border:0;background:none;cursor:pointer;color:var(--mute)}
+.loc-row{display:grid;grid-template-columns:64px 1fr;gap:8px;padding:4px 0;border-top:1px solid var(--line)}
+.loc-row .k{color:var(--mute)}
+.loc-row .v{font:11px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all;user-select:all}
+.loc-actions{display:flex;align-items:center;gap:10px;margin-top:8px}
+.loc-copy{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;height:30px;padding:0 12px;cursor:pointer;font-weight:600}
+.loc-status{color:var(--green)}
