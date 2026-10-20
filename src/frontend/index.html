@@ -10,11 +10,8 @@
   <script type="module" src="../../dist/src/frontend/main.js"></script>
 </head>
 <body>
-  <div id="app" class="layout">
-    <aside id="sidebar" class="sidebar" aria-label="会话与项目"></aside>
-    <main id="chat" class="chat" aria-label="对话"></main>
-    <section id="right" class="right" aria-label="Diff、终端与任务"></section>
-  </div>
+  <!-- 工作台外框：图标栏 / 项目栏 / 三个板块（泳道看板、任务会话、Git 分支与集成），由 views/shell.ts 构建 -->
+  <div id="app" class="app" aria-label="AI Code Manager 工作台"></div>
   <dialog id="settings-dialog" class="dialog" aria-label="设置"></dialog>
 </body>
 </html>
