@@ -136,7 +136,8 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       renderMatrix(snap);
     });
     pad.append(h('div', { class: 'ctl' }, q, h('span', { class: 'ibtn' }, icon('filt')), laneSel, agentSel, h('span', { class: 'flex1' }), h('span', { class: 'mute' }, '按泳道分组'), tog));
-    if (snap.conflicts.length) pad.append(h('div', { class: 'conflicts' }, h('b', { class: 'b600' }, `声明与 git 不一致 ${snap.conflicts.length} 项：`), ...snap.conflicts.map((c) => h('div', {}, `· ${c}`))));
+    // 不一致项默认折叠为一行摘要（v0.4 重新设计，ADR 0009），展开查看明细
+    if (snap.conflicts.length) pad.append(h('details', { class: 'conflicts' }, h('summary', {}, h('b', { class: 'b600' }, `声明与 git 不一致 ${snap.conflicts.length} 项`), h('span', { class: 'mute' }, snap.conflicts[0] ?? '')), h('div', { class: 'list' }, ...snap.conflicts.map((c) => h('div', {}, `· ${c}`)))));
     matrixHost = h('div');
     pad.append(matrixHost);
     pad.append(h('div', { class: 'legend' },

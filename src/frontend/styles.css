@@ -345,3 +345,142 @@ input,select,textarea{font:inherit;color:inherit}
 .ctxmenu .mi .mute{font:11px/1.3 var(--mono);max-width:330px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ctxmenu .mi:hover,.ctxmenu .mi:focus{background:var(--asoft);color:var(--accent);outline:none}
 .ctxmenu .mi-hint{padding:4px 10px 3px;border-top:1px solid var(--line);margin-top:3px;font-size:11px}
+
+/* ───────── 第四部分：界面重新设计 v0.4（ADR 0009）─────────
+ * 目标：层次分明、高效、简洁。只覆盖前三部分（类名不变、视图逻辑不变）：
+ *  1) 三级表面：画布 --canvas（外框/侧栏）< 内容 --bg < 浮层；分隔靠细线和留白，不靠底色堆叠。
+ *  2) 字号阶梯 11 / 12 / 13 / 15：标题 13–15 半粗，正文 12–13，元信息 11 灰。
+ *  3) 密度：控件统一 30–32px，页头 48px，导航 32px，状态栏 26px；卡片取消固定最小高度。
+ *  4) 强调色只留给「当前 / 主操作 / 需要注意」，其余状态用中性色。
+ */
+:root{--canvas:#F7F6F3;--surface:#FFFFFF;--line2:#EFEDE7;--r:8px;--h-ctl:30px;--shadow-pop:0 6px 24px rgba(20,20,19,.10)}
+@media (prefers-color-scheme: dark){:root{--canvas:#1A1918;--surface:#1F1E1D;--line2:#2E2D2B;--shadow-pop:0 6px 24px rgba(0,0,0,.45)}}
+body{font-size:12px;background:var(--canvas)}
+.app{min-height:640px}
+/* 外框：图标栏 + 项目栏 同属画布层 */
+.rail{width:48px;padding:12px 0 10px;background:var(--canvas);gap:4px}
+.rail .ri{width:32px;height:32px;border-radius:var(--r);color:var(--mute)}
+.rail .ri:hover{color:var(--ink);background:var(--chip)}
+.explorer{width:232px;background:var(--canvas)}
+.psel{height:56px;padding:0 14px;gap:10px;border-bottom:1px solid var(--line2)}
+.psel:hover{background:var(--chip)}
+.mono-badge{width:28px;height:28px;border-radius:7px;font-size:11px}
+.pid b{font-size:13px}.pid span{font-size:11px}
+.navloc{display:none}
+.nav{padding:8px 8px 4px}
+.nav a{height:32px;padding:0 10px;gap:10px;font-size:13px;border-radius:var(--r);color:var(--ink2);margin-bottom:2px}
+.nav a svg{width:16px;height:16px}
+.nav a.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.nav a.on svg{color:var(--accent)}
+.exh{padding:14px 18px 6px;font-size:11px;letter-spacing:.02em}
+.tree{padding:0 8px}
+.te{height:24px;padding:0 6px;border-radius:5px;gap:6px}
+.te.kid{padding-left:20px}
+.policy{margin:6px 14px 12px;font-size:11px;line-height:1.5}
+.policy .files{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 工作区：内容层 */
+.ws{background:var(--surface);border-left:1px solid var(--line)}
+.wh{height:48px;padding:0 20px;gap:16px}
+.wh>div:first-child{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.wh .sub{order:-1;margin:0;font-size:15px;font-weight:600;flex:none;padding-right:10px;border-right:1px solid var(--line)}
+.crumb{min-width:0;font-size:12px;gap:6px}
+.crumb b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.crumb>svg{display:none}
+.wact{gap:10px;font-size:11px;flex:none}
+.wact>.chip{display:none}
+.btn{height:var(--h-ctl);padding:0 12px;font-size:12px;font-weight:500;border-radius:var(--r)}
+.btn.pri{font-weight:600}
+.btn.sm{height:26px}
+.chip{height:20px;border-radius:5px;font-size:11px}
+.status{height:26px;padding:0 20px;font-size:11px;background:var(--canvas)}
+.inp{height:var(--h-ctl);width:240px;border-radius:var(--r);padding:0 10px;font-size:12px}
+.ibtn{width:var(--h-ctl);height:var(--h-ctl)}
+/* 泳道看板 */
+.pad{padding:16px 20px 12px}
+.fo .t{font-size:12px}
+.fo .t>:first-child{font-size:13px;font-weight:600}
+.fo .d{font-size:11px;margin-top:4px}
+.prog{height:auto;min-height:38px;margin-top:12px;padding:6px 14px;gap:12px;flex-wrap:wrap;border:1px solid var(--line2);background:var(--canvas)}
+.prog .stg{gap:10px;font-size:11px}
+.cap{height:auto;margin-top:12px;gap:10px;flex-wrap:wrap;font-size:12px}
+.cap .sep{height:14px;margin:0 4px}
+.ctl{height:auto;margin-top:12px;gap:8px}
+.conflicts{margin-top:12px;padding:0;background:transparent;border:1px solid var(--asoft2);border-left:3px solid var(--amber);border-radius:var(--r);font-size:12px;line-height:1.6}
+.conflicts summary{list-style:none;cursor:pointer;padding:7px 12px;display:flex;gap:8px;align-items:center;color:var(--amber)}
+.conflicts summary::-webkit-details-marker{display:none}
+.conflicts summary::after{content:'展开';margin-left:auto;color:var(--mute);font-size:11px}
+.conflicts[open] summary::after{content:'收起'}
+.conflicts .list{max-height:220px;overflow:auto;padding:0 12px 8px;color:var(--ink2);font-size:11px}
+.matrix{margin-top:12px;border-radius:var(--r);background:var(--canvas)}
+.mrow{grid-template-columns:140px repeat(5,minmax(0,1fr))}
+.mh{height:34px;font-size:12px;font-weight:600}
+.mh .n{font-weight:400}
+.lanec{padding:10px 12px}
+.lanec .o{font-weight:600}
+.cell{min-height:72px;padding:6px;gap:6px;background:var(--surface)}
+.cell .empty{font-size:11px}
+.card{min-height:0;padding:8px 10px;border-radius:7px}
+.card:hover{border-color:var(--mute2);box-shadow:none}
+.card .tt{margin:4px 0;font-size:12px;font-weight:500;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card .r1,.card .r3{font-size:11px}
+.card .r4{margin-top:4px}
+.legend{margin-top:10px;font-size:11px;gap:16px}
+/* 任务会话 */
+.slist{width:240px;padding:12px 8px;background:var(--canvas)}
+.slist .hd{padding:0 8px;font-weight:600}
+.slist .inp{width:100%;height:var(--h-ctl);margin:10px 0}
+.slist .feat{padding:0 8px 8px;font-size:11px}
+.si{padding:8px 10px;margin-bottom:4px}
+.si:hover{background:var(--chip)}
+.si.on{background:var(--surface);border-color:var(--line);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.si .b{margin:3px 0 2px;font-weight:500}.si .c{font-size:11px}
+.ctop{height:48px;padding:0 12px}
+.ctop .md,.ctop .md-sel{font-size:14px}
+.circ{width:32px;height:32px;box-shadow:none;border:1px solid var(--line)}
+.circ:hover{background:var(--chip)}
+.thd{padding:4px 20px 10px}
+.thd .r{font-size:11px}
+.thd .r:first-child{font-size:12px;font-weight:600}
+.log{padding:12px 24px}
+.meta{margin:12px 0 6px;font-size:11px}
+.msg{padding-left:28px;font-size:13px}
+.ubub-row{margin:12px 0 6px}
+.ubub{font-size:13px;padding:8px 14px;border-radius:12px}
+.ev{padding:7px 12px;margin:10px 0}
+.verify{padding:10px 12px;margin:10px 0}
+.comp{padding:6px 20px 10px}
+.box{border-radius:10px;padding:10px 14px 8px;box-shadow:none}
+.box:focus-within{border-color:var(--accent2)}
+.box textarea{font-size:13px;height:40px}
+.send{width:28px;height:28px}
+.comp .ft{gap:16px;margin-top:6px;font-size:11px}
+.ctxp{width:300px;padding:14px 16px;background:var(--canvas)}
+.ctxp .h{font-weight:600}
+.ctxp .k{margin-top:12px;font-size:11px}
+.ctxp hr{margin:14px 0 0}
+.ftabs{height:34px;background:var(--canvas)}
+.cvh{height:38px}
+/* Git 分支与集成 */
+.gtop{padding:16px 20px 12px}
+.gx{gap:16px;padding:0 20px 20px}
+.panel{padding:12px 14px;border-radius:var(--r)}
+.panel .h{font-weight:600}
+.panel .h .mute,.panel .h span+span{font-weight:400}
+.sec{margin:18px 0 8px;font-weight:600}
+.sec span+span{font-weight:400}
+.pr{padding:10px 12px;margin-bottom:8px}
+.strip{padding:8px 12px}
+.wts{gap:10px}
+.wt{padding:10px 12px}
+.q{margin-top:10px}
+/* 设置对话框与浮层 */
+.dialog{border-radius:12px;box-shadow:var(--shadow-pop);width:600px}
+.dialog form{padding:18px 20px;gap:10px}
+.field input,.field select{height:var(--h-ctl);font-size:12px}
+.ctxmenu{box-shadow:var(--shadow-pop)}
+.empty-state{margin:56px auto}
+@media (max-width:1499px){
+  .explorer{width:208px}
+  .slist{width:220px}.ctxp{width:264px}
+  .mrow{grid-template-columns:124px repeat(5,minmax(0,1fr))}
+}
