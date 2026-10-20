@@ -8,6 +8,13 @@ export const LANE_COLORS: Readonly<Record<string, string>> = {
   main: '#73726C', dev: '#C6613F', backend: '#6D8170', frontend: '#B47C59', '@shared': '#9B8EAA', contracts: '#6A9BCC', infra: '#4682D5', docs: '#C46686',
 };
 const FALLBACK = '#9B8EAA';
+/** 未知泳道 / 分支的扩展色板：按分支名做确定性字符串哈希取色（不用随机数），保证不同分支颜色可区分。 */
+export const FALLBACK_COLORS: readonly string[] = ['#9B8EAA', '#4E9B8F', '#C49A3F', '#7A9E43', '#B56576', '#4F86C6', '#8D6E63', '#7C6BD9', '#E08A3C', '#3E8E5A'];
+export function fallbackColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + (name.codePointAt(i) ?? 0)) >>> 0;
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length] as string;
+}
 
 export interface GraphRow {
   name: string;
@@ -19,7 +26,7 @@ export interface GraphRow {
   state: 'merged' | 'open';
 }
 
-export interface GraphNode { sha: string; x: number; y: number; r: number; color: string; isMerge: boolean; showSha: boolean; commit: GitCommitNode }
+export interface GraphNode { sha: string; x: number; y: number; r: number; color: string; isMerge: boolean; isHead: boolean; showSha: boolean; commit: GitCommitNode }
 export interface GraphEdge { d: string; color: string; dashed: boolean }
 export interface GraphText { x: number; y: number; text: string; size: number; weight: number; color: string; anchor: 'start' | 'end' | 'middle'; mono?: boolean }
 
@@ -55,7 +62,7 @@ function assignRows(g: GitSnapshot, maxMergedRows: number): Assigned {
   const main = g.mainBranch;
   const rowOf = new Map<string, number>();
   const rows: GraphRow[] = [];
-  const colorFor = (name: string) => (name === main ? (LANE_COLORS.main as string) : name === integ ? (LANE_COLORS.dev as string) : (LANE_COLORS[laneOf(name) ?? ''] ?? FALLBACK));
+  const colorFor = (name: string) => (name === main ? (LANE_COLORS.main as string) : name === integ ? (LANE_COLORS.dev as string) : (LANE_COLORS[laneOf(name) ?? ''] ?? fallbackColor(name)));
 
   const chain = (start: string | undefined): string[] => {
     const out: string[] = [];
@@ -154,7 +161,7 @@ export function layoutGraph(g: GitSnapshot, width: number, maxMergedRows = 10): 
     let showSha = row?.kind !== 'branch' && isMerge && x - lastLabelX >= MIN_LABEL_GAP;
     if (showSha) lastLabelX = x;
     else showSha = false;
-    return { sha: c.sha, x, y: Y(r), r: isMerge ? 5 : 4.5, color: row?.color ?? FALLBACK, isMerge, showSha, commit: c };
+    return { sha: c.sha, x, y: Y(r), r: isMerge ? 5 : 4.5, color: row?.color ?? FALLBACK, isMerge, isHead: c.sha === g.integrationHead, showSha, commit: c };
   });
 
   const integRow = rows.findIndex((x) => x.kind === 'integration');
@@ -170,7 +177,7 @@ export function layoutGraph(g: GitSnapshot, width: number, maxMergedRows = 10): 
 // ── 竖向布局（T-039）：提交自上而下（新 → 旧，同 git log --graph），泳道为列；每个提交占一行，供右侧信息行 1:1 对齐 ──
 
 export interface VGraphRow { sha: string; y: number; lane: number; commit: GitCommitNode; isMerge: boolean }
-export interface VGraphNode { sha: string; x: number; y: number; r: number; color: string; isMerge: boolean; lane: number; commit: GitCommitNode }
+export interface VGraphNode { sha: string; x: number; y: number; r: number; color: string; isMerge: boolean; isHead: boolean; lane: number; commit: GitCommitNode }
 export interface VGraphLayout {
   width: number;
   height: number;
@@ -246,7 +253,7 @@ export function layoutGraphVertical(g: GitSnapshot, maxMergedRows = 10): VGraphL
     const lane = laneOfSha(c.sha);
     const isMerge = c.parents.length > 1;
     rows.push({ sha: c.sha, y: Y(i), lane, commit: c, isMerge });
-    nodes.push({ sha: c.sha, x: X(lane), y: Y(i), r: isMerge ? 4.5 : 3.5, color: lanes[lane]?.color ?? FALLBACK, isMerge, lane, commit: c });
+    nodes.push({ sha: c.sha, x: X(lane), y: Y(i), r: isMerge ? 4.5 : 3.5, color: lanes[lane]?.color ?? FALLBACK, isMerge, isHead: c.sha === g.integrationHead, lane, commit: c });
   }
   return { width: PAD * 2 + (cols - 1) * CW, height: n * RH, rowHeight: RH, lanes, rows, nodes, edges };
 }

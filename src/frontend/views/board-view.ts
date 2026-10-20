@@ -5,6 +5,7 @@ import type { BoardCard, BoardCardStatus, BoardSnapshot } from '../../../contrac
 import { cardLines, COLUMNS, countBy, filterCards, frShort, hm, laneRows, STATUS_META, uniqueAssignees, type BoardFilter } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
+import { LANE_COLORS } from '../lib/git-graph.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
 
@@ -109,10 +110,10 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       const st = lane === '@shared' ? { label: '共享热点 · 受保护', cls: 'amb' } : laneState(all);
       const badge = (text: string, cls = '', title = '') => h('span', { class: `lb${cls ? ` ${cls}` : ''}`, title }, text);
       const row = h('div', { class: `mrow${lc.length ? '' : ' empty'}` }, h('div', { class: 'lanec' },
-        h('div', { class: 'nm', title: st.label }, h('span', { class: `dot st-${st.cls || 'none'}` }), h('span', { class: 't' }, lane)),
-        h('div', { class: 'o' }, lane === '@shared' ? 'coordinator · int/*' : `${meta?.ownerRole ?? ''}${owners.length ? ` · ${owners.join('/')}` : ''}`),
-        globs.length ? h('div', { class: 'g', title: globs.join('\n') }, globs.slice(0, 2).join(' · ') + (globs.length > 2 ? ' …' : '')) : null,
-        h('div', { class: 's' },
+        h('span', { class: 'ltag', title: st.label, attrs: { style: `background:${LANE_COLORS[lane] ?? '#9B8EAA'}` } }, lane),
+        h('span', { class: 'o' }, lane === '@shared' ? 'coordinator · int/*' : `${meta?.ownerRole ?? ''}${owners.length ? ` · ${owners.join('/')}` : ''}`),
+        globs.length ? h('span', { class: 'g', title: globs.join('\n') }, globs.slice(0, 2).join(' · ') + (globs.length > 2 ? ' …' : '')) : null,
+        h('span', { class: 's' },
           lane === '@shared' ? badge('受保护', 'amb', '共享热点，仅 coordinator 修改') : badge(`${all.length} 张`, '', '任务卡总数'),
           act ? badge(`执行中 ${act}`, 'blu') : null,
           blk ? badge(`阻塞 ${blk}`, 'amb') : null,

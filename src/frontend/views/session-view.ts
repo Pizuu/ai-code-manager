@@ -164,7 +164,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     for (const s of items) {
       const del = h('button', { class: 'del', title: '删除会话' }, '✕');
       const isPinned = pinned.has(s.id);
-      const pin = h('button', { class: `pin${isPinned ? ' on' : ''}`, title: isPinned ? '取消置顶' : '置顶', attrs: { type: 'button', 'aria-pressed': String(isPinned) } }, icon('pin', 12));
+      const pin = h('button', { class: `pin${isPinned ? ' on' : ''}`, title: isPinned ? '取消置顶' : '置顶', attrs: { type: 'button', 'aria-pressed': String(isPinned) } }, icon('pin', 14));
       pin.addEventListener('click', (ev) => {
         ev.stopPropagation();
         togglePin(s.id);

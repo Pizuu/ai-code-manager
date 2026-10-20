@@ -166,7 +166,7 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
       }
     });
     right.append(h('div', { class: 'panel cfg' },
-      h('div', { class: 'h' }, h('span', {}, 'Agent'), h('span', { class: 'mute' }, '本机设置')),
+      h('div', { class: 'h' }, h('span', {}, 'Agent')),
       h('div', { class: 'field mt12' }, h('label', {}, '新会话默认 agent'), def, h('div', { class: 'help' }, '每个会话也可在任务会话顶部单独切换。'), err),
       kv('权限模式', st ? MODE_LABELS[st.permissionMode] : '—', '内置 agent'),
       kv('外部 Agent CLI', `${st?.agentClis?.length ?? 0} 个`),

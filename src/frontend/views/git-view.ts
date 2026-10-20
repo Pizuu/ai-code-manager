@@ -42,7 +42,9 @@ function drawGraph(wrap: HTMLElement, g: GitSnapshot, link: GraphLink, onHover: 
   for (const [i, r] of lay.rows.entries()) {
     const n = lay.nodes[i];
     if (!n) continue;
-    const c = svgEl('circle', { class: 'cn', cx: n.x, cy: n.y, r: n.r, fill: n.isMerge ? n.color : 'var(--bg)', stroke: n.color, 'stroke-width': 1.6, 'data-sha': n.sha, ...sendAttrs({ kind: 'commit', sha: n.commit.sha, subject: n.commit.subject }) });
+    // merge 与 HEAD 节点加一层同色外环区分（不拦截指针事件、不带 data-sha，不影响联动 mark 的查询）
+    if (n.isMerge || n.isHead) svg.append(svgEl('circle', { class: 'ring', cx: n.x, cy: n.y, r: n.r + 3, fill: 'none', stroke: n.color, 'stroke-width': 1, 'stroke-opacity': 0.55, 'pointer-events': 'none' }));
+    const c = svgEl('circle', { class: 'cn', cx: n.x, cy: n.y, r: n.r, fill: n.color, 'fill-opacity': n.isMerge || n.isHead ? 1 : 0.82, stroke: n.color, 'stroke-width': 1.6, 'data-sha': n.sha, ...sendAttrs({ kind: 'commit', sha: n.commit.sha, subject: n.commit.subject }) });
     c.addEventListener('mouseenter', () => onHover(n.sha, false));
     c.addEventListener('mouseleave', () => onHover(null, false));
     c.addEventListener('click', () => onPick(n.sha));
