@@ -4,7 +4,7 @@ import { buildBoard, readAgentsConfig } from '../../../../src/backend/workspace/
 import { readGitSnapshot } from '../../../../src/backend/workspace/git-overview.ts';
 import { createGitRunner } from '../../../../src/backend/workspace/git.ts';
 import { tempProject } from '../helpers/temp-project.ts';
-import { laneRepo } from './repo-fixture.ts';
+import { laneDocsRepo, laneRepo } from './repo-fixture.ts';
 
 async function board(root: string) {
   const git = createGitRunner(root);
@@ -42,6 +42,27 @@ test('flags BOARD/task-card "done" that git does not confirm', async (t) => {
   assert.equal(b.cards.find((c) => c.id === 'T-001')?.declaredMismatch, false);
   assert.ok(b.conflicts.some((c) => c.startsWith('T-002') && c.includes('未合入')));
   assert.ok(b.conflicts.some((c) => c.includes('越出泳道')));
+});
+
+test('lane check exempts the card\'s own paperwork (its task card + BOARD.md) only', async (t) => {
+  const { root } = await laneDocsRepo(t);
+  const b = await board(root);
+  const by = Object.fromEntries(b.cards.map((c) => [c.id, c]));
+  const laneConflict = (id: string) => b.conflicts.some((c) => c.startsWith(id) && c.includes('越出泳道'));
+  // (1) 本卡任务卡 + BOARD.md + 本泳道文件：文书被豁免，其余文件在泳道内 → 不报越界
+  assert.equal(by['T-101']?.changedFiles, 3);
+  assert.equal(by['T-101']?.laneOk, true);
+  assert.equal(laneConflict('T-101'), false);
+  // (2) 他卡任务卡文件不在豁免内 → 仍报越界
+  assert.equal(by['T-102']?.laneOk, false);
+  assert.equal(laneConflict('T-102'), true);
+  // (3) 越界代码文件 → 仍报越界
+  assert.equal(by['T-103']?.laneOk, false);
+  assert.equal(laneConflict('T-103'), true);
+  // 剔除文书后无待检文件 → laneOk 为 null、不报
+  assert.equal(by['T-104']?.changedFiles, 2);
+  assert.equal(by['T-104']?.laneOk, null);
+  assert.equal(laneConflict('T-104'), false);
 });
 
 test('projects without lanes.conf get an empty, non-error board', async (t) => {

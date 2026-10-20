@@ -61,3 +61,62 @@ export async function laneRepo(t: { after: (fn: () => Promise<void>) => void }) 
   git('checkout', '-q', 'hark-dev');
   return { root, git };
 }
+
+/**
+ * 文书豁免场景（contracts 泳道，docs/tasks 不属于任何泳道）：
+ * T-101 已合入，分支改了本泳道文件 + 自己任务卡 + BOARD.md（应豁免）；
+ * T-102 分支改了他卡任务卡（仍越界）；T-103 分支改了越界代码（仍越界）；
+ * T-104 分支只改文书（laneOk 应为 null）。
+ */
+export async function laneDocsRepo(t: { after: (fn: () => Promise<void>) => void }) {
+  const boardMd = '| 编号 | 标题 | 泳道 | 前置 | 状态 | 执行者 | PR |\n|---|---|---|---|---|---|---|\n';
+  const root = await tempProject(t, {
+    '.agents/lanes.conf': 'contracts contracts/* specs/*\nbackend src/backend/* tests/*/backend/*\nfrontend src/frontend/*\n@shared package.json AGENTS.md\n',
+    '.agents/config.sh': 'MAIN_BRANCH="main"\nINTEGRATION_BRANCH="hark-dev"\nMAX_PARALLEL=4\nBRANCH_PREFIX="feat"\n',
+    'docs/tasks/T-101.md': card('T-101', 'contracts', 'feat/contracts/T-101-docs', '无', 'ready'),
+    'docs/tasks/T-102.md': card('T-102', 'contracts', 'feat/contracts/T-102-other', '无', 'ready'),
+    'docs/tasks/T-103.md': card('T-103', 'contracts', 'feat/contracts/T-103-oops', '无', 'ready'),
+    'docs/tasks/T-104.md': card('T-104', 'contracts', 'feat/contracts/T-104-docsonly', '无', 'ready'),
+    'docs/tasks/BOARD.md': boardMd,
+    'README.md': '# demo\n',
+  });
+  const git = gitIn(root);
+  git('init', '-q');
+  git('add', '-A');
+  git('commit', '-q', '-m', 'init');
+  git('checkout', '-q', '-b', 'hark-dev');
+  // T-101：合入并删分支；分支内含本泳道文件 + 自己任务卡与 BOARD 的文书更新
+  git('checkout', '-q', '-b', 'feat/contracts/T-101-docs');
+  await writeFiles(root, {
+    'contracts/a.ts': 'export {};\n',
+    'docs/tasks/T-101.md': `${card('T-101', 'contracts', 'feat/contracts/T-101-docs', '无', 'ready')}\n<!-- 分支内文书更新 -->\n`,
+    'docs/tasks/BOARD.md': `${boardMd}<!-- t101 -->\n`,
+  });
+  git('add', '-A');
+  git('commit', '-q', '-m', 't101 work + own docs');
+  git('checkout', '-q', 'hark-dev');
+  git('merge', '--no-ff', '-q', '-m', 'merge: feat/contracts/T-101-docs', 'feat/contracts/T-101-docs');
+  git('branch', '-d', 'feat/contracts/T-101-docs');
+  // T-102：分支存在，改了本泳道文件 + 他卡任务卡（仍应报越界）
+  git('checkout', '-q', '-b', 'feat/contracts/T-102-other');
+  await writeFiles(root, { 'contracts/b.ts': 'export {};\n', 'docs/tasks/T-999.md': '# T-999 他卡\n' });
+  git('add', '-A');
+  git('commit', '-q', '-m', 't102 touches another card');
+  git('checkout', '-q', 'hark-dev');
+  // T-103：分支存在，改了越界代码文件（仍应报越界）
+  git('checkout', '-q', '-b', 'feat/contracts/T-103-oops');
+  await writeFiles(root, { 'src/backend/oops.ts': 'x\n' });
+  git('add', '-A');
+  git('commit', '-q', '-m', 't103 out of lane code');
+  git('checkout', '-q', 'hark-dev');
+  // T-104：分支存在，只改自己任务卡与 BOARD 文书（laneOk 应为 null）
+  git('checkout', '-q', '-b', 'feat/contracts/T-104-docsonly');
+  await writeFiles(root, {
+    'docs/tasks/T-104.md': `${card('T-104', 'contracts', 'feat/contracts/T-104-docsonly', '无', 'ready')}\n<!-- 分支内文书更新 -->\n`,
+    'docs/tasks/BOARD.md': `${boardMd}<!-- t104 -->\n`,
+  });
+  git('add', '-A');
+  git('commit', '-q', '-m', 't104 docs only');
+  git('checkout', '-q', 'hark-dev');
+  return { root, git };
+}

@@ -172,7 +172,12 @@ export async function buildBoard(root: string, git: GitRunner, gitSnap: GitSnaps
     const br = c.branch ? facts.branches.get(c.branch) : undefined;
     const files = changed[ci] ?? [];
     const workerLane = lanesCfg.lanes.some((l) => l.name === lane);
-    const laneOk = files.length && workerLane ? files.every((f) => laneCheck(lanesCfg, f, lane).ok) : null;
+    // 文书豁免（仅看板判定口径，不改 lanes.ts 的通用 laneCheck 语义）：任务分支更新自己任务卡的
+    // 验收勾选与 BOARD.md 中自己那行属文书、非越界改代码，故从待检文件中剔除；豁免仅限这两项——
+    // 他卡的任务卡文件与任何代码文件仍照旧全检。剔除后为空集则 laneOk 保持 null（无可检文件，不报）。
+    const ownDocs = new Set([`docs/tasks/${c.id}.md`, 'docs/tasks/BOARD.md']);
+    const laneFiles = files.filter((f) => !ownDocs.has(f));
+    const laneOk = laneFiles.length && workerLane ? laneFiles.every((f) => laneCheck(lanesCfg, f, lane).ok) : null;
     const declaredMismatch = declared === 'done' && st.status !== 'merged';
     if (declaredMismatch) conflicts.push(`${c.id}：任务卡 / BOARD.md 声明 done，但 git 中未合入 ${cfg.integrationBranch}（按 git 显示为「${st.status}」）`);
     if (row && c.declaredStatus && row.declaredStatus && row.declaredStatus !== c.declaredStatus) conflicts.push(`${c.id}：任务卡状态「${c.declaredStatus}」与 BOARD.md「${row.declaredStatus}」不一致`);
