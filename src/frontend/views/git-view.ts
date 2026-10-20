@@ -13,6 +13,8 @@ import { store } from '../store.ts';
 
 export interface GitHooks {
   openBoard(): void;
+  /** 打开「Worktree 与 Agent」视图（T-040 从本页拆出）。 */
+  openAgents(): void;
   openProject(): void;
   notify(text: string): void;
 }
@@ -67,6 +69,8 @@ function drawGraph(wrap: HTMLElement, g: GitSnapshot, link: GraphLink, onHover: 
 export function mountGit(container: HTMLElement, hooks: GitHooks): void {
   let graphWrap: HTMLElement | null = null;
   let prListEl: HTMLElement | null = null;
+  /** 右栏「按序集成」（T-040：与提交图 / 列表联动）。 */
+  let queueEl: HTMLElement | null = null;
   let keyOf = new Map<string, string>();
   /** 持久选中：'c:<sha>' 或 'b:<分支>'。 */
   let selected = localStorage.getItem(SEL_KEY) ?? '';
@@ -79,7 +83,7 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     box.scrollTo({ top: box.scrollTop + (r.top - b.top) - (box.clientHeight - r.height) / 2, behavior: 'smooth' });
   };
   /** 高亮一组提交与一个分支行；scrollGraph / scrollList 控制把对应元素滚入视野。 */
-  const mark = (shas: ReadonlySet<string>, branch: string | null, scrollGraph: boolean, scrollList: boolean) => {
+  const mark = (shas: ReadonlySet<string>, branch: string | null, scrollGraph: boolean, scrollList: boolean, scrollQueue = scrollList) => {
     if (!graphWrap || !prListEl) return;
     let firstRow: Element | null = null;
     for (const el of graphWrap.querySelectorAll('[data-sha]')) {
@@ -93,8 +97,23 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
       el.classList.toggle('hl', on);
       if (on) prRowEl = el;
     }
+    let qEl: Element | null = null;
+    if (queueEl) {
+      for (const el of queueEl.querySelectorAll('.q[data-branch]')) {
+        const on = branch !== null && el.getAttribute('data-branch') === branch;
+        el.classList.toggle('hl', on);
+        if (on) qEl = el;
+      }
+      queueEl.classList.toggle('has-hl', qEl !== null);
+      const hint = queueEl.querySelector<HTMLElement>('.qhint');
+      if (hint) {
+        hint.hidden = branch === null || qEl !== null;
+        hint.textContent = branch ? `${branch} 无对应任务卡，不在集成队列中` : '';
+      }
+    }
     if (scrollGraph && firstRow) scrollWithin(graphWrap, firstRow);
     if (scrollList && prRowEl) scrollWithin(prListEl, prRowEl);
+    if (scrollQueue && qEl && queueEl) scrollWithin(queueEl, qEl);
   };
   const shasOf = (branch: string) => new Set([...keyOf].filter(([, k]) => k === branch).map(([s]) => s));
   const apply = (sel: string, scroll: boolean) => {
@@ -111,8 +130,9 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     if (sha) mark(new Set([sha]), keyOf.get(sha) ?? null, scrollGraph, true);
     else apply(selected, false);
   };
-  const hoverBranch = (branch: string | null) => {
-    if (branch) mark(shasOf(branch), branch, true, false);
+  /** 悬停分支行（列表或右栏）：高亮提交图并滚入视野；fromQueue 时同时把列表行滚入视野，反之滚右栏。 */
+  const hoverBranch = (branch: string | null, fromQueue = false) => {
+    if (branch) mark(shasOf(branch), branch, true, fromQueue, !fromQueue);
     else apply(selected, false);
   };
   const redraw = () => {
@@ -121,23 +141,28 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     drawGraph(graphWrap, g, { keyOf }, hoverCommit, (sha) => select(`c:${sha}`));
     apply(selected, true);
   };
+  const LINKED = '.pr[data-branch], .q[data-branch]';
   container.addEventListener('mouseover', (ev) => {
-    const pr = (ev.target as Element).closest?.('.pr[data-branch]');
-    if (pr && !pr.contains(ev.relatedTarget as Node)) hoverBranch(pr.getAttribute('data-branch'));
+    const pr = (ev.target as Element).closest?.(LINKED);
+    if (pr && !pr.contains(ev.relatedTarget as Node)) hoverBranch(pr.getAttribute('data-branch'), pr.classList.contains('q'));
   });
   container.addEventListener('mouseout', (ev) => {
-    const pr = (ev.target as Element).closest?.('.pr[data-branch]');
+    const pr = (ev.target as Element).closest?.(LINKED);
     if (pr && !pr.contains(ev.relatedTarget as Node)) hoverBranch(null);
   });
   container.addEventListener('click', (ev) => {
-    const pr = (ev.target as Element).closest?.('.pr[data-branch]');
-    if (pr) select(`b:${pr.getAttribute('data-branch') ?? ''}`);
+    const pr = (ev.target as Element).closest?.(LINKED);
+    if (pr) {
+      ev.preventDefault(); // .q 是 label：不切换其中禁用的勾选框
+      select(`b:${pr.getAttribute('data-branch') ?? ''}`);
+    }
   });
 
   const render = () => {
     clear(container);
     graphWrap = null;
     prListEl = null;
+    queueEl = null;
     const g = store.state.git;
     const b = store.state.board;
     if (!store.state.project) {
@@ -154,7 +179,6 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     }
     const cards: BoardCard[] = b?.available ? b.cards : [];
     const integ = g.integrationBranch;
-    const F = b?.feature;
     const cardFor = (branch: string | null) => (branch ? cards.find((c) => c.branch === branch) : undefined);
     const openBranches = g.branches.filter((x) => x.kind !== 'main' && x.kind !== 'integration' && !x.mergedIntoIntegration);
     const mergedList = g.merges.slice().reverse();
@@ -164,12 +188,14 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
       h('div', {}, h('div', { class: 'fs12' }, '分支拓扑与集成队列')),
       h('div', { class: 'fx8' },
         h('button', { class: 'btn', on: { click: () => void navigator.clipboard.writeText(JSON.stringify({ git: g, board: b }, null, 1)).then(() => hooks.notify('已复制快照 JSON 到剪贴板。'), () => hooks.notify('复制失败。')) } }, '复制快照 JSON'),
+        h('button', { class: 'btn', on: { click: hooks.openAgents } }, 'Worktree 与 Agent'),
         h('button', { class: 'btn', on: { click: hooks.openBoard } }, '看板'))));
 
-    const left = h('div');
+    // T-040：整页固定高度，左栏提交图与列表、右栏按序集成各自滚动
+    const left = h('div', { class: 'gcol' });
     // 分支图：竖向（新 → 旧），固定高度可滚动，与下方分支列表联动
     graphWrap = h('div', { attrs: { id: 'graph' } });
-    left.append(h('div', { class: 'panel w' },
+    left.append(h('div', { class: 'panel w gpanel' },
       h('div', { class: 'h' }, h('span', { class: 'mute' }, `提交自上而下（topo 顺序，最近 ${g.commits.length} 个）· 悬停 / 点击与下方列表联动`)),
       graphWrap));
 
@@ -193,40 +219,12 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     for (const m of mergedList) prList.append(prRow({ branch: m.branch ?? m.subject, task: /(T-\d+)/.exec(m.branch ?? '')?.[1] ?? null, subject: m.subject, state: 'merged', ahead: 0, behind: 0, short: m.tip, time: m.time, mergeShort: m.short, worktree: null, commitCount: m.commitCount }));
     left.append(prList);
 
-    // worktree
-    left.append(h('div', { class: 'sec' }, h('span', {}, 'Worktree 与 Agent'), h('span', { class: 'mute' }, '单泳道 · 单任务 · 单分支 · 单 PR')));
-    const merged = cards.filter((c) => c.status === 'merged').length;
-    const allM = cards.length > 0 && merged === cards.length;
-    const tasksAll = F ? F.tasksDone === F.tasksTotal && F.tasksTotal > 0 : false;
-    const publish = h('div', { class: 'panel w pub' },
-      h('div', { class: 'h start' }, icon('lock'), h('span', {}, '发布到 main'), h('span', { class: 'chip' }, 'Owner')),
-      h('div', { class: 'mute mt12' }, `${integ} → main · 仅 Owner（人类）可批准`, h('br'), `${merged} / ${cards.length} 张任务卡已合入，${integ} 领先 main ${g.integrationAheadOfMain} 个提交`),
-      h('div', { class: 'gate' },
-        `${allM ? '✓' : '○'} 所有任务卡合入 ${integ}（${merged}/${cards.length}）`, h('br'),
-        '○ CI / lane-guard 运行记录（暂无：本地无远端）', h('br'),
-        `${tasksAll ? '✓' : '○'} tasks.md 全部勾选（${F?.tasksDone ?? 0}/${F?.tasksTotal ?? 0}）`, h('br'),
-        '○ Converge 无新增缺口（暂无记录）'),
-      h('div', { class: 'fx8 mt16' }, h('button', { class: 'btn', attrs: { disabled: '' } }, '合入 main'), h('span', { class: 'chip amb' }, '门禁未满足')),
-      h('div', { class: 'mute mt14' }, '满足门禁后，由 Owner 人类批准合入并发布；Agent 无权推进 main。'));
-    left.append(publish);
-    const wts = h('div', { class: 'wts' });
-    for (const w of g.worktrees) {
-      const c = cardFor(w.branch);
-      wts.append(h('div', { class: 'wt' }, h('span', { class: 'mute' }, icon('wt')), h('div', { class: 'grow0' },
-        h('div', { class: 'between' }, h('span', {}, c ? `${c.assignee} · ${c.lane}` : w.isMain ? '主工作区' : 'worktree'), h('span', { class: 'acc' }, c?.id ?? '')),
-        h('div', { class: 'mono' }, `${w.path}\u3000[${w.branch ?? 'detached'}]`),
-        h('div', { class: 'ink2' }, `${w.head} · ${w.dirtyCount ? `${w.dirtyCount} 个未提交文件` : '工作区干净'}`))));
-    }
-    for (let i = g.worktrees.length; i < 3; i++) {
-      wts.append(h('div', { class: 'wt dash' }, h('span', { class: 'mute' }, icon('wt')), h('div', { class: 'mute' }, '暂无其它 worktree', h('div', { class: 'mono fs10' }, 'scripts/agent-worktree.sh new <泳道> <任务>'))));
-    }
-    left.append(wts);
-
-    // ── 右栏：按序集成 + 发布 ──
+    // ── 右栏：按序集成（「发布到 main」随 Worktree 小节移到「Worktree 与 Agent」视图，T-040）──
     const laneOrder = [...new Set(cards.map((c) => c.lane))];
-    const right = h('div');
-    const queue = h('div', { class: 'panel' },
-      h('div', { class: 'h' }, h('span', {}, '按序集成'), h('span', { class: 'mute' }, 'coordinator 管理')),
+    const right = h('div', { class: 'gcol' });
+    const queue = h('div', { class: 'panel gq' },
+      h('div', { class: 'h' }, h('span', {}, '按序集成'), h('span', { class: 'mute' }, 'coordinator 管理 · 与提交图联动')),
+      h('div', { class: 'qhint mono', attrs: { hidden: '' } }),
       h('div', { class: 'mute mt12' }, laneOrder.length ? laneOrder.join(' → ') : '未读取到任务卡', h('br'), `按 BOARD.md 依赖顺序 --no-ff 合入 ${integ}`));
     for (const c of cards) {
       const sub = c.status === 'merged' ? `merge ${c.merge?.short ?? ''} 已合入 ${integ}${c.merge ? ` · ${ymdhm(c.merge.time).slice(11)}` : ''}`
@@ -234,7 +232,10 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
           : c.status === 'ready' ? '前置已合入 · 尚未开分支' : `等待 ${c.unmetDeps.join('、')} 合入`;
       const box = h('input', { attrs: { type: 'checkbox', disabled: '' } });
       box.checked = c.status === 'merged';
-      queue.append(h('label', { class: 'q', attrs: sendAttrs({ kind: 'card', id: c.id, title: c.title, lane: c.lane, status: STATUS_META[c.status].label }) }, box, h('div', {}, h('div', {}, `${c.title} / ${c.id}`), h('div', { class: 's' }, sub))));
+      // 有分支的任务卡带 data-branch（与列表 / 提交图同一分支键），可悬停 / 点击联动
+      const linked: Record<string, string> = c.branch ? { 'data-branch': c.branch } : {};
+      queue.append(h('label', { class: `q${c.branch ? ' linked' : ''}`, title: c.branch ? `${c.branch}\n悬停 / 点击：在提交图与列表中定位` : '尚无分支', attrs: { ...linked, ...sendAttrs({ kind: 'card', id: c.id, title: c.title, lane: c.lane, status: STATUS_META[c.status].label }) } }, box,
+        h('div', { class: 'grow0' }, h('div', {}, `${c.title} / ${c.id}`), h('div', { class: 's' }, sub), c.branch ? h('div', { class: 's mono br' }, c.branch) : null)));
     }
     const viol = cards.filter((c) => c.laneOk === false);
     queue.append(h('div', { class: `note${viol.length ? '' : ' grn'}` }, ...(viol.length
@@ -251,6 +252,7 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     for (const lane of layoutGraphVertical(g).lanes) if (lane.kind === 'branch') for (const sha of lane.own) keyOf.set(sha, lane.name);
     for (const m of g.merges) keyOf.set(m.sha, m.branch ?? m.subject);
     prListEl = prList;
+    queueEl = queue;
     requestAnimationFrame(redraw);
   };
 
