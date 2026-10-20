@@ -44,8 +44,10 @@ function taskLabel(name: string): string {
   return /(T-\d+)/.exec(name)?.[1] ?? name.replace(/^[^/]+\/(?:[^/]+\/)?/, '');
 }
 
-export function layoutGraph(g: GitSnapshot, width: number, maxMergedRows = 10): GraphLayout {
-  const W = Math.max(600, width);
+interface Assigned { commits: GitCommitNode[]; idx: Map<string, number>; rows: GraphRow[]; rowOf: Map<string, number> }
+
+/** 把提交分配到行（泳道）：main、集成分支、仍存在的任务分支与（由合并提交第二父还原的）已合入分支。 */
+function assignRows(g: GitSnapshot, maxMergedRows: number): Assigned {
   const commits = g.commits.slice().reverse(); // 旧 → 新
   const idx = new Map<string, number>();
   commits.forEach((c, i) => idx.set(c.sha, i));
@@ -91,6 +93,13 @@ export function layoutGraph(g: GitSnapshot, width: number, maxMergedRows = 10): 
   }
   for (const c of commits) if (!rowOf.has(c.sha)) rowOf.set(c.sha, Math.min(1, rows.length - 1));
 
+  return { commits, idx, rows, rowOf };
+}
+
+export function layoutGraph(g: GitSnapshot, width: number, maxMergedRows = 10): GraphLayout {
+  const W = Math.max(600, width);
+  const { commits, idx, rows, rowOf } = assignRows(g, maxMergedRows);
+  const integ = g.integrationBranch;
   const { L, R, T, RH } = GEOM;
   const n = commits.length;
   const stepX = (W - L - R) / Math.max(1, n);
@@ -156,4 +165,88 @@ export function layoutGraph(g: GitSnapshot, width: number, maxMergedRows = 10): 
     texts.push({ x: W - R, y: Y(mainRow) - 10, text: `main ${g.mainHead ?? ''} · ${integ} 领先 ${g.integrationAheadOfMain} 提交 · ${rel}${g.tags.length ? ` · tags ${g.tags.join(',')}` : ' · 无 tag'}`, size: 11, weight: 400, color: '#73726C', anchor: 'end' });
   }
   return { width: W, height, rows, nodes, edges, texts };
+}
+
+// ── 竖向布局（T-039）：提交自上而下（新 → 旧，同 git log --graph），泳道为列；每个提交占一行，供右侧信息行 1:1 对齐 ──
+
+export interface VGraphRow { sha: string; y: number; lane: number; commit: GitCommitNode; isMerge: boolean }
+export interface VGraphNode { sha: string; x: number; y: number; r: number; color: string; isMerge: boolean; lane: number; commit: GitCommitNode }
+export interface VGraphLayout {
+  width: number;
+  height: number;
+  /** 行高（px）：信息行必须使用相同高度才能与节点对齐。 */
+  rowHeight: number;
+  lanes: GraphRow[];
+  /** 每个提交一行，顺序 = 显示顺序（新 → 旧）。 */
+  rows: VGraphRow[];
+  nodes: VGraphNode[];
+  edges: GraphEdge[];
+}
+
+export const VGEOM = { PAD: 10, CW: 14, RH: 28 } as const;
+
+export function layoutGraphVertical(g: GitSnapshot, maxMergedRows = 10): VGraphLayout {
+  const { commits, idx, rows: lanes, rowOf } = assignRows(g, maxMergedRows);
+  const n = commits.length;
+  const { PAD, CW, RH } = VGEOM;
+  // 列分配：main / 集成分支固定前两列，任务分支按跨度（分出点 → 合入点）贪心复用不重叠的列
+  const childOf = new Map<string, number>(); // 被作为父提交的 sha → 最早引用它的子提交 idx
+  commits.forEach((c, i) => c.parents.forEach((p) => { if (!childOf.has(p)) childOf.set(p, i); }));
+  const col = new Array<number>(lanes.length).fill(0);
+  const colEnd: number[] = [];
+  lanes.forEach((lane, r) => {
+    if (lane.kind !== 'branch') {
+      col[r] = colEnd.length;
+      colEnd.push(Infinity);
+      return;
+    }
+    const ids = lane.own.map((s) => idx.get(s) as number);
+    const oldest = lane.own[0];
+    const forkP = oldest ? commits[idx.get(oldest) as number]?.parents[0] : undefined;
+    const start = forkP && idx.has(forkP) ? (idx.get(forkP) as number) : Math.min(...ids);
+    const head = lane.own[lane.own.length - 1];
+    const end = head && childOf.has(head) ? (childOf.get(head) as number) : Math.max(...ids, n);
+    let c = colEnd.findIndex((e, k) => k >= 2 && e < start);
+    if (c === -1) {
+      c = colEnd.length;
+      colEnd.push(end);
+    } else colEnd[c] = end;
+    col[r] = c;
+  });
+  const cols = Math.max(1, colEnd.length);
+  const X = (lane: number) => PAD + (col[lane] ?? 0) * CW;
+  const Y = (i: number) => (n - 1 - i) * RH + RH / 2; // i = 旧 → 新序号；最新在最上
+  const laneOfSha = (sha: string) => rowOf.get(sha) as number;
+  const edges: GraphEdge[] = [];
+  for (let i = 0; i < n; i++) {
+    const c = commits[i] as GitCommitNode;
+    const lc = laneOfSha(c.sha);
+    const x2 = X(lc);
+    const y2 = Y(i);
+    c.parents.forEach((p, pi) => {
+      if (!idx.has(p)) return;
+      const lp = laneOfSha(p);
+      const x1 = X(lp);
+      const y1 = Y(idx.get(p) as number);
+      const color = lanes[lanes[lc]?.kind === 'branch' ? lc : lp]?.color ?? FALLBACK;
+      if (x1 === x2) edges.push({ d: `M${x2} ${y2} L${x1} ${y1}`, color, dashed: false });
+      else if (pi > 0) {
+        // 合入：在合并提交下方立即拐入分支列，再竖直向下到第二父提交
+        edges.push({ d: `M${x2} ${y2} C${x2} ${y2 + RH * 0.6} ${x1} ${y2 + RH * 0.4} ${x1} ${y2 + RH} L${x1} ${y1}`, color, dashed: false });
+      } else {
+        // 分出：沿本列竖直向下，在父提交上方拐入父列
+        edges.push({ d: `M${x2} ${y2} L${x2} ${y1 - RH} C${x2} ${y1 - RH * 0.4} ${x1} ${y1 - RH * 0.6} ${x1} ${y1}`, color, dashed: false });
+      }
+    });
+  }
+  const rows: VGraphRow[] = [];
+  const nodes: VGraphNode[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const c = commits[i] as GitCommitNode;
+    const lane = laneOfSha(c.sha);
+    const isMerge = c.parents.length > 1;
+    rows.push({ sha: c.sha, y: Y(i), lane, commit: c, isMerge });
+    nodes.push({ sha: c.sha, x: X(lane), y: Y(i), r: isMerge ? 4.5 : 3.5, color: lanes[lane]?.color ?? FALLBACK, isMerge, lane, commit: c });
+  }
+  return { width: PAD * 2 + (cols - 1) * CW, height: n * RH, rowHeight: RH, lanes, rows, nodes, edges };
 }

@@ -2,7 +2,7 @@
  * 任务会话板块（FR-109、FR-111，ADR 0005）：原型 renderSession() 的三列 .sx——
  * 左列 .slist = 本机会话列表；中列 section.chat = 对话（chat.ts）；右列 .ctxp = 会话 / 任务上下文。
  * 会话标题含任务号（如 T-015）且看板中有该卡时，右列显示原型的「任务上下文」，否则显示「会话上下文」。
- * 003：中列 = 对话 + 文件窗格并列（T-037）；文件窗格含已打开只读文件的标签条（code-view.ts），未打开文件时隐藏。
+ * 003：中列 = 对话 + 文件窗格并列（T-037）；文件窗格含已打开文件的标签条（code-view.ts，T-039 起可编辑，未保存显示圆点），未打开文件时隐藏。
  * 会话置顶只是本机界面偏好，存 localStorage（不经 IPC）。
  */
 import type { BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
@@ -70,10 +70,9 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     localStorage.setItem(PINNED_KEY, JSON.stringify([...pinned]));
     renderList();
   };
-  const feat = h('div', { class: 'mute feat' });
   const list = h('div');
   const slist = h('div', { class: 'slist' },
-    h('div', { class: 'hd' }, h('span', {}, '项目会话'), count), search, feat, list);
+    h('div', { class: 'hd' }, h('span', {}, '项目会话'), count), search, list);
 
   const chatCol = h('section', { class: 'chat' });
   const codePane = h('section', { class: 'codev' });
@@ -90,7 +89,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const ctxp = h('aside', { class: 'ctxp' });
   const sx = h('div', { class: 'sx' }, slist, mid, ctxp);
   container.append(sx);
-  const code = mountCodeView(codePane, { sendFile: hooks.sendFile });
+  const code = mountCodeView(codePane, { sendFile: hooks.sendFile, onDirty: () => renderTabs() });
 
   // ── 文件窗格标签页（与对话并列）──
   const files: string[] = [];
@@ -98,14 +97,14 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const renderTabs = () => {
     filePane.hidden = files.length === 0;
     sx.classList.toggle('has-file', files.length > 0);
-    const tab = (label: string, on: boolean, onClick: () => void, title: string, onClose?: () => void) => {
-      const el = h('div', { class: `ft${on ? ' on' : ''}`, title, attrs: { role: 'tab' }, on: { click: onClick } }, h('span', { class: 'nm' }, label));
+    const tab = (label: string, on: boolean, onClick: () => void, title: string, onClose?: () => void, dirty = false) => {
+      const el = h('div', { class: `ft${on ? ' on' : ''}`, title, attrs: { role: 'tab' }, on: { click: onClick } }, h('span', { class: 'nm' }, label), dirty ? h('span', { class: 'dirty', title: '未保存' }) : null);
       if (onClose) el.append(h('button', { class: 'x', title: '关闭', attrs: { type: 'button' }, on: { click: (ev) => { ev.stopPropagation(); onClose(); } } }, '✕'));
       return el;
     };
     ftabs.replaceChildren(
       ...files.map((f) => {
-        const el = tab(f.split('/').pop() ?? f, active === f, () => setActive(f), f, () => closeFile(f));
+        const el = tab(f.split('/').pop() ?? f, active === f, () => setActive(f), code.isDirty(f) ? `${f}（未保存）` : f, () => closeFile(f), code.isDirty(f));
         for (const [k, v] of Object.entries(sendAttrs({ kind: 'file', path: f, dir: false }))) el.setAttribute(k, v);
         return el;
       }));
@@ -120,7 +119,11 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const openFile = (f: string) => {
     if (!files.includes(f)) {
       files.push(f);
-      if (files.length > MAX_FILE_TABS) files.shift();
+      if (files.length > MAX_FILE_TABS) {
+        // 超出上限时关闭最早打开且无未保存修改的标签
+        const k = files.findIndex((x) => !code.isDirty(x));
+        if (k !== -1 && k < files.length - 1) code.discard(files.splice(k, 1)[0] as string);
+      }
       active = null; // 强制重新读取
     }
     setActive(f);
@@ -128,6 +131,8 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const closeFile = (f: string) => {
     const i = files.indexOf(f);
     if (i === -1) return;
+    if (code.isDirty(f) && !confirm(`「${f.split('/').pop() ?? f}」有未保存的修改，关闭后将丢失。确定关闭？`)) return;
+    code.discard(f);
     files.splice(i, 1);
     if (active === f) setActive(files[i] ?? files[i - 1] ?? null);
     else renderTabs();
@@ -154,7 +159,6 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     // 置顶的排在前面，其余保持原顺序（sort 稳定）
     items.sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
     count.textContent = String(store.state.sessions.length);
-    feat.textContent = store.state.board?.feature ? `当前 Feature · ${store.state.board.feature.id}` : store.state.project ? `项目 · ${store.state.project.name}` : '未打开项目';
     clear(list);
     if (!items.length) list.append(h('div', { class: 'mute pad8' }, q ? '无匹配会话' : '暂无会话'));
     for (const s of items) {

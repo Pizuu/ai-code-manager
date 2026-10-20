@@ -653,3 +653,37 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .fpane .ftabs .ft .x{display:grid;place-items:center;width:18px;height:18px;padding:0;border-radius:var(--border-radius-xs);color:var(--color-text-tertiary);visibility:hidden}
 .fpane .ftabs .ft:hover .x,.fpane .ftabs .ft.on .x{visibility:visible}
 .fpane .ftabs .ft .x:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+/* ── T-039：Git 视图竖向提交图与分支列表联动、导航、文件编辑 ── */
+/* 竖向提交图：固定高度、可滚动；左侧 svg 泳道，右侧信息行与节点 1:1 对齐（同一滚动容器） */
+#graph{height:320px;overflow:auto;margin-top:8px;border-top:var(--border-width-regular) solid var(--color-border-tertiary);overscroll-behavior:contain}
+#graph .gg{position:relative}
+#graph .gg>svg{position:absolute;left:0;top:0;pointer-events:none}
+#graph .gg>svg .cn{pointer-events:auto;cursor:pointer}
+#graph .gg>svg .cn.hl{stroke-width:3;filter:drop-shadow(0 0 2px var(--color-border-primary))}
+#graph .gl{position:relative}
+.gr{display:flex;align-items:center;gap:8px;padding-right:8px;font-size:var(--font-caption);color:var(--color-text-secondary);white-space:nowrap;cursor:pointer;border-radius:var(--border-radius-sm)}
+.gr:hover{background:var(--color-background-secondary)}
+.gr.hl{background:var(--color-background-info);color:var(--color-text-primary);box-shadow:inset 2px 0 0 var(--color-border-info)}
+.gr .sha{flex:none;color:var(--color-text-tertiary);width:56px}
+.gr .ln{flex:none;height:18px;line-height:18px;padding:0 6px;border-radius:var(--border-radius-xs);background:var(--color-background-secondary);color:var(--lane,var(--color-text-secondary));font-weight:var(--font-weight-semibold)}
+.gr .ref{flex:none;height:18px;line-height:18px;padding:0 6px;border-radius:var(--border-radius-xs);border:var(--border-width-regular) solid var(--color-border-secondary);color:var(--color-text-secondary);max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.gr .sj{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--color-text-primary)}
+.gr .tm{flex:none;color:var(--color-text-tertiary)}
+/* 分支 / PR 列表：固定高度、可滚动，联动高亮 */
+.prl{height:360px;overflow:auto;padding:2px 4px 2px 0;overscroll-behavior:contain}
+.prl .pr{cursor:pointer;transition:background .12s,border-color .12s}
+.prl .pr:hover{background:var(--color-background-secondary)}
+.prl .pr.hl{background:var(--color-background-info);border-color:var(--color-border-info)}
+.panel.pub{margin-bottom:12px}
+/* 状态栏：Git 视图时右侧显示集成摘要 */
+.status .st-r{margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;padding-left:16px}
+/* 页头：项目名加大 */
+.crumb>span:first-of-type{font-size:var(--font-heading-md);font-weight:var(--font-weight-semibold);color:var(--color-text-primary)}
+/* 图标栏：当前板块 */
+.rail .ri.on{color:var(--accent);background:var(--color-background-secondary)}
+/* 文件编辑：编辑区 + 未保存圆点 */
+.cvb.edit{padding:0;display:flex}
+.cv-ed{flex:1;min-height:100%;border:0;outline:0;resize:none;margin:0;padding:8px 16px;font:12px/1.6 var(--mono);background:var(--color-background-primary);color:var(--color-text-primary);white-space:pre;overflow:auto;tab-size:2}
+.cv-ed:focus-visible{outline:0;box-shadow:inset 0 0 0 1px var(--color-border-info)}
+.fpane .ftabs .ft .dirty{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.cvh .chip.edit{background:var(--color-background-warning);color:var(--color-text-warning)}
