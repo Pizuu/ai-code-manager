@@ -5,6 +5,7 @@
 import type { FileNode } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { ymdhm } from '../lib/board-format.ts';
+import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
 import { store, type ViewId } from '../store.ts';
@@ -17,6 +18,7 @@ const EXPAND: ReadonlySet<string> = new Set(['.agents', '.specify', 'src', 'spec
 export interface ShellHooks {
   onNewSession(): void;
   onOpenSettings(): void;
+  /** 单击文件：在任务会话中列打开只读代码标签（003）。 */
   onFileClick(relPath: string): void;
   onError(text: string): void;
 }
@@ -128,13 +130,26 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     renderProject();
   };
 
-  const fileNodeEl = (n: FileNode, kid: boolean, label?: string) => {
-    const auth = !kid && n.name === 'contracts';
+  const nodeAttrs = (n: FileNode) => sendAttrs({ kind: 'file', path: n.relPath, dir: n.kind === 'dir' });
+  const fileNodeEl = (n: FileNode) => {
+    const auth = n.name === 'contracts';
     const tag = auth && store.state.board?.contractVersion ? h('span', { class: 'tag' }, ` ↗ 契约 ${store.state.board.contractVersion}`) : null;
-    const el = h('div', { class: `te${kid ? ' kid' : ''}${auth ? ' auth' : ''}${n.kind === 'file' ? ' click' : ''}`, title: n.relPath },
-      icon(n.kind === 'dir' ? 'dir' : 'file', 14), h('span', { class: 'nm' }, label ?? `${n.name}${n.kind === 'dir' ? '/' : ''}`), tag);
+    const el = h('div', { class: `te${auth ? ' auth' : ''}${n.kind === 'file' ? ' click' : ''}`, title: n.relPath, attrs: nodeAttrs(n) },
+      icon(n.kind === 'dir' ? 'dir' : 'file', 14), h('span', { class: 'nm' }, `${n.name}${n.kind === 'dir' ? '/' : ''}`), tag);
     if (n.kind === 'file') el.addEventListener('click', () => hooks.onFileClick(n.relPath));
     return el;
+  };
+  /** 原型：子项两两一行，以「 · 」连接；003 起每个名字单独可点击 / 右键。 */
+  const kidRowEl = (pair: FileNode[]) => {
+    const first = pair[0] as FileNode;
+    const nm = h('span', { class: 'nm' });
+    pair.forEach((k, i) => {
+      if (i) nm.append(' · ');
+      const part = h('span', { class: `part${k.kind === 'file' ? ' click' : ''}`, title: k.relPath, attrs: nodeAttrs(k) }, `${k.name}${k.kind === 'dir' ? '/' : ''}`);
+      if (k.kind === 'file') part.addEventListener('click', () => hooks.onFileClick(k.relPath));
+      nm.append(part);
+    });
+    return h('div', { class: 'te kid' }, icon(first.kind === 'dir' ? 'dir' : 'file', 14), nm);
   };
 
   let treeToken = 0;
@@ -150,15 +165,10 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       const top = (await api.invoke('fs:tree', '')).sort(byName);
       const rows: HTMLElement[] = [];
       for (const n of top) {
-        rows.push(fileNodeEl(n, false));
+        rows.push(fileNodeEl(n));
         if (n.kind === 'dir' && EXPAND.has(n.name)) {
           const kids = (await api.invoke('fs:tree', n.relPath)).sort(byName);
-          // 原型：子项两两一行，以「 · 」连接
-          for (let i = 0; i < kids.length; i += 2) {
-            const pair = kids.slice(i, i + 2);
-            const first = pair[0] as FileNode;
-            rows.push(fileNodeEl(first, true, pair.map((k) => `${k.name}${k.kind === 'dir' ? '/' : ''}`).join(' · ')));
-          }
+          for (let i = 0; i < kids.length; i += 2) rows.push(kidRowEl(kids.slice(i, i + 2)));
         }
       }
       if (token === treeToken) tree.replaceChildren(...rows);

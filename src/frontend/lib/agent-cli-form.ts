@@ -4,16 +4,26 @@
  */
 import type { AgentCliConfig, AgentCliInput, AgentCliOutputFormat, AgentCliPreset } from '../../../contracts/ipc.ts';
 
+/** 003：opencode 预设只给类型（preset / 输出格式）与名称，字段值为空，由用户填写。 */
 export const OPENCODE_FORM_PRESET: Readonly<AgentCliForm> = Object.freeze({
   name: 'opencode',
   preset: 'opencode',
+  command: '',
+  args: '',
+  resumeArgs: '',
+  modelArgs: '',
+  model: '',
+  outputFormat: 'opencode-json',
+  env: [],
+});
+
+/** opencode 官方文档的示例写法：用作 placeholder，用户点「按示例填写」时才填入（不是默认值）。 */
+export const OPENCODE_FORM_EXAMPLE: Readonly<Pick<AgentCliForm, 'command' | 'args' | 'resumeArgs' | 'modelArgs' | 'model'>> = Object.freeze({
   command: 'opencode',
   args: 'run\n--format\njson\n--dir\n{cwd}',
   resumeArgs: '--session\n{session}',
   modelArgs: '--model\n{model}',
-  model: '',
-  outputFormat: 'opencode-json',
-  env: [],
+  model: '<provider>/<model>',
 });
 
 export interface EnvRow {

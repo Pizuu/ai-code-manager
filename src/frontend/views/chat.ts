@@ -4,7 +4,9 @@
  */
 import type { BoardCard, ChatMessage, PermissionMode } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
+import { agentSetupHint } from '../lib/agent-config.ts';
 import { agentName, agentOptions, isCli } from '../lib/agent-label.ts';
+import { insertBlock } from '../lib/context-send.ts';
 import { hm } from '../lib/board-format.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { icon } from '../lib/icons.ts';
@@ -27,6 +29,8 @@ export interface ChatView {
   renderAll(): void;
   appendDelta(messageId: string): void;
   insertText(text: string): void;
+  /** 003：在光标处插入一段带来源标注的内容（前后补换行），不发送。 */
+  insertBlock(text: string): void;
   notify(text: string, kind?: 'notice' | 'info'): void;
 }
 
@@ -146,7 +150,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     ctxText.textContent = `上下文：${card ? `${card.id} · ` : ''}${store.state.project ? `${store.state.project.name} · AGENTS.md` : '无项目'}`;
     textarea.placeholder = `回复 ${agentName(agent, st)}…（Enter 发送，Shift+Enter 换行，/ 查看命令）`;
     if (st) modeSel.value = st.permissionMode;
-    hint.textContent = cli ? '外部 CLI：每次询问 = 每轮批准命令行；仅规划 = 禁止编辑与命令' : !st?.hasApiKey[st.provider] ? '尚未配置 API Key：点左侧齿轮「设置」' : '写入与命令执行前会请求批准';
+    hint.textContent = cli ? '外部 CLI：每次询问 = 每轮批准命令行；仅规划 = 禁止编辑与命令' : agentSetupHint(agent, st) ? '请先在设置中配置 agent（左侧齿轮「设置」）' : '写入与命令执行前会请求批准';
   };
 
   const renderAll = () => {
@@ -159,6 +163,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (!s || (visible.length === 0 && store.state.notices.length === 0)) {
       log.append(h('div', { class: 'meta center' }, '— 开始一个任务 —'),
         h('div', { class: 'ev' }, icon('route'), h('span', {}, '例如：「解释这个项目的结构」「给 README 加上安装说明」「运行测试并修复失败」。输入 / 查看 /init、/specify、/plan、/tasks、/implement 等命令；顶部可切换内置 agent 或外部 CLI（如 opencode）。')));
+      const setup = agentSetupHint(s?.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
+      if (setup) log.append(h('div', { class: 'notice setup' }, setup));
     }
     for (const n of store.state.notices.filter((x) => x.afterMessageId === null && visible.length === 0)) log.append(noticeEl(n.text, n.kind));
     for (const m of visible) {
@@ -248,6 +254,12 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       return;
     }
     if (text === null) return;
+    const setup = agentSetupHint(s.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
+    if (setup) {
+      textarea.value = raw;
+      notify(setup);
+      return;
+    }
     // 乐观追加用户消息（主进程会写入同样内容；切换会话时以持久化版本为准）
     const local: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: text, createdAt: new Date().toISOString() };
     s.messages.push(local);
@@ -309,6 +321,14 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     insertText: (text) => {
       textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, 'end');
       textarea.focus();
+    },
+    insertBlock: (text) => {
+      const r = insertBlock(textarea.value, textarea.selectionStart, textarea.selectionEnd, text);
+      textarea.value = r.text;
+      textarea.focus();
+      textarea.setSelectionRange(r.caret, r.caret);
+      textarea.scrollTop = textarea.scrollHeight;
+      renderSlashMenu();
     },
   };
 }

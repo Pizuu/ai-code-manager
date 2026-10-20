@@ -1,11 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { PublicSettings } from '../../../../contracts/ipc.ts';
-import { configToForm, formToInput, OPENCODE_FORM_PRESET, previewCommand, splitLines } from '../../../../src/frontend/lib/agent-cli-form.ts';
+import { configToForm, formToInput, OPENCODE_FORM_EXAMPLE, OPENCODE_FORM_PRESET, previewCommand, splitLines } from '../../../../src/frontend/lib/agent-cli-form.ts';
 import { agentName, agentOptions, agentWho, isCli } from '../../../../src/frontend/lib/agent-label.ts';
 
-test('opencode preset form → AgentCliInput matches the backend preset', () => {
-  const input = formToInput({ ...OPENCODE_FORM_PRESET, env: [{ name: ' ANTHROPIC_API_KEY ', secret: true, value: 'k' }, { name: '', secret: false, value: 'x' }] });
+test('003: the opencode form preset is blank (type only); the example is opt-in', () => {
+  assert.deepEqual(formToInput({ ...OPENCODE_FORM_PRESET, env: [] }), {
+    name: 'opencode', preset: 'opencode', command: '', args: [], resumeArgs: [], modelArgs: [], model: '', outputFormat: 'opencode-json', env: [],
+  });
+});
+
+test('opencode example form → AgentCliInput matches the backend example', () => {
+  const input = formToInput({ ...OPENCODE_FORM_PRESET, ...OPENCODE_FORM_EXAMPLE, model: '', env: [{ name: ' ANTHROPIC_API_KEY ', secret: true, value: 'k' }, { name: '', secret: false, value: 'x' }] });
   assert.deepEqual(input, {
     name: 'opencode', preset: 'opencode', command: 'opencode', args: ['run', '--format', 'json', '--dir', '{cwd}'], resumeArgs: ['--session', '{session}'], modelArgs: ['--model', '{model}'],
     model: '', outputFormat: 'opencode-json', env: [{ name: 'ANTHROPIC_API_KEY', secret: true, value: 'k' }],
@@ -21,7 +27,7 @@ test('saved secret keeps value undefined (unchanged) on round trip; plain values
 });
 
 test('preview shows model, session and the prompt separator', () => {
-  assert.equal(previewCommand({ ...OPENCODE_FORM_PRESET, model: 'anthropic/claude' }, { session: true }), 'opencode run --format json --dir <项目根> --model anthropic/claude --session <会话ID> -- <消息>');
+  assert.equal(previewCommand({ ...OPENCODE_FORM_PRESET, ...OPENCODE_FORM_EXAMPLE, model: 'anthropic/claude' }, { session: true }), 'opencode run --format json --dir <项目根> --model anthropic/claude --session <会话ID> -- <消息>');
 });
 
 test('agent labels and options', () => {
