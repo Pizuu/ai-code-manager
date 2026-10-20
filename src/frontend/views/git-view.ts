@@ -210,12 +210,10 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     left.append(prList);
 
     // ── 右栏：按序集成（「发布到 main」随 Worktree 小节移到「Worktree 与 Agent」视图，T-040）──
-    const laneOrder = [...new Set(cards.map((c) => c.lane))];
     const right = h('div', { class: 'gcol' });
     const queue = h('div', { class: 'panel gq' },
-      h('div', { class: 'h' }, h('span', {}, '按序集成'), h('span', { class: 'mute' }, 'coordinator 管理 · 与提交图联动')),
-      h('div', { class: 'qhint mono', attrs: { hidden: '' } }),
-      h('div', { class: 'mute mt12' }, laneOrder.length ? laneOrder.join(' → ') : '未读取到任务卡', h('br'), `按 BOARD.md 依赖顺序 --no-ff 合入 ${integ}`));
+      h('div', { class: 'h' }, h('span', {}, '按序集成')),
+      h('div', { class: 'qhint mono', attrs: { hidden: '' } }));
     for (const c of cards) {
       const sub = c.status === 'merged' ? `merge ${c.merge?.short ?? ''} 已合入 ${integ}${c.merge ? ` · ${ymdhm(c.merge.time).slice(11)}` : ''}`
         : c.status === 'active' || c.status === 'review' ? `分支已创建 · 领先 ${c.ahead ?? 0} 提交 · ${PR_LINE}`

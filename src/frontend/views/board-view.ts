@@ -154,7 +154,7 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     // 功能概览
     pad.append(h('div', { class: 'fo' },
       h('div', {},
-        h('div', { class: 't' }, h('span', {}, F ? `${F.id} · ${F.title}` : '未找到 specs/NNN-*'), h('span', { class: `chip ${allMerged ? 'grn' : 'acc'}` }, allMerged ? '已全部合入' : '实施中'))),
+        h('div', { class: 't' }, h('span', {}, F ? F.title : '未找到 specs/NNN-*'), h('span', { class: `chip ${allMerged ? 'grn' : 'acc'}` }, allMerged ? '已全部合入' : '实施中'))),
       h('button', { class: 'btn', on: { click: hooks.openGit } }, '查看集成队列')));
     // 进度条
     const stg = h('div', { class: 'stg' });

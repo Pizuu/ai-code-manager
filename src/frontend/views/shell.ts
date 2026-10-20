@@ -10,9 +10,9 @@ import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
 import { store, type ViewId } from '../store.ts';
 
-export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Worktree 与 Agent' };
+export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
 /** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
-const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git 与集成', 'git'], ['agents', 'Worktree 与 Agent', 'wt']];
+const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git 与集成', 'git'], ['agents', 'Agents', 'wt']];
 /** 默认展开的顶层目录（原型 treeHtml）；之后由用户点击目录折叠 / 展开。 */
 const EXPAND: readonly string[] = ['.agents', '.specify', 'src', 'specs', 'contracts'];
 /** 整棵目录树折叠状态（仅本机界面偏好）。 */
@@ -61,7 +61,16 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const badge = h('div', { class: 'mono-badge' });
   const pname = h('b');
   const pdesc = h('span');
-  const psel = h('div', { class: 'psel', title: '点击打开项目文件夹', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
+  // 已打开项目时点击打开工作根目录（系统文件管理器）；尚未打开项目时走选目录切换项目（pickProject 在后段定义，闭包引用）
+  const openRootOrPick = async () => {
+    if (!store.state.project) return pickProject();
+    try {
+      await api.invoke('project:openRoot');
+    } catch (e) {
+      hooks.onError(`打开工作根目录失败：${errorText(e)}`);
+    }
+  };
+  const psel = h('div', { class: 'psel', title: '点击打开工作根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void openRootOrPick(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void openRootOrPick(); } } } },
     badge, h('div', { class: 'pid' }, pname, pdesc), h('span', { class: 'mute' }, icon('caret')));
   const navloc = h('div', { class: 'navloc' });
   const navItems = {} as Record<ViewId, HTMLAnchorElement>;

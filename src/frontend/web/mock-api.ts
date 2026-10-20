@@ -114,6 +114,7 @@ const local: { [C in IpcInvokeChannel]?: (...args: never[]) => IpcInvokeMap[C]['
     return clone(settings);
   },
   'project:pick': () => null,
+  'project:openRoot': () => undefined,
   'sessions:list': () => sessions.map(summary).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
   'sessions:create': () => {
     const s: Session = { schemaVersion: 1, id: newId('web'), title: '新会话', projectPath: null, createdAt: now(), updatedAt: now(), messages: [], todos: [], agent: settings.defaultAgent ?? 'builtin' };

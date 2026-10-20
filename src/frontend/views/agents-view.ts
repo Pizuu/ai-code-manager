@@ -90,10 +90,8 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
 
     // ── 顶部 ──
     container.append(h('div', { class: 'gtop' },
-      h('div', {}, h('div', {}, 'Worktree 与 Agent'), h('div', { class: 'mute fs12 mt4' }, `单泳道 · 单任务 · 单分支 · 单 PR —— 每个 Agent 一个独立 worktree，合入 ${integ}`)),
       h('div', { class: 'fx8' },
-        h('button', { class: 'btn', on: { click: () => void loadConfig() } }, '重新读取配置'),
-        h('button', { class: 'btn', on: { click: hooks.openGit } }, 'Git 与集成'))));
+        h('button', { class: 'btn', on: { click: () => void loadConfig() } }, '重新读取配置'))));
 
     const left = h('div');
     // 发布到 main（T-039 应负责人要求放在 Worktree 小节下，随小节一起迁来）
