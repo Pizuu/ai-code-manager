@@ -1,7 +1,8 @@
 # 任务看板
 
 > 由 coordinator 维护。前置任务全部合入的卡即为 **ready**；来自不同泳道的 ready 卡可以同时派发。
-> 功能：`specs/001-agent-desktop/`。无 Git 远端，「PR」列为本地合入 `dev` 的分支名（见 plan.md Complexity Tracking）。
+> 功能：`specs/001-agent-desktop/`。当前 ready：T-011（frontend）、T-012（infra），泳道不同可并行派发。
+> 说明：T015（应用入口/preload/handlers）因依赖后续模块，从 T-004 移到 T-006 执行（flow-back 已同步卡片）。无 Git 远端，「PR」列为本地合入 `dev` 的分支名（见 plan.md Complexity Tracking）。
 
 | 编号 | 标题 | 泳道 | 前置 | 状态 | 执行者 | PR |
 |---|---|---|---|---|---|---|
@@ -14,6 +15,8 @@
 | T-007 | 渲染进程骨架与对话 | frontend | T-002 | done | codex | `feat/frontend/T-007-shell-chat`（本地 --no-ff 合入） |
 | T-008 | Diff/终端/Tasks/会话/斜杠命令 | frontend | T-007 | done | claude | `feat/frontend/T-008-panels-commands`（本地 --no-ff 合入） |
 | T-009 | 用户与测试/安全文档 | docs | T-005, T-008 | done | codex | `feat/docs/T-009-user-docs`（本地 --no-ff 合入） |
+| T-011 | Electron E2E 核心路径 | frontend | T-010 | ready | （待派发） | — |
+| T-012 | Windows 打包验证与 CI | infra | T-010 | ready | （待派发） | — |
 | T-010 | 收尾：路线图与看板 | @shared | T-009 | done | coordinator | `int/T-010-closeout`（本地 --no-ff 合入） |
 
 ## 依赖图
@@ -29,5 +32,7 @@ graph LR
   T007 --> T008[T-008 frontend 面板/命令]
   T005 --> T009[T-009 docs]
   T008 --> T009
-  T009 --> T010[T-010 收尾]
+  T009 --> T010[T-010 收尾/converge]
+  T010 --> T011[T-011 frontend E2E]
+  T010 --> T012[T-012 infra Windows 打包]
 ```
