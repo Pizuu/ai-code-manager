@@ -39,6 +39,7 @@
 | T-029 | 003 用户与测试 / 安全文档 | docs | T-026, T-027, T-028 | done | coordinator | `feat/docs/T-029-docs-003`（本地 --no-ff 合入） |
 | T-030 | 003 收尾：路线图、看板与版本号 | @shared | T-029 | done | coordinator | `feat/contracts/T-030-converge` + `int/T-030-closeout`（本地 --no-ff 合入） |
 | T-031 | Web 预览服务器自动化冒烟 | infra | T-030 | done | hark | `feat/infra/T-031-web-dev-smoke`（本地 --no-ff 合入） |
+| T-032 | 界面重新设计：对齐 Claude MCP Apps 设计规范（ADR 0009） | frontend | T-030 | done | hark | `feat/contracts/T-032-adr-0009` + `feat/frontend/T-032-ui-redesign`（本地 --no-ff 合入） |
 
 ## 依赖图
 

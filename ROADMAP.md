@@ -33,6 +33,10 @@
 - [x] Web 预览服务器自动化冒烟（T213 / 卡片 T-031，`scripts/web-smoke.ts` 纳入 verify.sh 与 CI）
 - [ ] Windows 打包核对 Web 预览未进安装包（T214 / 并入卡片 T-012）
 
+### 阶段 1.7：界面重新设计（ADR 0009）
+
+- [x] 对齐 Claude MCP Apps 设计规范：token、层次、字号、暗色（卡片 T-032）
+
 ### 阶段 2：加固
 
 - [x] 完成威胁模型评审（docs/security/threat-model.md，2026-10-20）
