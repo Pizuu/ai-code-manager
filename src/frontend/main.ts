@@ -7,6 +7,7 @@ import { api, errorText } from './api.ts';
 import { store } from './store.ts';
 import { mountBoard } from './views/board-view.ts';
 import type { ChatView } from './views/chat.ts';
+import { mountAgents } from './views/agents-view.ts';
 import { mountGit } from './views/git-view.ts';
 import { builtinMissing } from './lib/agent-config.ts';
 import { formatSendText } from './lib/context-send.ts';
@@ -38,6 +39,7 @@ function originOf(el: Element): string {
   const id = el.closest('.ws-view')?.id;
   if (id === 'wb-board') return VIEW_TITLES.board;
   if (id === 'wb-git') return VIEW_TITLES.git;
+  if (id === 'wb-agents') return VIEW_TITLES.agents;
   return 'AI Code Manager';
 }
 
@@ -197,7 +199,17 @@ async function bootstrap(): Promise<void> {
   chat = sessionView.chat;
   installContextMenu({ send: sendToSession, originOf });
   mountBoard(shell.views.board, { openGit: () => shell.setView('git'), openProject: () => void pickProject(), openCard: (c) => void openCard(c) });
-  mountGit(shell.views.git, { openBoard: () => shell.setView('board'), openProject: () => void pickProject(), notify: (t) => chat.notify(t, 'info') });
+  mountGit(shell.views.git, { openBoard: () => shell.setView('board'), openAgents: () => shell.setView('agents'), openProject: () => void pickProject(), notify: (t) => chat.notify(t, 'info') });
+  mountAgents(shell.views.agents, {
+    openGit: () => shell.setView('git'),
+    openProject: () => void pickProject(),
+    openFile: (rel) => {
+      shell.setView('session');
+      sessionView.openFile(rel);
+    },
+    openSettings: (tab) => openSettings(tab),
+    notify: (t) => chat.notify(t, 'info'),
+  });
   api.onEvent(handleEvent);
 
   const first = sessions[0];

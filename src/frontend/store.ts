@@ -51,7 +51,8 @@ export interface UiState {
   workspaceError: string | null;
 }
 
-export type ViewId = 'board' | 'session' | 'git';
+/** agents = 「Worktree 与 Agent」（T-040，从 Git 页拆出的子视图，导航中缩进挂在 Git 与集成下）。 */
+export type ViewId = 'board' | 'session' | 'git' | 'agents';
 
 export type Topic = 'settings' | 'project' | 'sessions' | 'current' | 'messages' | 'running' | 'approvals' | 'diffs' | 'terminal' | 'tasks' | 'todos' | 'view' | 'workspace';
 

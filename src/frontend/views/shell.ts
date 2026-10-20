@@ -10,8 +10,9 @@ import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
 import { store, type ViewId } from '../store.ts';
 
-export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成' };
-const NAV: ReadonlyArray<[ViewId, string, IconName]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git 与集成', 'git']];
+export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Worktree 与 Agent' };
+/** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
+const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git 与集成', 'git'], ['agents', 'Worktree 与 Agent', 'wt', 'git']];
 /** 默认展开的顶层目录（原型 treeHtml）；之后由用户点击目录折叠 / 展开。 */
 const EXPAND: readonly string[] = ['.agents', '.specify', 'src', 'specs', 'contracts'];
 /** 整棵目录树折叠状态（仅本机界面偏好）。 */
@@ -44,7 +45,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   // 板块图标与项目栏导航同序（泳道看板 → 任务会话 → Git 与集成，T-039）；切换项目入口在项目选择器与 ⋯ 菜单
   const railView = {} as Record<ViewId, HTMLAnchorElement>;
   const railBtn = (name: IconName, title: string, onClick: () => void) => h('a', { class: 'ri', title, on: { click: onClick } }, icon(name));
-  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code' };
+  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code', agents: 'wt' };
   for (const [id, label] of NAV) railView[id] = railBtn(RAIL_ICON[id], label, () => setView(id));
   const rail = h('nav', { class: 'rail' },
     railBtn('side', '侧栏', () => explorer.toggleAttribute('hidden')),
@@ -65,8 +66,8 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const navloc = h('div', { class: 'navloc' });
   const navItems = {} as Record<ViewId, HTMLAnchorElement>;
   const nav = h('div', { class: 'nav' });
-  for (const [id, label, ic] of NAV) {
-    navItems[id] = h('a', { on: { click: () => setView(id) } }, icon(ic), h('span', {}, label));
+  for (const [id, label, ic, parent] of NAV) {
+    navItems[id] = h('a', { class: parent ? 'sub' : '', title: parent ? `${VIEW_TITLES[parent]} › ${label}` : label, on: { click: () => setView(id) } }, icon(ic), h('span', {}, label));
     nav.append(navItems[id]);
   }
   const readRef = h('span', { class: 'mono' });
@@ -116,12 +117,13 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     board: h('div', { class: 'ws-view wb', attrs: { id: 'wb-board' } }),
     session: h('div', { class: 'ws-view sess', attrs: { id: 'wb-session' } }),
     git: h('div', { class: 'ws-view wb', attrs: { id: 'wb-git' } }),
+    agents: h('div', { class: 'ws-view wb', attrs: { id: 'wb-agents' } }),
   };
   const statusL = h('span');
   /** Git 视图时显示的集成摘要（原 Git 顶部说明行，T-039）。 */
   const statusR = h('span', { class: 'st-r' });
   const status = h('footer', { class: 'status' }, statusL, statusR);
-  const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, status);
+  const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, status);
   app.append(rail, explorer, ws);
 
   // ── 渲染 ──
@@ -224,6 +226,8 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     for (const id of Object.keys(views) as ViewId[]) {
       views[id].hidden = id !== v;
       navItems[id].classList.toggle('on', id === v);
+      // 子视图打开时父项保持「展开中」弱高亮
+      navItems[id].classList.toggle('parent-on', NAV.some(([cid, , , p]) => cid === v && p === id));
       railView[id].classList.toggle('on', id === v);
     }
     navloc.textContent = `当前 · ${VIEW_TITLES[v]}`;
