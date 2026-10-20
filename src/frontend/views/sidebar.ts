@@ -10,6 +10,59 @@ import { openSettings } from './settings-dialog.ts';
 export interface SidebarHooks {
   insertText(text: string): void;
   notify(text: string): void;
+  selectSession(id: string): Promise<void>;
+}
+
+/** 会话列表（FR-012）：新建、切换、删除。 */
+export function mountSessionsSection(container: HTMLElement, hooks: SidebarHooks): void {
+  const list = h('div', { class: 'session-list' });
+  const newBtn = h('button', { class: 'ghost', title: '新建会话' }, '＋ 新建');
+
+  const render = () => {
+    clear(list);
+    const currentId = store.state.current?.id;
+    for (const s of store.state.sessions) {
+      const running = store.state.running.has(s.id);
+      const del = h('button', { class: 'ghost del', title: '删除会话' }, '✕');
+      const item = h('div', { class: `session-item${s.id === currentId ? ' active' : ''}`, title: s.projectPath ?? '' },
+        h('span', { class: 'title' }, `${running ? '● ' : ''}${s.title}`), del);
+      item.addEventListener('click', () => void hooks.selectSession(s.id).catch((e: unknown) => hooks.notify(errorText(e))));
+      del.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        if (!confirm(`删除会话「${s.title}」？此操作不可撤销。`)) return;
+        try {
+          await api.invoke('sessions:delete', s.id);
+          store.state.sessions = store.state.sessions.filter((x) => x.id !== s.id);
+          store.emit('sessions');
+          if (s.id === currentId) {
+            const next = store.state.sessions[0];
+            if (next) await hooks.selectSession(next.id);
+            else await createSession(hooks);
+          }
+        } catch (e) {
+          hooks.notify(errorText(e));
+        }
+      });
+      list.append(item);
+    }
+  };
+  newBtn.addEventListener('click', () => void createSession(hooks));
+  store.on('sessions', render);
+  store.on('current', render);
+  store.on('running', render);
+  container.append(h('div', { class: 'section' }, h('div', { class: 'section-title' }, h('span', {}, '会话'), newBtn), list));
+  render();
+}
+
+async function createSession(hooks: SidebarHooks): Promise<void> {
+  try {
+    const s = await api.invoke('sessions:create');
+    store.state.sessions.unshift({ id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: 0 });
+    store.emit('sessions');
+    await hooks.selectSession(s.id);
+  } catch (e) {
+    hooks.notify(errorText(e));
+  }
 }
 
 function treeNode(node: FileNode, hooks: SidebarHooks): HTMLElement {
@@ -97,6 +150,7 @@ export function mountSidebarFooter(container: HTMLElement): void {
 export function mountSidebar(container: HTMLElement, hooks: SidebarHooks): void {
   clear(container);
   container.append(h('div', { class: 'brand' }, h('span', { class: 'dot' }), 'AI Code Manager'));
+  mountSessionsSection(container, hooks);
   mountProjectSection(container, hooks);
   mountSidebarFooter(container);
 }
