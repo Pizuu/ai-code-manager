@@ -13,3 +13,7 @@ dist/
 build/
 coverage/
 *.tsbuildinfo
+# ---- Electron ----
+release/
+out/
+.eslintcache
