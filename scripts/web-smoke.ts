@@ -5,6 +5,8 @@
  *
  * 在随机空闲端口启动 scripts/web-dev.ts（真实子进程），逐项复现 specs/003-code-view-web-locator/quickstart.md
  * 中的手动 curl 检查，全部通过退出 0，任一失败退出 1。不改服务器行为，不写盘，结束时停止子进程。
+ * 契约 v2（contracts/web-dev.ts）：`/__api/<通道>` 只接受 POST + JSON 体 { "args": [...] }，GET 一律 405；
+ * 未知通道 POST 返回 404。旧 v1 的 GET+query 断言已按下述等价语义改写（原「写通道不可达」→ 方法不允许 + 未知通道不放行）。
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import http from 'node:http';
@@ -27,6 +29,7 @@ interface Check {
   method?: string;
   path: string;
   host?: string;
+  body?: string;
   expect: (r: Reply) => string | null;
 }
 
@@ -46,7 +49,17 @@ function freePort(): Promise<number> {
 function request(port: number, c: Check): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = http.request(
-      { host: HOST, port, method: c.method ?? 'GET', path: c.path, headers: { Host: c.host ?? `${HOST}:${port}` }, timeout: REQUEST_TIMEOUT_MS },
+      {
+        host: HOST,
+        port,
+        method: c.method ?? 'GET',
+        path: c.path,
+        headers: {
+          Host: c.host ?? `${HOST}:${port}`,
+          ...(c.body === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(c.body) }),
+        },
+        timeout: REQUEST_TIMEOUT_MS,
+      },
       (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (d: Buffer) => chunks.push(d));
@@ -55,6 +68,7 @@ function request(port: number, c: Check): Promise<Reply> {
     );
     req.on('timeout', () => req.destroy(new Error('请求超时')));
     req.on('error', reject);
+    if (c.body !== undefined) req.write(c.body);
     req.end();
   });
 }
@@ -86,18 +100,20 @@ function startServer(port: number): Promise<ChildProcess> {
   });
 }
 
-const api = (channel: string, args: unknown[]): string => `/__api/${channel}?args=${encodeURIComponent(JSON.stringify(args))}`;
+const apiPath = (channel: string): string => `/__api/${channel}`;
+const apiBody = (args: unknown[]): string => JSON.stringify({ args });
 const status = (want: number) => (r: Reply): string | null => (r.status === want ? null : `状态码 ${r.status}，应为 ${want}`);
 const all = (...fs: ((r: Reply) => string | null)[]) => (r: Reply): string | null => fs.map((f) => f(r)).find((e) => e !== null) ?? null;
 
-/** 与 quickstart.md「Web 预览服务器手动 curl」逐项对应。 */
+/** 与 quickstart.md「Web 预览服务器手动 curl」逐项对应（其中 /__api 项按契约 v2 的 POST 形式与等价断言）。 */
 const CHECKS: readonly Check[] = [
   { name: '/ → 302 到入口', path: '/', expect: all(status(302), (r) => (r.headers.location === '/src/frontend/index.html' ? null : `Location 为 ${r.headers.location ?? '空'}`)) },
   { name: 'index.html 入口替换为 ./web/boot.ts', path: '/src/frontend/index.html', expect: all(status(200), (r) => (r.body.includes('src="./web/boot.ts"') && !r.body.includes('dist/src/frontend/main.js') ? null : '入口脚本未替换')) },
   { name: 'POST → 405', method: 'POST', path: '/', expect: all(status(405), (r) => (r.headers.allow === 'GET, HEAD' ? null : `Allow 为 ${r.headers.allow ?? '空'}`)) },
-  { name: '/__api/agent:send → 404', path: api('agent:send', []), expect: status(404) },
-  { name: 'fs:read ../../etc/passwd → 403 E_PATH_ESCAPE', path: api('fs:read', ['../../etc/passwd']), expect: all(status(403), (r) => (r.body.includes('E_PATH_ESCAPE') ? null : '缺少 E_PATH_ESCAPE')) },
-  { name: 'fs:read package.json → 200', path: api('fs:read', ['package.json']), expect: all(status(200), (r) => (r.body.includes('ai-code-manager') ? null : '内容不含项目名')) },
+  { name: 'GET /__api/agent:send → 405（API 只接受 POST）', path: apiPath('agent:send'), expect: all(status(405), (r) => (r.headers.allow === 'POST' ? null : `Allow 为 ${r.headers.allow ?? '空'}`)) },
+  { name: 'POST /__api/nope:nope → 404（未知通道不放行）', method: 'POST', path: apiPath('nope:nope'), body: apiBody([]), expect: all(status(404), (r) => (r.body.includes('E_VALIDATION') ? null : '缺少 E_VALIDATION')) },
+  { name: 'POST fs:read ../../etc/passwd → 403 E_PATH_ESCAPE', method: 'POST', path: apiPath('fs:read'), body: apiBody(['../../etc/passwd']), expect: all(status(403), (r) => (r.body.includes('E_PATH_ESCAPE') ? null : '缺少 E_PATH_ESCAPE')) },
+  { name: 'POST fs:read package.json → 200', method: 'POST', path: apiPath('fs:read'), body: apiBody(['package.json']), expect: all(status(200), (r) => (r.body.includes('ai-code-manager') ? null : '内容不含项目名')) },
   { name: '/package.json（不在白名单前缀）→ 404', path: '/package.json', expect: status(404) },
   { name: '/src/frontend/%2e%2e/%2e%2e/package.json → 404', path: '/src/frontend/%2e%2e/%2e%2e/package.json', expect: status(404) },
   { name: 'Host: evil.com → 403', path: '/src/frontend/index.html', host: 'evil.com', expect: status(403) },
