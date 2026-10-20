@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-20
 
-**Status**: Implemented
+**Status**: Implemented（converge 追加 2 项待办 T213–T214，见 tasks.md Phase 6）
 
 **Input**: 负责人原话（摘要）：①左侧文件树单击文件即在应用内打开只读代码查看（行号、轻量高亮，大文件 / 二进制保护，路径在项目根沙箱内），按原型风格放在会话板块中间或标签页；②应用任意位置右键出现「发送到任务会话」，把内容（带来源标注：文件路径 + 行号、任务 ID、提交 SHA）插入任务会话输入框并切到任务会话，不自动发送，需经 contracts；③多构建一个 Web 版用来定位 UI 修改：`npm run web` 在浏览器跑同一套渲染层，主进程 API 用模拟 / 只读适配器，「UI 定位」模式悬停高亮、点击显示组件 / 源文件与大致行号、CSS 选择器，一键复制「文件:行 + 选择器」；Web 版不得写真实文件系统 / 执行命令，只在开发用，不进 Electron 打包；④内置 agent 的 API 与 CLI 配置默认保持空白，不预填 ChatGPT / OpenAI 的 base URL、模型名，预设只保留类型与字段说明，未配置时会话提示「请先在设置中配置 agent」，清理代码 / 测试 / 文档中的 gpt 默认值；⑤用户规则：简单 UI 修改跳过测试，写进 AGENTS.md / 宪法并记 ADR。
 
@@ -82,5 +82,5 @@
 - **SC-301**: `fs:read` 的越界、符号链接逃逸、目录、二进制、截断、超大 6 种情况有自动化测试。
 - **SC-302**: 6 种 SendSource 的格式化与截断有单元测试。
 - **SC-303**: Web 预览服务器对非 GET / HEAD 返回 405、白名单外通道返回 404、越界路径返回 `E_PATH_ESCAPE`（手动 curl 验证并记入 quickstart）。
-- **SC-304**: 全新设置的 baseUrl / model 为空、切换提供方不回填、未配置发送返回 `E_NOT_CONFIGURED` 有自动化测试；`git grep -i "gpt\|openai\.com"` 在源码 / 测试 / 文档中无命中（package-lock 哈希除外）。
+- **SC-304**: 全新设置的 baseUrl / model 为空、切换提供方不回填、未配置发送返回 `E_NOT_CONFIGURED` 有自动化测试；`git grep -i "gpt\|openai\.com"` 在源码 / 测试 / 文档中无默认值或示例命中（package-lock 哈希与描述本规则的文字除外）。
 - **SC-305**: 无头 Chromium 截图：Web 版 UI 定位模式与右键菜单各一张（仓库外）。
