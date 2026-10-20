@@ -88,11 +88,6 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
     const extraWts = wtList.filter((w) => !w.isMain).length;
     const maxPar = b.maxParallel ?? (cfg?.get('MAX_PARALLEL') ? Number(cfg.get('MAX_PARALLEL')) : null);
 
-    // ── 顶部 ──
-    container.append(h('div', { class: 'gtop' },
-      h('div', { class: 'fx8' },
-        h('button', { class: 'btn', on: { click: () => void loadConfig() } }, '重新读取配置'))));
-
     const left = h('div');
     // 发布到 main（T-039 应负责人要求放在 Worktree 小节下，随小节一起迁来）
     const merged = cards.filter((c) => c.status === 'merged').length;

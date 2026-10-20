@@ -251,7 +251,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       ...kv('工作目录', store.state.project?.root ?? '未打开项目', true),
       ...(cliId ? kv('CLI 会话（续接）', s?.cliSessions?.[cliId] ?? '首轮后建立', true) : []),
       h('hr'),
-      h('div', { class: 'k' }, `待办 · ${(s?.todos ?? []).filter((t) => t.status === 'completed').length} / ${(s?.todos ?? []).length}`),
+      h('div', { class: 'k acc' }, `待办 · ${(s?.todos ?? []).filter((t) => t.status === 'completed').length} / ${(s?.todos ?? []).length}`),
       todoList(s?.todos ?? []));
 
     // 文件修改（原 Diff 面板）
@@ -267,13 +267,12 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       }
       dl.append(det);
     }
-    ctxp.append(h('div', { class: 'k' }, `文件修改 · ${diffs.length}`), diffs.length ? dl : h('div', { class: 'v mute' }, '本次运行的文件修改会显示在这里。'));
+    ctxp.append(h('div', { class: 'k' }, `文件修改 · ${diffs.length}`), ...(diffs.length ? [dl] : []));
 
     // 终端输出（原终端面板）
     const term = h('div', { class: 'term' });
     const chunks = store.state.terminal.slice(-400);
     if (chunks.length) for (const c of chunks) term.append(h('span', { class: c.stream }, c.data));
-    else term.textContent = `（暂无输出。命令以 ${window.api.platform === 'win32' ? 'PowerShell' : 'bash'} 在项目根执行；外部 CLI 的 stderr 与非 JSON 输出也显示在这里。）`;
     ctxp.append(h('div', { class: 'k' }, '终端输出'), term);
     requestAnimationFrame(() => {
       term.scrollTop = term.scrollHeight;
@@ -283,8 +282,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     const files = store.state.tasks;
     const all = files.flatMap((f) => f.tasks);
     const latest = files.at(-1);
-    ctxp.append(h('div', { class: 'k' }, latest ? `tasks.md · ${latest.feature} · ${latest.tasks.filter((t) => t.done).length} / ${latest.tasks.length} 已勾选` : 'tasks.md'));
-    const tl = h('div', { class: 'v' });
+    const tl = h('div', { class: 'v tbox' });
     if (!latest) tl.append(h('span', { class: 'mute' }, all.length ? '' : '项目没有 specs/*/tasks.md。'));
     for (const t of latest?.tasks.slice(0, 40) ?? []) tl.append(h('div', { class: `tk${t.done ? ' done' : ''}`, title: t.description }, h('span', { class: 'id' }, `${t.done ? '✓' : '○'} ${t.id}`), h('span', { class: 'd' }, `${t.lane ? `[${t.lane}] ` : ''}${t.description.slice(0, 40)}${t.description.length > 40 ? '…' : ''}`)));
     ctxp.append(tl);
