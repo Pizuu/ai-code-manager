@@ -44,7 +44,7 @@ interface StoredSettings {
   defaultAgent: AgentRef;
   /**
    * 实验：opencode 接入方式（T127）。仅后端内部使用，不经 IPC、不进 PublicSettings
-   * （需要 contracts v1.4：PublicSettings.agentCli.opencodeMode）。缺省 = run。
+   * （需要 contracts v1.4：PublicSettings.agentCli.opencodeMode）。缺省 = acp。
    */
   opencodeMode?: OpencodeMode;
 }
@@ -121,7 +121,7 @@ export class SettingsStore {
     return { provider, baseUrl, model, permissionMode, lastProjectPath, defaultAgent };
   }
 
-  /** 实验开关：环境变量 AICM_OPENCODE_MODE（run / serve）优先，其次内部设置，默认 run。 */
+  /** 实验开关：环境变量 AICM_OPENCODE_MODE（run / serve / acp）优先，其次内部设置，默认 acp。 */
   getOpencodeMode(env: NodeJS.ProcessEnv = process.env): OpencodeMode {
     return resolveOpencodeMode(env, this.data.opencodeMode);
   }

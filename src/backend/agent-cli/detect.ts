@@ -45,10 +45,10 @@ export interface DetectDeps {
 
 const VERSION_TIMEOUT_MS = 15_000;
 
-/** 与 handlers 中 runVersion 相同的版本探测：执行 --version、15s 超时、输出截断后取首行。 */
-export function probeCliVersion(file: string, cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+/** 与 handlers 中 runVersion 相同的版本探测：执行 --version、默认 15s 超时、输出截断后取首行。timeoutMs 可覆盖（ACP 门禁探测用 5s)。 */
+export function probeCliVersion(file: string, cwd: string, env: NodeJS.ProcessEnv = process.env, timeoutMs: number = VERSION_TIMEOUT_MS): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(file, ['--version'], { timeout: VERSION_TIMEOUT_MS, windowsHide: true, env, cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(file, ['--version'], { timeout: timeoutMs, windowsHide: true, env, cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) return resolve(null);
       const out = String(stdout || stderr || '').trim().slice(0, 300);
       resolve(out ? (out.split('\n')[0] ?? out) : null);

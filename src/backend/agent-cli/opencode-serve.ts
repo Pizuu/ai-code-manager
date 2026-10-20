@@ -2,7 +2,7 @@
  * opencode serve 逐条工具审批原型（FR-116、宪法 九，specs/002-workspace-boards T125，任务卡 T-022）。
  *
  * T127（任务卡 T-034）起已在实验开关下接入：serve-runner.ts 负责常驻服务器与一轮对话，handlers.ts 按
- * `opencodeMode`（后端内部设置 / 环境变量 AICM_OPENCODE_MODE，默认 run）选择；serve 启动失败回退到 run 模式（cli-runner.ts）。
+ * `opencodeMode`（后端内部设置 / 环境变量 AICM_OPENCODE_MODE，默认 acp）选择；serve 启动失败回退到 run 模式（cli-runner.ts）。
  * 权限映射使用契约 v1.3 的 ApprovalKind（见 toApprovalRequest）。
  *
  * ───────────────────────── 评估结论（实测 opencode-ai 1.19.3，2026-10-20，Linux 沙箱 + 本地假 OpenAI 兼容模型）─────────────────────────

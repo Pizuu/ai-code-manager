@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { AgentCliCheck, AgentCliDetection, AgentEvent, AgentRef, ApprovalRequest, GitSnapshot, IpcInvokeChannel, IpcInvokeMap, ProjectInfo, Session } from '../../../contracts/ipc.ts';
+import { AcpProcessManager, prepareAcpTurn, runAcpCliTurn, type PreparedAcpTurn } from '../agent-cli/acp-runner.ts';
 import { runCliTurn } from '../agent-cli/cli-runner.ts';
 import { detectInstalledClis, probeCliVersion } from '../agent-cli/detect.ts';
 import { installHint } from '../agent-cli/presets.ts';
@@ -60,9 +61,14 @@ export interface HandlerDeps {
   cliBaseEnv?: NodeJS.ProcessEnv;
   /**
    * T127（实验）：opencode serve 常驻进程池；main.ts 传入并在退出时 closeAll()。缺省时内部新建。
-   * 模式由 settings.getOpencodeMode(modeEnv) 决定（AICM_OPENCODE_MODE 优先，默认 run）。
+   * 模式由 settings.getOpencodeMode(modeEnv) 决定（AICM_OPENCODE_MODE 优先，默认 acp）。
    */
   serveManager?: OpencodeServeManager;
+  /**
+   * opencode ACP 进程池；main.ts 传入并在退出时 closeAll()。缺省时内部新建。
+   * 模式为 acp（默认）时 opencode 会话先走 ACP，启动失败回退既有 serve / run 逻辑。
+   */
+  acpManager?: AcpProcessManager;
   /** 读取 AICM_OPENCODE_MODE 的环境（默认 process.env；测试注入）。 */
   modeEnv?: NodeJS.ProcessEnv;
 }
@@ -112,6 +118,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
   const makeProvider = deps.providerFactory ?? defaultProviderFactory;
 
   const serveManager = deps.serveManager ?? new OpencodeServeManager({ platform: deps.platform });
+  const acpManager = deps.acpManager ?? new AcpProcessManager({ platform: deps.platform });
   const resolveDeps = () => deps.resolveDeps ?? defaultResolveDeps(deps.platform);
   let gitCache: { root: string; at: number; snap: GitSnapshot } | null = null;
   const gitSnapshot = async (root: string): Promise<GitSnapshot> => {
@@ -156,8 +163,21 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       now: () => new Date().toISOString(),
       ...(deps.cliBaseEnv ? { baseEnv: deps.cliBaseEnv } : {}),
     };
-    const useServe = runtime.outputFormat === 'opencode-json' && settings.getOpencodeMode(deps.modeEnv ?? process.env) === 'serve';
+    const opencodeMode = settings.getOpencodeMode(deps.modeEnv ?? process.env);
+    const useAcp = runtime.outputFormat === 'opencode-json' && opencodeMode === 'acp';
+    const useServe = runtime.outputFormat === 'opencode-json' && opencodeMode === 'serve';
     const run = async () => {
+      if (useAcp) {
+        let prepared: PreparedAcpTurn | null = null;
+        try {
+          prepared = await prepareAcpTurn(session, { ...turnDeps, manager: acpManager });
+        } catch (err) {
+          // 回退：此时尚未写入任何消息，改走既有 serve / run 逻辑
+          emit({ type: 'error', sessionId: session.id, message: `opencode ACP 接入启动失败，已回退：${publicErrorMessage(err)}` });
+        }
+        if (prepared) return runAcpCliTurn(session, text, prepared, { ...turnDeps, manager: acpManager });
+        if (controller.signal.aborted) return;
+      }
       if (useServe) {
         let prepared: PreparedServeTurn | null = null;
         try {

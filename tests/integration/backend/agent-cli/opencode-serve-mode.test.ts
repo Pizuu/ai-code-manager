@@ -103,11 +103,13 @@ async function setup(t: { after: (fn: () => void | Promise<void>) => void }, opt
 
 // ───────────────────────── 纯函数 ─────────────────────────
 
-test('resolveOpencodeMode: env wins (run|serve), then internal setting, default run; parseServeModel', () => {
-  assert.equal(resolveOpencodeMode({}, undefined), 'run');
+test('resolveOpencodeMode: env wins (run|serve|acp), then internal setting, default acp; parseServeModel', () => {
+  assert.equal(resolveOpencodeMode({}, undefined), 'acp');
   assert.equal(resolveOpencodeMode({}, 'serve'), 'serve');
-  assert.equal(resolveOpencodeMode({}, 'bogus'), 'run');
+  assert.equal(resolveOpencodeMode({}, 'run'), 'run');
+  assert.equal(resolveOpencodeMode({}, 'bogus'), 'acp');
   assert.equal(resolveOpencodeMode({ AICM_OPENCODE_MODE: 'SERVE' }, undefined), 'serve');
+  assert.equal(resolveOpencodeMode({ AICM_OPENCODE_MODE: 'acp' }, 'run'), 'acp');
   assert.equal(resolveOpencodeMode({ AICM_OPENCODE_MODE: 'run' }, 'serve'), 'run');
   assert.equal(resolveOpencodeMode({ AICM_OPENCODE_MODE: 'weird' }, 'serve'), 'serve');
   assert.deepEqual(parseServeModel('openai/gpt-x'), { providerID: 'openai', modelID: 'gpt-x' });
@@ -119,8 +121,8 @@ test('resolveOpencodeMode: env wins (run|serve), then internal setting, default 
 
 // ───────────────────────── 模式选择 ─────────────────────────
 
-test('default (no env, no setting) stays on run mode: no serve process, per-turn command-line approval', { skip: posixOnly }, async (t) => {
-  const { newSession, send, log, approvals, serveManager } = await setup(t);
+test('run mode via AICM_OPENCODE_MODE=run: no serve process, per-turn command-line approval', { skip: posixOnly }, async (t) => {
+  const { newSession, send, log, approvals, serveManager } = await setup(t, { envMode: 'run' });
   const s = await newSession();
   const after = await send(s, '写个文件');
   const lines = await readLog(log);

@@ -37,6 +37,8 @@ async function setup(t: { after: (fn: () => Promise<void>) => void }, mode: Perm
     settings, sessions, state, platform: process.platform, emit: (e) => events.push(e), pickDirectory: async () => root,
     resolveDeps: { platform: process.platform, pathEnv: bin, pathExt: '', isFile: async (p) => fs.stat(p).then((s) => s.isFile(), () => false), readText: async () => null },
     cliBaseEnv: { PATH: process.env.PATH ?? '', FAKE_OC_LOG: log },
+    // 本套件测 run 模式行为：钉住模式，避免默认 acp 时先试 ACP 再回退（平添回退提示事件）
+    modeEnv: { AICM_OPENCODE_MODE: 'run' },
   });
   await handlers['project:pick']();
   const pub = await handlers['agentCli:save']({

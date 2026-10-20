@@ -1,7 +1,8 @@
 /**
  * opencode serve 模式的一轮对话（实验开关，T127 / 任务卡 T-034，FR-116、宪法 九、宪法 十一，ADR 0006 修订）。
  *
- * - 模式选择：`opencodeMode = 'run' | 'serve'`，默认 run。契约 v1.3 的 PublicSettings 尚无此字段，
+ * - 模式选择：`opencodeMode = 'run' | 'serve' | 'acp'`，默认 acp（acp-runner.ts，ACP 启动失败回退 run)。
+ *   契约 v1.3 的 PublicSettings 尚无此字段，
  *   因此只读后端内部设置键（settings.json 中的 opencodeMode，不经 IPC）或环境变量 AICM_OPENCODE_MODE（优先）。
  * - 常驻服务器：每个 CLI 配置（可执行文件 + 环境变量）一个 `opencode serve`，随机端口 + 随机密码（Basic 认证），
  *   只监听 127.0.0.1；配置变化时重启；应用退出时 closeAll() 结束进程树。
@@ -20,16 +21,17 @@ import {
   type ServeClientOptions, type ServeProcess, type ServeTurnDeps, type StartServeOptions,
 } from './opencode-serve.ts';
 
-export type OpencodeMode = 'run' | 'serve';
+export type OpencodeMode = 'run' | 'serve' | 'acp';
 export const OPENCODE_MODE_ENV = 'AICM_OPENCODE_MODE';
 export const SERVE_INVOKE_TOOL = 'agent_cli';
 export const SUPPORTED_SERVE_VERSION = /^1\.19\./;
 
-/** 解析模式：环境变量（run / serve）优先，其次后端内部设置，默认 run。 */
+/** 解析模式：环境变量（run / serve / acp）优先，其次后端内部设置，默认 acp（ACP 接入，见 acp-runner.ts；启动失败由 handlers 回退 run)。 */
 export function resolveOpencodeMode(env: NodeJS.ProcessEnv, stored: unknown): OpencodeMode {
   const e = (env[OPENCODE_MODE_ENV] ?? '').trim().toLowerCase();
-  if (e === 'serve' || e === 'run') return e;
-  return stored === 'serve' ? 'serve' : 'run';
+  if (e === 'serve' || e === 'run' || e === 'acp') return e;
+  if (stored === 'serve' || stored === 'run' || stored === 'acp') return stored;
+  return 'acp';
 }
 
 /** 续接键：每种权限模式各自一个 opencode 会话（规则集在建会话时下发）。 */
