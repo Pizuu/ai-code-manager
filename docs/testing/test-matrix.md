@@ -45,6 +45,19 @@
 | opencode serve 逐条审批原型（T125） | ✅ 17 条（假 HTTP/SSE 服务器） | ✅ 1.19.3 真实服务器手测 | — | backend |
 | opencode serve 模式接入 `serve-runner.ts`（T127） | ✅ | ✅ 9 条（`opencode-serve-mode.test.ts`，假 serve 进程） | ❌（真实 opencode 联调待做） | backend |
 | 审批卡片文案 `lib/approval-prompt.ts`（T128） | ✅ 6 条 | — | — | frontend |
+| 工具卡片文字整理 `lib/tool-card-text.ts`（工具名标签、目标抽取、参数键值与截断、结果 JSON 美化） | ✅ 6 条 | — | — | frontend |
+| 会话活动计数 `lib/session-activity.ts`（运行中 / 待批准 / 错误计数与跳转目标） | ✅ 7 条 | — | — | frontend |
+| 错误 / 日志分区 `lib/error-log.ts`（工具失败与 Agent 报错归集、去重排序、分区标题） | ✅ 6 条 | — | — | frontend |
+| git 引用变化监听 `src/backend/workspace/refs-watcher.ts`（refs 摘要与变更触发） | ✅ 2 条 | — | — | backend |
+| 合并冲突预演 `src/backend/workspace/merge-preview.ts`（merge-tree 只读预演与冲突文件提取） | ✅ 1 条 | ✅ 3 条（临时仓库：干净 / 冲突 / 引用缺失） | — | backend |
+| 集成分支引用回退 `src/backend/workspace/git-overview.ts`（本地缺失 → `origin/<分支>`；看板据此合并冲突、给根因） | ✅ 3 条 | ✅ 3 条（临时仓库：本地缺失 / 仅远端 / 两处皆无） | — | backend |
+| 集成分支名一致性 `scripts/check-branch-config.sh`（工作流与文档须与 `.agents/config.sh` 一致） | — | ✅ 负向自测 4 例（CI 中运行） | — | infra |
+| 终端模式 · ANSI 解析 `src/frontend/lib/ansi.ts`（SGR 颜色 / 256 色 / 真彩 / 控制序列丢弃 / 换行归一） | ✅ 8 条 | — | — | frontend |
+| 终端进程池 `src/backend/terminal/terminal-manager.ts`（shell 命令行、CLI 参数去 JSON、复用 / 重启 / 退出回调） | ✅ 4 条 | — | — | backend |
+| 终端模式 IPC（`terminal:open` / `input` / `close`：工作目录恒为项目根、会话不存在 E_NOT_FOUND、无项目 E_NO_PROJECT、CLI 模式 E_CLI） | — | ✅ 7 条 | — | backend |
+| 终端运行态 `src/frontend/store.ts`（按会话记录输出、重启时旧 terminalId 残事件忽略、清屏） | ✅ 3 条 | — | — | frontend |
+| 「全部允许（免审批）」权限模式（`decide` / `acpAutoDecision` / `serveRules` / `opencodePermission` 四条通道一致生效） | ✅ 4 条 | — | — | backend |
+| 对话回合与思考区摘要 `src/frontend/lib/chat-turn.ts`（工具调用状态计数、摘要文案、待批准判定、头像文字） | ✅ 6 条 | ✅ E2E 1 条（`core-path`：思考区默认折叠 → 点击展开 → 重启恢复后仍可展开） | — | frontend |
 
 > ❌ 行由 `specs/001-agent-desktop/tasks.md` 的 Convergence 任务 **T040 / T041** 跟踪（本仓库无远端 issue 系统，以任务号代替 issue）。
 > 界面视图已用无头 Chromium + 模拟 `window.api` 做过手工冒烟（001：亮/暗主题、待批准 diff、任务面板、斜杠提示；002：三板块 1680×1200 截图并与 HTML 原型并排对比，数据为本仓库真实 `board:get` / `git:get` 快照），但脚本未纳入仓库，故不计为 ✅。
