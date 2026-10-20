@@ -12,10 +12,10 @@
 | edit_file 替换 `tools/edit.ts`（唯一性、CRLF） | ✅ | — | — | backend |
 | glob / 搜索 `tools/glob.ts`、`tools/search.ts` | ✅ | ✅ | — | backend |
 | 文件工具 `tools/fs-tools.ts`、文件树 `fs/file-tree.ts` | — | ✅ | — | backend |
-| 执行器与审批闸门 `tools/executor.ts`（SC-002） | ✅ | ✅ | ❌（T040） | backend |
-| 命令执行 `tools/run-command.ts`（bash 路径；PowerShell 仅参数构造） | ✅ | ✅（非 Windows） | ❌（T040） | backend |
+| 执行器与审批闸门 `tools/executor.ts`（SC-002） | ✅ | ✅ | ✅（T040 core-path） | backend |
+| 命令执行 `tools/run-command.ts`（bash 路径；PowerShell 仅参数构造） | ✅ | ✅（非 Windows） | ✅（T040 core-path） | backend |
 | SSE 解析与 OpenAI / Anthropic 提供方 | ✅ | ✅（本地 SSE 服务器） | — | backend |
-| Agent 循环 `agent/agent-loop.ts` | — | ✅（假 provider） | ❌（T040） | backend |
+| Agent 循环 `agent/agent-loop.ts` | — | ✅（假 provider） | ✅（T040 core-path） | backend |
 | IPC 校验 `ipc/validate.ts` 与 handlers `ipc/handlers.ts` | ✅ | ✅ | — | backend |
 | 设置存储 / Key 不外泄（SC-004） | — | ✅ | — | backend |
 | 会话存储（SC-005） | — | ✅ | — | backend |
@@ -38,8 +38,8 @@
 | 右键发送内容组装 `lib/context-send.ts`、轻量高亮 `lib/highlight.ts`、配置提示 `lib/agent-config.ts` | ✅ | — | — | frontend |
 | Web 预览 UI 定位纯函数 `web/locator-core.ts`（栈解析、选择器） | ✅ | — | — | frontend |
 | Web 预览服务器 `scripts/web-dev.ts`（405 / 404 / E_PATH_ESCAPE / Host 校验） | — | — | ❌（手动 curl 验证，见 specs/003 quickstart；未纳入 CI） | infra |
-| 界面视图 `src/frontend/views/*`、`main.ts`、`web/locator.ts`、`web/mock-api.ts` | — | — | ❌（T040；002 三板块、003 右键菜单与 UI 定位另有仓库外无头截图冒烟；纯 UI 按宪法 五跳过） | frontend |
-| Electron 入口 `main.ts` / `preload.cts`（窗口安全选项、app:// 协议） | — | — | ❌（T040） | backend |
+| 界面视图 `src/frontend/views/*`、`main.ts`、`web/locator.ts`、`web/mock-api.ts` | — | — | ✅ 001 核心路径（T040）；🟡 002 三板块待 T-020（、003 右键菜单与 UI 定位另有仓库外无头截图冒烟；纯 UI 按宪法 五跳过） | frontend |
+| Electron 入口 `main.ts` / `preload.cts`（窗口安全选项、app:// 协议） | — | — | ✅（T040 core-path） | backend |
 | Windows 打包（FR-016） | — | — | ✅（`windows-dist.yml`，windows-latest 打包 + 启动冒烟；T041） | infra |
 | asar 内容核对（T214） | ✅ `check-asar.ts --self-test` | ✅ 真实 electron-builder 产物 | ✅ CI 打包后复核 | infra |
 | opencode serve 逐条审批原型（T125） | ✅ 17 条（假 HTTP/SSE 服务器） | ✅ 1.19.3 真实服务器手测 | — | backend |

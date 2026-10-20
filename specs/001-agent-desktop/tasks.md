@@ -155,5 +155,5 @@ worker C (docs):     T035 T036（文档可对照 spec 先写）
 
 ## Phase 9: Convergence
 
-- [ ] T040 [lane:frontend] 用 Playwright `_electron` 在图形环境中启动应用，覆盖「选目录 → 提问 → 批准/拒绝 edit_file → 批准 run_command（Windows 为 PowerShell）→ 重启后会话恢复」核心路径，并断言页面导航/新窗口被拦截，测试置于 tests/e2e/frontend/ per SC-001, SC-006, US2/AC1, 宪法 十二 (missing)
+- [x] T040 [lane:frontend] 用 Playwright `_electron` 在图形环境中启动应用，覆盖「选目录 → 提问 → 批准/拒绝 edit_file → 批准 run_command（Windows 为 PowerShell）→ 重启后会话恢复」核心路径，并断言页面导航/新窗口被拦截，测试置于 tests/e2e/frontend/ per SC-001, SC-006, US2/AC1, 宪法 十二 (missing)
 - [x] T041 [lane:infra] 在 Windows x64 runner 上执行 `npm run dist`，验证 NSIS 安装包与便携版可安装、启动，并在 CI 中增加 windows-latest 构建作业 per FR-016 (partial)
