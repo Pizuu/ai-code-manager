@@ -48,7 +48,7 @@ const sessions: Session[] = [{
   schemaVersion: 1, id: 'web-1', title: 'Web 预览示例会话', projectPath: null, createdAt: now(), updatedAt: now(), todos: [],
   messages: [
     { id: 'w-u1', role: 'user', content: '这是 Web 预览：界面与桌面版是同一套渲染层源码。', createdAt: now() },
-    { id: 'w-a1', role: 'assistant', content: '（模拟回复）Web 预览不会调用模型、写文件或执行命令。发送「审批示例」可查看各类审批卡片。打开右下角「UI 定位」，点击任意元素即可看到它的源文件与 CSS 选择器。', createdAt: now() },
+    { id: 'w-a1', role: 'assistant', content: '（模拟回复）Web 预览不会调用模型、写文件或执行命令。发送「审批示例」可查看各类审批卡片。按 Alt+Q 或点击右下角「UI 定位」，点击任意元素即可看到它的源文件与 CSS 选择器，并记录要修改或删除的位置。', createdAt: now() },
   ],
 }];
 
