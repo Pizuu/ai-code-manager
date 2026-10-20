@@ -17,6 +17,8 @@
  *   - `agentCli:save` / `agentCli:delete` 是设置数据，随 settings 真实落盘。
  * - `project:pick` 无系统对话框：恒返回 null（项目由 `--project` 参数在启动时确定）；
  *   `project:openRoot` 为 no-op。
+ * - 终端通道（v1.6）：`terminal:open` / `terminal:input` / `terminal:close` 与桌面端同逻辑，
+ *   在开发机上真实启动子进程（PowerShell / bash），工作目录恒为项目根。
  * - API Key 与 CLI 敏感 env 在桌面端由 Electron safeStorage 加密，Web 预览无 safeStorage：
  *   SettingsStore 收到「加密不可用」的 cipher——读取与非敏感设置读写照常真实落盘，
  *   但新存密钥会被真实存储逻辑以 E_ENCRYPTION 拒绝，桌面端已存的密钥也无法在 Web 侧解密使用。
@@ -62,6 +64,9 @@ export const WEB_DEV_CHANNELS = [
   'board:setFeature',
   'git:get',
   'git:checkout',
+  'terminal:open',
+  'terminal:input',
+  'terminal:close',
 ] as const satisfies readonly IpcInvokeChannel[];
 
 export type WebDevChannel = (typeof WEB_DEV_CHANNELS)[number];
