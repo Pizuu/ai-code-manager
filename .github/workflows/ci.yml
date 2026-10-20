@@ -22,6 +22,7 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - run: npx eslint .
       - run: npx tsc --noEmit
+      - run: bash scripts/check-branch-config.sh
       - run: npm run test
       - run: npm run build
       - run: node scripts/web-smoke.ts
