@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { SettingsStore, type KeyCipher } from '../../../../src/backend/settings/settings-store.ts';
+import { builtinConfigProblem, SettingsStore, type KeyCipher } from '../../../../src/backend/settings/settings-store.ts';
 
 /** 假加密器：反转 + base64，足以证明落盘的不是明文。 */
 function fakeCipher(available = true): KeyCipher {
@@ -41,11 +41,23 @@ test('persists settings across instances', async (t) => {
   assert.equal(b.getPublic().permissionMode, 'plan');
 });
 
-test('switching provider moves default base url and model along', async (t) => {
+test('003: base url and model default to blank and switching provider never fills them in', async (t) => {
   const store = new SettingsStore(await tempFile(t), fakeCipher());
-  const pub = await store.update({ provider: 'anthropic' });
-  assert.equal(pub.baseUrl, 'https://api.anthropic.com');
-  assert.match(pub.model, /claude/);
+  await store.load();
+  const fresh = store.getPublic();
+  assert.equal(fresh.baseUrl, '');
+  assert.equal(fresh.model, '');
+  assert.equal(builtinConfigProblem(store.getActive())?.includes('Base URL、模型'), true);
+  let pub = await store.update({ provider: 'anthropic' });
+  assert.equal(pub.baseUrl, '');
+  assert.equal(pub.model, '');
+  await store.update({ baseUrl: 'https://llm.example.test', model: 'm1' });
+  assert.equal(builtinConfigProblem(store.getActive()), null);
+  pub = await store.update({ provider: 'openai' });
+  assert.equal(pub.baseUrl, 'https://llm.example.test');
+  pub = await store.update({ model: '', baseUrl: '' });
+  assert.equal(pub.model, '');
+  assert.match(builtinConfigProblem(store.getActive()) ?? '', /模型/);
 });
 
 test('refuses to store a key when encryption is unavailable', async (t) => {

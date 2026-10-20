@@ -29,6 +29,7 @@ const INVOKE_CHANNELS = [
   'sessions:setAgent',
   'board:get',
   'git:get',
+  'fs:read',
 ] as const satisfies readonly IpcInvokeChannel[];
 
 // 编译期穷举检查：契约新增通道而此处遗漏时，类型变为 never 导致编译失败

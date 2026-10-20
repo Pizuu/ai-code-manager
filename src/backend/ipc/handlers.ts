@@ -16,8 +16,9 @@ import type { Provider, ProviderConfig } from '../agent/providers/types.ts';
 import { buildSystemPrompt } from '../agent/system-prompt.ts';
 import type { AppState } from '../app-state.ts';
 import { listTree } from '../fs/file-tree.ts';
+import { readFileForView } from '../fs/file-view.ts';
 import { summarizeSession, type SessionStore } from '../sessions/session-store.ts';
-import type { SettingsStore } from '../settings/settings-store.ts';
+import { builtinConfigProblem, type SettingsStore } from '../settings/settings-store.ts';
 import { loadSpecTasks } from '../specs/tasks-parser.ts';
 import { buildBoard, readAgentsConfig } from '../workspace/board.ts';
 import { emptyGitSnapshot, readGitSnapshot } from '../workspace/git-overview.ts';
@@ -26,6 +27,7 @@ import {
   asAgentRef,
   asCliId,
   asRelDir,
+  asRelPath,
   asSessionId,
   ipcError,
   validateAgentCliInput,
@@ -159,8 +161,10 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       if (agent !== 'builtin') return startCliTurn(s, agent.slice(4), text);
     }
     const active = settings.getActive();
+    const problem = builtinConfigProblem(active);
+    if (problem) throw ipcError('E_NOT_CONFIGURED', `请先在设置中配置 agent：${problem}`);
     const apiKey = settings.getApiKey(active.provider);
-    if (!apiKey) throw ipcError('E_NO_API_KEY', '当前提供方尚未配置 API Key，请在设置中填写。');
+    if (!apiKey) throw ipcError('E_NO_API_KEY', '请先在设置中配置 agent：当前提供方尚未保存 API Key（设置 › 内置 agent）。');
     const session = await sessions.get(sessionId);
     const root = state.project?.root ?? null;
     const provider = makeProvider(active.provider, { baseUrl: active.baseUrl, apiKey });
@@ -217,6 +221,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     },
     'project:current': async () => state.project,
     'fs:tree': async (relDir) => listTree(requireProject(state).root, asRelDir(relDir)),
+    'fs:read': async (relPath) => readFileForView(requireProject(state).root, asRelPath(relPath)),
     'sessions:list': async () => sessions.list(),
     'sessions:create': async () => sessions.create(state.project?.root ?? null, settings.getActive().defaultAgent),
     'sessions:get': async (id) => sessions.get(asSessionId(id)),

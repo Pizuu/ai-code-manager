@@ -52,7 +52,10 @@ test('rejects sending without an api key, then runs a full turn once configured'
   const project = await handlers['project:pick']();
   assert.equal(project?.root, root);
   const session = await handlers['sessions:create']();
-  await assert.rejects(handlers['agent:send']({ sessionId: session.id, text: 'hi' }), /E_NO_API_KEY/);
+  // 003：默认空白，未配置时提示先配置 agent
+  await assert.rejects(handlers['agent:send']({ sessionId: session.id, text: 'hi' }), /E_NOT_CONFIGURED: 请先在设置中配置 agent/);
+  await handlers['settings:set']({ baseUrl: 'https://llm.example.test/v1', model: 'test-model' });
+  await assert.rejects(handlers['agent:send']({ sessionId: session.id, text: 'hi' }), /E_NO_API_KEY: 请先在设置中配置 agent/);
 
   const pub = await handlers['settings:set']({ apiKey: { provider: 'openai', value: 'sk-1' } });
   assert.equal(JSON.stringify(pub).includes('sk-1'), false);
@@ -60,6 +63,7 @@ test('rejects sending without an api key, then runs a full turn once configured'
   await idle(session.id);
 
   assert.equal(configs[0]?.apiKey, 'sk-1');
+  assert.equal(configs[0]?.baseUrl, 'https://llm.example.test/v1');
   assert.match(requests[0]?.system ?? '', /规则：用中文/);
   const saved = await handlers['sessions:get'](session.id);
   assert.deepEqual(saved.messages.map((m) => m.role), ['user', 'assistant']);
@@ -72,7 +76,7 @@ test('approval round-trip through agent:approve writes the file', async (t) => {
     { text: '完成', toolCalls: [], stopReason: 'stop' },
   ]);
   await handlers['project:pick']();
-  await handlers['settings:set']({ apiKey: { provider: 'openai', value: 'k' } });
+  await handlers['settings:set']({ baseUrl: 'https://llm.example.test/v1', model: 'test-model', apiKey: { provider: 'openai', value: 'k' } });
   const s = await handlers['sessions:create']();
   await handlers['agent:send']({ sessionId: s.id, text: 'edit' });
   const ev = await waitFor((e) => e.type === 'approval-request');
@@ -89,7 +93,7 @@ test('agent:stop rejects the pending approval and leaves the file untouched', as
     { text: '', toolCalls: [{ id: 'c1', name: 'write_file', input: { path: 'README.md', content: 'x' } }], stopReason: 'tool_calls' },
   ]);
   await handlers['project:pick']();
-  await handlers['settings:set']({ apiKey: { provider: 'openai', value: 'k' } });
+  await handlers['settings:set']({ baseUrl: 'https://llm.example.test/v1', model: 'test-model', apiKey: { provider: 'openai', value: 'k' } });
   const s = await handlers['sessions:create']();
   await handlers['agent:send']({ sessionId: s.id, text: 'go' });
   await waitFor((e) => e.type === 'approval-request');
@@ -108,4 +112,16 @@ test('fs:tree and tasks:list are scoped to the opened project and validate input
   await assert.rejects(handlers['fs:tree']('..'), /E_PATH_ESCAPE/);
   await assert.rejects(handlers['sessions:get']('../x'), /E_VALIDATION/);
   assert.deepEqual(await handlers['tasks:list'](), []);
+});
+
+test('fs:read (v1.2) is read-only, sandboxed and requires a project', async (t) => {
+  const { handlers } = await setup(t, []);
+  await assert.rejects(handlers['fs:read']('README.md'), /E_NO_PROJECT/);
+  await handlers['project:pick']();
+  const f = await handlers['fs:read']('README.md');
+  assert.deepEqual(f, { relPath: 'README.md', size: 7, kind: 'text', content: '# demo\n', truncated: false });
+  await assert.rejects(handlers['fs:read']('../outside.txt'), /E_PATH_ESCAPE/);
+  await assert.rejects(handlers['fs:read'](''), /E_VALIDATION/);
+  await assert.rejects(handlers['fs:read'](42), /E_VALIDATION/);
+  await assert.rejects(handlers['fs:read']('missing.ts'), /E_NOT_FOUND/);
 });

@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildArgs, describePermission, expandTemplate, formatCommandLine, needsTurnApproval, opencodePermission, permissionEnv } from '../../../../src/backend/agent-cli/invocation.ts';
-import { OPENCODE_PRESET } from '../../../../src/backend/agent-cli/presets.ts';
+import { OPENCODE_EXAMPLE } from '../../../../src/backend/agent-cli/presets.ts';
 
-const cfg = { ...OPENCODE_PRESET, args: [...OPENCODE_PRESET.args], resumeArgs: [...OPENCODE_PRESET.resumeArgs], modelArgs: [...OPENCODE_PRESET.modelArgs] };
+const cfg = { ...OPENCODE_EXAMPLE, args: [...OPENCODE_EXAMPLE.args], resumeArgs: [...OPENCODE_EXAMPLE.resumeArgs], modelArgs: [...OPENCODE_EXAMPLE.modelArgs] };
 
 test('first turn: base args + prompt after --, cwd substituted, no session', () => {
   const args = buildArgs({ config: cfg, prompt: '-rf 删除？', cwd: 'C:\\Users\\me\\my proj', cliSessionId: null, mode: 'ask' });

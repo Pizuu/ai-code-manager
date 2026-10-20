@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { OPENCODE_PRESET } from '../../../../src/backend/agent-cli/presets.ts';
+import { OPENCODE_EXAMPLE } from '../../../../src/backend/agent-cli/presets.ts';
 import { SettingsStore, type KeyCipher } from '../../../../src/backend/settings/settings-store.ts';
 
 const cipher = (available: boolean): KeyCipher => ({
@@ -18,7 +18,7 @@ async function file(t: { after: (fn: () => Promise<void>) => void }) {
   return path.join(dir, 'settings.json');
 }
 
-const preset = () => ({ ...OPENCODE_PRESET, args: [...OPENCODE_PRESET.args], resumeArgs: [...OPENCODE_PRESET.resumeArgs], modelArgs: [...OPENCODE_PRESET.modelArgs], env: [] as Array<{ name: string; secret: boolean; value?: string }> });
+const preset = () => ({ ...OPENCODE_EXAMPLE, args: [...OPENCODE_EXAMPLE.args], resumeArgs: [...OPENCODE_EXAMPLE.resumeArgs], modelArgs: [...OPENCODE_EXAMPLE.modelArgs], env: [] as Array<{ name: string; secret: boolean; value?: string }> });
 
 test('secret env is encrypted at rest, decrypted only for the runtime, removable', async (t) => {
   const f = await file(t);

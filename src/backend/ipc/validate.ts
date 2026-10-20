@@ -61,8 +61,15 @@ export function asRelDir(value: unknown): string {
   return asString(value, 'relDir', { max: MAX_REL_PATH_CHARS, allowEmpty: true });
 }
 
+/** v1.2：fs:read 的文件相对路径（非空；越界由沙箱判定）。 */
+export function asRelPath(value: unknown): string {
+  return asString(value, 'relPath', { max: MAX_REL_PATH_CHARS });
+}
+
+/** baseUrl：空字符串 = 清空（003 起默认空白，由用户填写）；非空须为 http(s) URL。 */
 function asHttpUrl(value: unknown): string {
-  const raw = asString(value, 'baseUrl', { max: MAX_FIELD_CHARS });
+  const raw = asString(value, 'baseUrl', { max: MAX_FIELD_CHARS, allowEmpty: true }).trim();
+  if (raw === '') return '';
   let url: URL;
   try {
     url = new URL(raw);
@@ -78,7 +85,7 @@ export function validateSettingsUpdate(value: unknown): SettingsUpdate {
   const out: SettingsUpdate = {};
   if (v.provider !== undefined) out.provider = asOneOf(v.provider, PROVIDERS, 'provider');
   if (v.baseUrl !== undefined) out.baseUrl = asHttpUrl(v.baseUrl);
-  if (v.model !== undefined) out.model = asString(v.model, 'model', { max: 200 }).trim();
+  if (v.model !== undefined) out.model = asString(v.model, 'model', { max: 200, allowEmpty: true }).trim();
   if (v.permissionMode !== undefined) out.permissionMode = asOneOf(v.permissionMode, MODES, 'permissionMode');
   if (v.defaultAgent !== undefined) out.defaultAgent = asAgentRef(v.defaultAgent);
   if (v.apiKey !== undefined) {
