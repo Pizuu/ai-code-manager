@@ -44,4 +44,4 @@ description: "Task list for 003-code-view-web-locator"
 > 对照 spec / plan 与合入后的代码：FR-301–FR-309、SC-301–SC-305 均已落地（证据见 quickstart.md）。以下为新发现的缺口，显式拆卡跟踪。
 
 - [x] T213 [lane:infra] Web 预览服务器自动化冒烟（405 / 404 / E_PATH_ESCAPE / Host 校验）纳入 scripts/verify.sh 或 CI（当前为手动 curl，见 quickstart.md）
-- [ ] T214 [lane:infra] Windows 打包产物核对 `src/frontend/web/` 与 `scripts/` 未进入 asar（并入 001 的 T041 / 卡 T-012 执行；当前仅以 minimatch 模拟 build.files 验证）
+- [x] T214 [lane:infra] Windows 打包产物核对 `src/frontend/web/` 与 `scripts/` 未进入 asar（并入 001 的 T041 / 卡 T-012 执行；`scripts/check-asar.ts` 已在真实 electron-builder 产物上核对通过，CI 每次打包后复核）
