@@ -8,6 +8,7 @@ import type {
   AgentCliConfig,
   AgentCliInput,
   AgentEvent,
+  ApprovalRequest,
   ChatMessage,
   IpcInvokeChannel,
   IpcInvokeMap,
@@ -16,6 +17,7 @@ import type {
   Session,
   SessionSummary,
   SettingsUpdate,
+  ToolCallRecord,
 } from '../../../contracts/ipc.ts';
 import { WEB_DEV_API_PREFIX, WEB_DEV_READONLY_CHANNELS, type WebDevError } from '../../../contracts/web-dev.ts';
 
@@ -46,7 +48,7 @@ const sessions: Session[] = [{
   schemaVersion: 1, id: 'web-1', title: 'Web 预览示例会话', projectPath: null, createdAt: now(), updatedAt: now(), todos: [],
   messages: [
     { id: 'w-u1', role: 'user', content: '这是 Web 预览：界面与桌面版是同一套渲染层源码。', createdAt: now() },
-    { id: 'w-a1', role: 'assistant', content: '（模拟回复）Web 预览不会调用模型、写文件或执行命令。打开右下角「UI 定位」，点击任意元素即可看到它的源文件与 CSS 选择器。', createdAt: now() },
+    { id: 'w-a1', role: 'assistant', content: '（模拟回复）Web 预览不会调用模型、写文件或执行命令。发送「审批示例」可查看各类审批卡片。打开右下角「UI 定位」，点击任意元素即可看到它的源文件与 CSS 选择器。', createdAt: now() },
   ],
 }];
 
@@ -59,6 +61,47 @@ const find = (id: string): Session => {
 
 function toConfig(input: AgentCliInput, id: string): AgentCliConfig {
   return { ...input, id, env: input.env.map((e) => (e.secret ? { name: e.name, secret: true, hasValue: Boolean(e.value) } : { name: e.name, secret: false, value: e.value ?? '', hasValue: Boolean(e.value) })) };
+}
+
+/** 发送含「审批示例」的消息时演示 v1.3 各审批种类（T128）：只在内存中模拟，批准 / 拒绝只改变卡片状态。 */
+export const APPROVAL_DEMO_TRIGGER = '审批示例';
+type DemoApproval = Omit<ApprovalRequest, 'id' | 'sessionId' | 'toolCallId'> & { call: string; input: Record<string, unknown> };
+const APPROVAL_DEMOS: DemoApproval[] = [
+  { kind: 'webfetch', call: 'webfetch', input: { url: 'https://opencode.ai/docs/cli/' }, url: 'https://opencode.ai/docs/cli/', permission: 'webfetch', patterns: ['https://opencode.ai/*'] },
+  { kind: 'loop', call: 'read', input: { filePath: 'src/frontend/main.ts' }, tool: 'read', permission: 'doom_loop', description: '同一工具以相同参数已连续调用 3 次，可能陷入死循环。' },
+  { kind: 'subagent', call: 'task', input: { description: '在 tests/ 下补齐审批卡片的单元测试' }, permission: 'task', patterns: ['general'], description: '在 tests/ 下补齐审批卡片的单元测试' },
+  { kind: 'external-dir', call: 'read', input: { filePath: '/etc/hosts' }, path: '/etc/hosts', permission: 'external_directory', patterns: ['/etc/*'] },
+  { kind: 'other', call: 'skill', input: { name: 'deploy' }, permission: 'skill', patterns: ['deploy'], description: '加载外部 CLI 的 skill「deploy」。' },
+];
+const demoPending = new Map<string, { sessionId: string; messageId: string; call: ToolCallRecord }>();
+
+function runApprovalDemo(s: Session, reply: ChatMessage): void {
+  reply.content = '（Web 预览模拟）以下是外部 CLI 可能发起的各类审批请求，批准或拒绝只会改变卡片状态。';
+  reply.toolCalls = [];
+  emit({ type: 'message-start', sessionId: s.id, message: clone({ ...reply, content: '' }) });
+  emit({ type: 'text-delta', sessionId: s.id, messageId: reply.id, delta: reply.content });
+  for (const d of APPROVAL_DEMOS) {
+    const { call: name, input, ...rest } = d;
+    const call: ToolCallRecord = { id: newId('call'), name, input, status: 'awaiting-approval' };
+    const approval: ApprovalRequest = { ...rest, id: newId('appr'), sessionId: s.id, toolCallId: call.id };
+    reply.toolCalls.push(call);
+    demoPending.set(approval.id, { sessionId: s.id, messageId: reply.id, call });
+    emit({ type: 'tool-call', sessionId: s.id, messageId: reply.id, call: clone(call) });
+    emit({ type: 'approval-request', sessionId: s.id, approval });
+  }
+  s.messages.push(reply);
+  emit({ type: 'session-updated', summary: summary(s) });
+}
+
+function decideDemo(approvalId: string, approved: boolean): void {
+  const p = demoPending.get(approvalId);
+  if (!p) return;
+  demoPending.delete(approvalId);
+  p.call.status = approved ? 'done' : 'rejected';
+  p.call.output = approved ? '（Web 预览：已批准，未实际执行）' : '用户拒绝了此请求。';
+  emit({ type: 'approval-resolved', sessionId: p.sessionId, approvalId, approved });
+  emit({ type: 'tool-call', sessionId: p.sessionId, messageId: p.messageId, call: clone(p.call) });
+  if (![...demoPending.values()].some((x) => x.sessionId === p.sessionId)) emit({ type: 'status', sessionId: p.sessionId, running: false });
 }
 
 /** 内存模拟的通道。 */
@@ -101,6 +144,10 @@ const local: { [C in IpcInvokeChannel]?: (...args: never[]) => IpcInvokeMap[C]['
     emit({ type: 'status', sessionId: s.id, running: true });
     const reply: ChatMessage = { id: newId('a'), role: 'assistant', content: '', createdAt: now(), ...(s.agent ? { agent: s.agent } : {}) };
     setTimeout(() => {
+      if (req.text.includes(APPROVAL_DEMO_TRIGGER)) {
+        runApprovalDemo(s, reply);
+        return;
+      }
       emit({ type: 'message-start', sessionId: s.id, message: clone(reply) });
       reply.content = '（Web 预览模拟回复：不会调用模型、写文件或执行命令。）';
       s.messages.push(reply);
@@ -110,7 +157,7 @@ const local: { [C in IpcInvokeChannel]?: (...args: never[]) => IpcInvokeMap[C]['
     }, 300);
   },
   'agent:stop': () => undefined,
-  'agent:approve': () => undefined,
+  'agent:approve': (d: { approvalId: string; approved: boolean }) => decideDemo(d.approvalId, d.approved),
   'agentCli:save': (input: AgentCliInput) => {
     const list = settings.agentClis ?? [];
     const id = input.id ?? newId('cli').toLowerCase().replace(/[^a-z0-9-]/g, '');
