@@ -43,6 +43,8 @@
 | Windows 打包（FR-016） | — | — | ✅（`windows-dist.yml`，windows-latest 打包 + 启动冒烟；T041） | infra |
 | asar 内容核对（T214） | ✅ `check-asar.ts --self-test` | ✅ 真实 electron-builder 产物 | ✅ CI 打包后复核 | infra |
 | opencode serve 逐条审批原型（T125） | ✅ 17 条（假 HTTP/SSE 服务器） | ✅ 1.19.3 真实服务器手测 | — | backend |
+| opencode serve 模式接入 `serve-runner.ts`（T127） | ✅ | ✅ 9 条（`opencode-serve-mode.test.ts`，假 serve 进程） | ❌（真实 opencode 联调待做） | backend |
+| 审批卡片文案 `lib/approval-prompt.ts`（T128） | ✅ 6 条 | — | — | frontend |
 
 > ❌ 行由 `specs/001-agent-desktop/tasks.md` 的 Convergence 任务 **T040 / T041** 跟踪（本仓库无远端 issue 系统，以任务号代替 issue）。
 > 界面视图已用无头 Chromium + 模拟 `window.api` 做过手工冒烟（001：亮/暗主题、待批准 diff、任务面板、斜杠提示；002：三板块 1680×1200 截图并与 HTML 原型并排对比，数据为本仓库真实 `board:get` / `git:get` 快照），但脚本未纳入仓库，故不计为 ✅。
