@@ -1,7 +1,7 @@
 # 任务看板
 
 > 由 coordinator 维护。前置任务全部合入的卡即为 **ready**；来自不同泳道的 ready 卡可以同时派发。
-> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-031）。当前 ready：T-020（frontend）、T-021（infra）；新增待开卡：T127（backend，serve 接入）、T128（frontend，新审批卡片，须先于 T127 发出新种类）。T-012 同时承担 003 的 T214（打包核对）。
+> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-031）。当前 ready：T-020（frontend）、T-021（infra）。下一步候选：contracts v1.4 暴露 opencodeMode 设置；真实 opencode serve 联调。T-012 同时承担 003 的 T214（打包核对）。
 > 003 记录：T-023（契约 v1.2）合入提交 `cc62487` 到 T-025 合入提交 `7f900e1` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（同 002，plan.md Complexity Tracking）；三者连续合入，其余每次合入后 lint / typecheck / 测试为绿。
 > 002 记录：T-013（契约 v1.1）合入提交 `1ec10b8` 到 T-015 合入提交 `ce20063` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（有意的防漏机制，plan.md Complexity Tracking）；二者已连续合入，其余每次合入后 `scripts/verify.sh` 为绿。集成分支已更名 `hark-dev`；任务分支合入后删除，状态以合并提交追溯。
 > 说明：T015（应用入口/preload/handlers）因依赖后续模块，从 T-004 移到 T-006 执行（flow-back 已同步卡片）。无 Git 远端，「PR」列为本地合入 `dev` 的分支名（见 plan.md Complexity Tracking）。
@@ -41,6 +41,8 @@
 | T-031 | Web 预览服务器自动化冒烟 | infra | T-030 | done | hark | `feat/infra/T-031-web-dev-smoke`（本地 --no-ff 合入） |
 | T-032 | 界面重新设计：对齐 Claude MCP Apps 设计规范（ADR 0009） | frontend | T-030 | done | hark | `feat/contracts/T-032-adr-0009` + `feat/frontend/T-032-ui-redesign`（本地 --no-ff 合入） |
 | T-033 | 契约 v1.3：ApprovalRequest 承载 opencode 其他权限类型 | contracts | T-022 | done | hark | `feat/contracts/T-033-approval-kinds`（本地 --no-ff 合入；后续 T127 backend / T128 frontend） |
+| T-034 | opencode serve 逐条审批接入（实验开关） | backend | T-033 | done | hark | `feat/backend/T-034-opencode-serve-wire`（本地 --no-ff 合入） |
+| T-035 | 新审批种类卡片 | frontend | T-033 | done | hark | `feat/frontend/T-035-approval-cards`（本地 --no-ff 合入） |
 
 ## 依赖图
 
@@ -70,6 +72,8 @@ graph LR
   T019 --> T021[T-021 infra Windows opencode]
   T019 --> T022[T-022 backend serve 逐条审批]
   T022 --> T033[T-033 contracts 审批种类 v1.3]
+  T033 --> T034[T-034 backend serve 接入]
+  T033 --> T035[T-035 frontend 审批卡片]
   T023[T-023 contracts 003] --> T024[T-024 @shared 拆卡/规则]
   T024 --> T025[T-025 backend fs:read/配置空白]
   T024 --> T026[T-026 frontend 代码查看/右键]
