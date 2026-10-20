@@ -12,7 +12,7 @@ export const IPC_CONTRACT_VERSION = 'v1' as const;
  * 契约修订号：v1.1 = 功能 002（三板块 + Agent CLI）的纯增量扩展——只新增通道、类型与可选字段，
  * 未修改或删除任何 v1 字段，因此主版本保持 v1（宪法 II）。
  */
-export const IPC_CONTRACT_REVISION = 'v1.6' as const;
+export const IPC_CONTRACT_REVISION = 'v1.7' as const;
 // v1.2 = 功能 003（只读代码查看、配置空白）的纯增量：新增 `fs:read` 通道、`FileContent` 类型、`FILE_VIEW_LIMITS`
 // 常量与错误码 `E_NOT_CONFIGURED`；未修改或删除任何既有字段。
 // v1.3 = 任务卡 T-033（为接入 opencode serve 逐条审批做准备，ADR 0006 修订）的纯增量：`ApprovalKind` 新增
@@ -27,6 +27,9 @@ export const IPC_CONTRACT_REVISION = 'v1.6' as const;
 //   - 新增 `terminal:open` / `terminal:input` / `terminal:close` 三个通道与 `TerminalInfo` 等类型；
 //   - `AgentEvent` 新增 'terminal-data' / 'terminal-exit' 两个事件变体；
 //   - 未修改或删除任何既有字段。
+// v1.7 = 集成分支引用可回退远端的纯增量：`GitSnapshot` 新增 `integrationRef`（实际用于比对的引用，
+// 本地缺失时为 `origin/<分支>`）与 `integrationRefRemote`（是否回退到远端）两个字段；
+// 未修改或删除任何既有字段。
 
 // ───────────────────────── 基础模型 ─────────────────────────
 
@@ -375,6 +378,9 @@ export type AgentEvent =
   | { type: 'terminal-data'; sessionId: string; terminalId: string; data: string }
   /** 终端进程退出（code 为退出码，null = 被信号终止）。 */
   | { type: 'terminal-exit'; sessionId: string; terminalId: string; code: number | null }
+  // ── v1.7（自动刷新）──
+  /** v1.7：项目 git 引用发生变化（新增 / 删除 / 移动分支、切换 HEAD），提示渲染进程重拉看板与 Git 快照。 */
+  | { type: 'git-changed' }
   ;
 
 export type AgentEventType = AgentEvent['type'];
@@ -528,6 +534,10 @@ export interface BoardCard {
   worktree: string | null;
   /** 分支改动是否全部落在本泳道（check-lane 同语义）；无分支或无改动为 null。 */
   laneOk: boolean | null;
+  /** v1.7：预演「本分支合入集成分支」的冲突预判：clean 无冲突 / conflict 有冲突 / unknown 无法预演。 */
+  mergePreview: 'clean' | 'conflict' | 'unknown';
+  /** v1.7：预演出的冲突文件（相对项目根）；非 conflict 时为空。 */
+  mergeConflictFiles: string[];
   changedFiles: number;
   /** 最近一次相关提交时间（ISO 8601），无则 null。 */
   lastActivity: string | null;
@@ -557,6 +567,12 @@ export interface BoardSnapshot {
   generatedAt: string;
   integrationBranch: string;
   mainBranch: string;
+  /** v1.7：实际用于比对的集成分支引用；本地缺失时为 `origin/<分支>`。 */
+  integrationRef: string;
+  /** v1.7：集成分支引用是否来自远端（本地无该分支，已回退 origin/<分支>）。 */
+  integrationRefRemote: boolean;
+  /** v1.7：集成分支在本地与远端都不存在时的根因提示；存在为 null。 */
+  integrationMissing: string | null;
   maxParallel: number | null;
   lanes: BoardLane[];
   shared: string[];
@@ -632,6 +648,10 @@ export interface GitSnapshot {
   currentBranch: string | null;
   integrationBranch: string;
   mainBranch: string;
+  /** v1.7：实际用于比对的集成分支引用；本地缺失时为 `origin/<分支>`。 */
+  integrationRef: string;
+  /** v1.7：集成分支引用是否来自远端（本地无该分支，已回退 origin/<分支>）。 */
+  integrationRefRemote: boolean;
   integrationHead: string | null;
   mainHead: string | null;
   integrationAheadOfMain: number;
