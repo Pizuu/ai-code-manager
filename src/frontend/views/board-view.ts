@@ -54,7 +54,10 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       h('div', { class: 'tt' }, c.title),
       h('div', { class: 'r3' }, l.r3),
       h('div', { class: 'r4' }, h('span', { class: l.r4Class }, h('span', { class: 'dot' }), l.r4)),
-      c.declaredMismatch ? h('div', { class: 'warn' }, h('span', { class: 'chip amb', title: 'docs/tasks/BOARD.md 与任务卡写的是 done，但 git 中未合入' }, '看板声明 done · git 未合入')) : null);
+      c.declaredMismatch ? h('div', { class: 'warn' }, h('span', { class: 'chip amb', title: 'docs/tasks/BOARD.md 与任务卡写的是 done，但 git 中未合入' }, '看板声明 done · git 未合入')) : null,
+      // P1-7：合入冲突预警（merge-tree 预演）
+      c.mergePreview === 'conflict' ? h('div', { class: 'warn' },
+        h('span', { class: 'chip acc', title: `合入时会在这些文件上冲突：\n${c.mergeConflictFiles.join('\n')}` }, `合入会冲突${c.mergeConflictFiles.length ? ` · ${c.mergeConflictFiles.length} 个文件` : ''}`)) : null);
   };
 
   const renderMatrix = (snap: BoardSnapshot) => {
@@ -206,6 +209,21 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       renderMatrix(snap);
     });
     pad.append(h('div', { class: 'ctl' }, q, selWrap(laneSel), selWrap(agentSel), h('span', { class: 'flex1' }), tog));
+    // 根因提示（P0-1）：集成分支本地缺失 / 已回退远端时，先说清「为什么」，再看逐条冲突
+    if (snap.integrationMissing) {
+      pad.append(h('div', { class: 'rootcause' },
+        icon('route'),
+        h('div', {},
+          h('b', { class: 'b600' }, '集成分支不可用'),
+          h('div', {}, snap.integrationMissing),
+          h('div', { class: 'mute' }, '看板状态与「未合入」判定在此期间不可信；先修复集成分支引用再解读冲突。'))));
+    } else if (snap.integrationRefRemote) {
+      pad.append(h('div', { class: 'rootcause info' },
+        icon('route'),
+        h('div', {},
+          h('b', { class: 'b600' }, '已回退到远端集成分支'),
+          h('div', {}, `本地没有 ${integ} 分支，已改用 ${snap.integrationRef} 比对；ahead / behind 与合入记录基于远端。`))));
+    }
     // 不一致项默认折叠为一行摘要（v0.4 重新设计，ADR 0009），展开查看明细
     if (snap.conflicts.length) pad.append(h('details', { class: 'conflicts' }, h('summary', {}, h('b', { class: 'b600' }, `声明与 git 不一致 ${snap.conflicts.length} 项`), h('span', { class: 'mute' }, snap.conflicts[0] ?? '')), h('div', { class: 'list' }, ...snap.conflicts.map((c) => h('div', {}, `· ${c}`)))));
     // 进度行放在矩阵正上方（紧邻矩阵宿主之前 append）

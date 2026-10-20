@@ -1,21 +1,26 @@
 /**
  * 任务会话 · 中列对话（FR-004/005/011、FR-109、FR-111）：DOM 与类名对应 HTML 原型 renderSession() 的
  * .ctop / .thd / .log / .comp；消息、工具卡片、审批、斜杠命令、停止与 agent 选择器为真实功能。
+ *
+ * v1.8：改为主流对话样式（回合制）——用户消息为右侧气泡，助手消息为「头部（头像 / 名称 / 时间 / 操作）+
+ * 正文」的回合；工具调用收进可折叠的「思考」区（默认折叠，有待批准时自动展开，见 lib/chat-turn.ts）。
  */
-import type { BoardCard, ChatMessage, PermissionMode } from '../../../contracts/ipc.ts';
+import type { BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
-import { agentName, agentOptions, isCli } from '../lib/agent-label.ts';
+import { agentName, agentOptions, agentWho, isCli } from '../lib/agent-label.ts';
 import { insertBlock } from '../lib/context-send.ts';
 import { hm } from '../lib/board-format.ts';
+import { avatarText, hasPendingApproval, thinkCountText, thinkLastAction, thinkStatusText } from '../lib/chat-turn.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
+import { errorSectionTitle } from '../lib/error-log.ts';
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
 import { parseSlashCommand, suggestCommands } from '../lib/slash-commands.ts';
 import { store } from '../store.ts';
 import { renderToolCard, type DiffRenderer } from './tool-card.ts';
 
-export const MODE_LABELS: Readonly<Record<PermissionMode, string>> = { ask: '每次询问', 'auto-edits': '自动批准编辑', plan: '仅规划（只读）' };
+export const MODE_LABELS: Readonly<Record<PermissionMode, string>> = { ask: '每次询问', 'auto-edits': '自动批准编辑', plan: '仅规划（只读）', 'allow-all': '全部允许（免审批）' };
 
 export interface ChatHooks {
   renderDiff?: DiffRenderer;
@@ -62,6 +67,13 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     h('div', { class: 'r' }, thTitle, thRight),
     h('div', { class: 'r' }, h('span', { class: 'fx8' }, thChip, thDesc)));
   const log = h('div', { class: 'log' });
+  // v1.8：对话正文限宽居中（长文更好读）；「正在思考…」提示固定挂在末尾。
+  const logIn = h('div', { class: 'log-in' });
+  log.append(logIn);
+  const liveEl = h('div', { class: 'live', attrs: { 'aria-live': 'polite' } },
+    h('span', { class: 'live-dots' }, h('i'), h('i'), h('i')),
+    h('span', {}, '正在思考…'));
+  liveEl.hidden = true;
   // ── .comp ──
   const ctxChip = h('span', { class: 'chip acc' });
   const ctxText = h('span');
@@ -102,27 +114,121 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   let frame = 0;
   const settings = () => store.state.settings;
 
-  const msgEls = (m: ChatMessage): HTMLElement[] => {
-    if (m.role === 'tool') return [];
-    if (m.role === 'user') {
-      return [h('div', { class: 'meta umeta' }, h('span', {}, '你'), h('span', {}, hm(m.createdAt))), h('div', { class: 'ubub-row' }, h('div', { class: 'ubub' }, m.content))];
+  // ── v1.8：回合制的对话渲染 ──
+  /** 思考区展开状态（消息 ID → 用户显式选择）；未记录时按「有待批准则展开」处理。 */
+  const thinkOpen = new Map<string, boolean>();
+  /** 因待批准而自动展开过的消息：用户手动收起前保持展开（否则批准后卡片会突然消失）。 */
+  const thinkSticky = new Set<string>();
+  /** 当前会话 ID（切换会话时清掉展开状态）。 */
+  let lastSessionId: string | null = null;
+
+  /** 助手回合头部的操作按钮（复制 / 重新提问）。悬停回合时显示。 */
+  const turnActions = (m: ChatMessage): HTMLElement => h('span', { class: 'acts' },
+    m.content ? h('button', { class: 'act', title: '复制', attrs: { type: 'button' }, on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')) : null,
+    h('button', { class: 'act', title: '重新提问（把上一条消息放回输入框）', attrs: { type: 'button' }, on: { click: () => retryFrom(m.id) } }, icon('retry')));
+
+  /** 用户回合：右侧气泡 + 时间戳。 */
+  const userTurn = (m: ChatMessage): HTMLElement => h('article', { class: 'turn user' },
+    h('div', { class: 'ubub-row' }, h('div', { class: 'ubub' }, m.content)),
+    h('div', { class: 'turn-ft' }, h('span', { class: 'turn-tm' }, hm(m.createdAt))));
+
+  /**
+   * 「思考」区：工具调用的可折叠容器。
+   * - 默认折叠（对话读起来干净）；有调用待批准时强制展开，否则批准按钮点不到。
+   * - 因待批准展开过的，在批准完成前保持展开（sticky），避免卡片突然消失。
+   * - 用户的显式开合优先（重渲染与切换会话后保持）。
+   */
+  const thinkBlock = (m: ChatMessage, calls: ToolCallRecord[]): HTMLElement => {
+    const det = h('details', { class: 'think' });
+    const summary = h('summary', { class: 'think-sum', attrs: { title: '展开 / 折叠思考过程' } },
+      h('span', { class: 'think-caret' }, icon('caret')),
+      h('span', { class: 'think-label' }, '思考过程'),
+      h('span', { class: 'mute think-count' }, thinkCountText(calls)));
+    const status = thinkStatusText(calls);
+    if (status) summary.append(h('span', { class: 'mute think-detail' }, status));
+    const last = thinkLastAction(calls);
+    if (last) summary.append(h('span', { class: 'mute think-last', attrs: { title: last } }, last));
+    const body = h('div', { class: 'think-body' });
+    for (const call of calls) {
+      const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === call.id);
+      body.append(renderToolCard(call, approval, (id, ok) => void decideApproval(id, ok), hooks.renderDiff));
     }
+    det.append(summary, body);
+
+    // 展开判定（优先级从高到低）：
+    // 1. 有待批准的调用 → 强制展开：批准按钮被折叠就点不到了；
+    // 2. 用户显式选择过 → 用用户的选择；
+    // 3. 曾因待批准自动展开过（sticky）→ 保持展开，避免批准后卡片突然消失；
+    // 4. 其余 → 折叠（对话读起来干净）。
+    const pending = hasPendingApproval(calls) || calls.some((c) => [...store.state.approvals.values()].some((a) => a.toolCallId === c.id));
+    let open: boolean;
+    if (pending) {
+      open = true;
+      thinkOpen.delete(m.id); // 强制展开覆盖用户此前的收起选择
+      thinkSticky.add(m.id);
+    } else {
+      const explicit = thinkOpen.get(m.id);
+      open = explicit !== undefined ? explicit : thinkSticky.has(m.id);
+    }
+    det.open = open;
+    // 自行接管开合（阻止 summary 的默认行为），保证重渲染后状态可还原。
+    summary.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const next = !det.open;
+      det.open = next;
+      thinkOpen.set(m.id, next);
+    });
+    return det;
+  };
+
+  /** 助手回合：头部（头像 / 名称 / 时间 / 操作）+ 正文 + 可折叠的思考区。 */
+  const assistantTurn = (m: ChatMessage): HTMLElement => {
     const body = h('div', { class: 'md' });
     setTrustedHtml(body, renderMarkdown(m.content));
-    const out: HTMLElement[] = [
-      h('div', { class: 'meta' }, icon('star'), h('span', {}, agentName(m.agent ?? 'builtin', settings())), h('span', {}, hm(m.createdAt))),
-      h('div', { class: 'msg', attrs: { 'data-id': m.id } }, body),
-    ];
-    for (const call of m.toolCalls ?? []) {
-      const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === call.id);
-      out.push(renderToolCard(call, approval, (id, ok) => void decideApproval(id, ok), hooks.renderDiff));
+    const who = agentWho(m.agent ?? 'builtin', settings());
+    const turn = h('article', { class: 'turn assistant' },
+      h('header', { class: 'turn-hd' },
+        h('span', { class: 'avatar', attrs: { 'aria-hidden': 'true' } }, avatarText(who)),
+        h('span', { class: 'who', attrs: { title: agentName(m.agent ?? 'builtin', settings()) } }, who),
+        h('span', { class: 'tm' }, hm(m.createdAt)),
+        turnActions(m)),
+      h('div', { class: 'msg', attrs: { 'data-id': m.id } }, body));
+    const calls = m.toolCalls ?? [];
+    if (calls.length) turn.append(thinkBlock(m, calls));
+    return turn;
+  };
+
+  const msgEls = (m: ChatMessage): HTMLElement[] => {
+    if (m.role === 'tool') return [];
+    if (m.role === 'user') return [userTurn(m)];
+    return [assistantTurn(m)];
+  };
+
+  /** 正在流式输出的最后一条助手消息（运行中才有）。 */
+  const streamingMessage = (): ChatMessage | null => {
+    if (!store.isRunning()) return null;
+    const msgs = store.state.current?.messages.filter((m) => m.role !== 'tool') ?? [];
+    const last = msgs.at(-1);
+    return last && last.role === 'assistant' ? last : null;
+  };
+
+  /** 流式光标：挂在正在输出的助手正文末尾。 */
+  const setCaret = (): void => {
+    for (const el of log.querySelectorAll('.caret-blink')) el.remove();
+    const id = streamingMessage()?.id;
+    if (!id) return;
+    const body = log.querySelector(`.msg[data-id="${CSS.escape(id)}"]`);
+    if (body) body.append(h('span', { class: 'caret-blink', attrs: { 'aria-hidden': 'true' } }));
+  };
+
+  /** 「正在思考…」提示：运行中且还没有正文时显示（有正文时改为正文末尾的光标）。 */
+  const updateLive = (): void => {
+    const wasHidden = liveEl.hidden;
+    liveEl.hidden = !store.isRunning() || streamingMessage() !== null;
+    // 提示刚出现时把对话底部带进视野（否则提示会被裁在可视区外）。
+    if (wasHidden && !liveEl.hidden && log.scrollHeight - log.scrollTop - log.clientHeight < 80) {
+      log.scrollTop = log.scrollHeight;
     }
-    if (m.content) {
-      out.push(h('div', { class: 'fb msg' },
-        h('button', { title: '复制', on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')),
-        h('button', { title: '重新提问（把上一条消息放回输入框）', on: { click: () => retryFrom(m.id) } }, icon('retry'))));
-    }
-    return out;
   };
 
   const retryFrom = (assistantId: string) => {
@@ -186,27 +292,49 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
 
   const renderAll = () => {
     const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
-    clear(log);
+    clear(logIn);
     const s = store.state.current;
+    // 切换会话时清掉上一会话的思考区展开状态（消息 ID 不跨会话复用）。
+    const sid = s?.id ?? null;
+    if (sid !== lastSessionId) {
+      lastSessionId = sid;
+      thinkOpen.clear();
+      thinkSticky.clear();
+    }
     const sysb = sysbEl();
-    if (sysb) log.append(sysb);
+    if (sysb) logIn.append(sysb);
     const visible = s?.messages.filter((m) => m.role !== 'tool') ?? [];
     if (!s || (visible.length === 0 && store.state.notices.length === 0)) {
-      log.append(h('div', { class: 'meta center' }, '— 开始一个任务 —'),
+      logIn.append(h('div', { class: 'meta center' }, '— 开始一个任务 —'),
         h('div', { class: 'ev' }, icon('route'), h('span', {}, '例如：「解释这个项目的结构」「给 README 加上安装说明」「运行测试并修复失败」。输入 / 查看 /init、/specify、/plan、/tasks、/implement 等命令；顶部可切换内置 agent 或外部 CLI（如 opencode）。')));
       const setup = agentSetupHint(s?.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
-      if (setup) log.append(h('div', { class: 'notice setup' }, setup));
+      if (setup) logIn.append(h('div', { class: 'notice setup' }, setup));
     }
-    for (const n of store.state.notices.filter((x) => x.afterMessageId === null && visible.length === 0)) log.append(noticeEl(n.text, n.kind));
+    for (const n of store.state.notices.filter((x) => x.afterMessageId === null && visible.length === 0)) logIn.append(noticeEl(n.text, n.kind));
     for (const m of visible) {
-      log.append(...msgEls(m));
-      for (const n of store.state.notices.filter((x) => x.afterMessageId === m.id)) log.append(noticeEl(n.text, n.kind));
+      logIn.append(...msgEls(m));
+      for (const n of store.state.notices.filter((x) => x.afterMessageId === m.id)) logIn.append(noticeEl(n.text, n.kind));
     }
     const lastId = visible[visible.length - 1]?.id;
     for (const n of store.state.notices.filter((x) => x.afterMessageId === null && visible.length > 0)) {
       n.afterMessageId = lastId ?? null;
-      log.append(noticeEl(n.text, n.kind));
+      logIn.append(noticeEl(n.text, n.kind));
     }
+    // P1-6：错误 / 日志分区——把错误集中到一处，便于追溯（不再淹没在消息流里）
+    const errEntries = s ? store.errorsOf(s.id) : [];
+    if (errEntries.length) {
+      const box = h('details', { class: 'errlog' },
+        h('summary', {}, h('b', { class: 'b600' }, errorSectionTitle(errEntries))),
+        h('div', { class: 'list' }, ...errEntries.map((e) => h('div', { class: 'e' },
+          h('div', { class: 'h' }, h('span', { class: `chip ${e.kind === 'tool' ? 'amb' : 'acc'}` }, e.kind === 'tool' ? '工具失败' : 'Agent 错误'), h('span', { class: 't' }, e.text), h('span', { class: 'mute mono' }, hm(e.at))),
+          e.detail ? h('pre', {}, e.detail) : null))));
+      box.open = true;
+      logIn.append(box);
+    }
+    // 「正在思考…」提示永远挂在末尾；流式正文末尾另有一个光标。
+    logIn.append(liveEl);
+    updateLive();
+    setCaret();
     renderHeader();
     if (nearBottom) log.scrollTop = log.scrollHeight;
   };
@@ -478,7 +606,12 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   store.on('messages', renderAll);
   store.on('approvals', renderAll);
   store.on('workspace', renderAll);
-  store.on('running', renderHeader);
+  // 运行状态变化：只更新头部与「正在思考…」提示 / 流式光标（不整体重渲染，避免打断流式输出）。
+  store.on('running', () => {
+    renderHeader();
+    updateLive();
+    setCaret();
+  });
   store.on('settings', renderAll);
   store.on('project', renderHeader);
   renderAll();

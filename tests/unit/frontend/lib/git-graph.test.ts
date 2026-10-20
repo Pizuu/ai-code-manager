@@ -7,6 +7,7 @@ const c = (sha: string, parents: string[], subject = sha) => ({ sha, short: sha.
 // 新 → 旧：main=A；dev = A → B(合入 feat/x，二父 X1) → C；feat/y 从 C 分出 Y1（未合入）
 const snap: GitSnapshot = {
   available: true, generatedAt: 'now', currentBranch: 'dev', integrationBranch: 'dev', mainBranch: 'main', integrationHead: 'ccccccc', mainHead: 'aaaaaaa',
+  integrationRef: 'dev', integrationRefRemote: false,
   integrationAheadOfMain: 3, mainAheadOfIntegration: 0,
   branches: [
     { name: 'main', sha: 'aaaaaaa1', short: 'aaaaaaa', time: '', subject: '', kind: 'main', lane: null, task: null, ahead: 0, behind: 3, mergedIntoIntegration: true, worktree: null, current: false },

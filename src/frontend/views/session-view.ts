@@ -4,6 +4,8 @@
  * 会话标题含任务号（如 T-015）且看板中有该卡时，右列显示原型的「任务上下文」，否则显示「会话上下文」。
  * 003：中列 = 对话 + 文件窗格并列（T-037）；文件窗格含已打开文件的标签条（code-view.ts，T-039 起可编辑，未保存显示圆点），未打开文件时隐藏。
  * 会话置顶只是本机界面偏好，存 localStorage（不经 IPC）。
+ * v1.6（ADR 0010）：中列顶部加「对话 / 终端」分段切换（照 Orca 的双视图）——终端模式显示终端面板，
+ * 对话模式显示原有对话；每个会话记住自己的模式（localStorage）。
  */
 import type { BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
@@ -17,6 +19,7 @@ import { store } from '../store.ts';
 import { decideApproval, MODE_LABELS, mountChat, type ChatView } from './chat.ts';
 import { mountCodeView } from './code-view.ts';
 import { renderDiff } from './diff-view.ts';
+import { mountTerminal } from './terminal-view.ts';
 import { refreshTasks } from './tasks-view.ts';
 import { STATUS_LABELS } from './tool-card.ts';
 
@@ -34,11 +37,40 @@ export interface SessionView {
   openFile(relPath: string): void;
   /** 切回「对话」标签。 */
   showChat(): void;
+  /** v1.6：切换到「终端」模式。 */
+  showTerminal(): void;
 }
 
 /** 同时保留的文件标签上限，超出关闭最早打开的。 */
 const MAX_FILE_TABS = 8;
 const PINNED_KEY = 'acm.pinnedSessions';
+/** v1.6：每个会话的模式（'chat' | 'terminal'），本机界面偏好，存 localStorage。 */
+const MODE_KEY = 'acm.sessionModes';
+
+/** 会话视图的两种模式（v1.6，对应 Orca 的 terminal / chat 视图）。 */
+export type SessionPaneMode = 'chat' | 'terminal';
+
+function loadModes(): Map<string, SessionPaneMode> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(MODE_KEY) ?? '{}');
+    if (typeof v !== 'object' || v === null) return new Map();
+    const out = new Map<string, SessionPaneMode>();
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (val === 'chat' || val === 'terminal') out.set(k, val);
+    }
+    return out;
+  } catch {
+    return new Map();
+  }
+}
+
+function saveModes(modes: Map<string, SessionPaneMode>): void {
+  try {
+    localStorage.setItem(MODE_KEY, JSON.stringify(Object.fromEntries(modes)));
+  } catch {
+    // 存储不可用时忽略（模式仅是界面偏好）
+  }
+}
 
 function loadPinned(): Set<string> {
   try {
@@ -75,6 +107,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     h('div', { class: 'hd' }, h('span', {}, '任务会话'), count), search, list);
 
   const chatCol = h('section', { class: 'chat' });
+  const termCol = h('section', { class: 'termv-wrap' });
   const codePane = h('section', { class: 'codev' });
   const ftabs = h('div', { class: 'ftabs', attrs: { role: 'tablist' } });
   const filePane = h('div', { class: 'fpane' }, ftabs, codePane);
@@ -85,7 +118,13 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     ftabs.scrollLeft += ev.deltaY;
     ev.preventDefault();
   }, { passive: false });
-  const mid = h('div', { class: 'mid split' }, chatCol, filePane);
+  // v1.6：「对话 / 终端」分段切换（照 Orca 的双视图）
+  const segChat = h('button', { class: 'seg-b', attrs: { type: 'button', role: 'tab' } }, '对话');
+  const segTerm = h('button', { class: 'seg-b', attrs: { type: 'button', role: 'tab' } }, '终端');
+  const modeHint = h('span', { class: 'mute mode-hint' });
+  const modeBar = h('div', { class: 'modebar' }, h('div', { class: 'seg', attrs: { role: 'tablist', 'aria-label': '会话视图' } }, segChat, segTerm), modeHint);
+  const midBody = h('div', { class: 'midbody split' }, chatCol, termCol, filePane);
+  const mid = h('div', { class: 'mid' }, modeBar, midBody);
   const ctxp = h('aside', { class: 'ctxp' });
   const sx = h('div', { class: 'sx' }, slist, mid, ctxp);
   container.append(sx);
@@ -146,8 +185,46 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     linkedCard,
   });
 
+  // ── v1.6：对话 / 终端 模式切换 ──
+  const terminal = mountTerminal(termCol, { notify: (t, k) => chat.notify(t, k) });
+  const modes = loadModes();
+
+  const applyMode = (next: SessionPaneMode, persist = true): void => {
+    const sid = store.state.current?.id;
+    if (sid && persist) {
+      modes.set(sid, next);
+      saveModes(modes);
+    }
+    const isTerm = next === 'terminal';
+    chatCol.hidden = isTerm;
+    termCol.hidden = !isTerm;
+    segChat.classList.toggle('on', !isTerm);
+    segTerm.classList.toggle('on', isTerm);
+    segChat.setAttribute('aria-selected', String(!isTerm));
+    segTerm.setAttribute('aria-selected', String(isTerm));
+    modeHint.textContent = isTerm
+      ? '终端模式：命令在项目根的 shell 中执行，不经过审批卡片。'
+      : '对话模式：消息与工具调用逐条展示，权限按下方模式执行。';
+    if (isTerm) {
+      // 终端进程由主进程托管；重复打开同一会话的终端是幂等的。
+      void terminal.open('shell');
+    } else {
+      terminal.focus();
+    }
+  };
+
+  segChat.addEventListener('click', () => applyMode('chat'));
+  segTerm.addEventListener('click', () => applyMode('terminal'));
+  // v1.6：切换会话时恢复该会话自己的模式（照 Orca 的 per-tab viewMode）。
+  store.on('current', () => {
+    const sid = store.state.current?.id;
+    applyMode(sid ? (modes.get(sid) ?? 'chat') : 'chat', false);
+  });
+
   const statusOf = (s: SessionSummary): string => {
     if (store.state.running.has(s.id)) return [...store.state.approvals.values()].some((a) => a.sessionId === s.id) ? '待批准' : '运行中';
+    // P1-6：有错误条目的会话标为「出错」，一眼可见（右侧分区可查详情）
+    if (store.errorsOf(s.id).length) return '出错';
     return s.messageCount ? '空闲' : '新会话';
   };
 
@@ -297,12 +374,13 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     });
   };
 
-  for (const t of ['sessions', 'current', 'running', 'approvals', 'settings', 'workspace', 'project'] as const) store.on(t, renderList);
+  for (const t of ['sessions', 'current', 'running', 'approvals', 'settings', 'workspace', 'project', 'errors'] as const) store.on(t, renderList);
   for (const t of ['current', 'todos', 'diffs', 'terminal', 'tasks', 'running', 'approvals', 'settings', 'workspace', 'project'] as const) store.on(t, scheduleCtx);
   store.on('project', () => void refreshTasks().catch(() => undefined));
   renderList();
   renderCtx();
+  applyMode('chat', false);
   void refreshTasks().catch(() => undefined);
-  // 对话与文件窗格并列，对话始终可见，showChat 无需切换
-  return { chat, openFile, showChat: () => undefined };
+  // v1.6：showChat 切回对话模式（终端模式为并列的另一种视图）。
+  return { chat, openFile, showChat: () => applyMode('chat'), showTerminal: () => applyMode('terminal') };
 }

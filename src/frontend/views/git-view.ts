@@ -243,6 +243,14 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
 
     // 提交与 PR
     left.append(h('div', { class: 'sec' }, h('span', {}, '提交与 Pull requests'), h('span', { class: 'mute' }, `${openBranches.length} 个未合入 · ${g.merges.length} 个已合入 · PR：暂无（本地仓库无远端）`)));
+    // P0-1：本地无集成分支时已回退远端，明示实际比对用的引用
+    if (g.integrationRefRemote) {
+      left.append(h('div', { class: 'rootcause info' },
+        icon('route'),
+        h('div', {},
+          h('b', { class: 'b600' }, '已回退到远端集成分支'),
+          h('div', {}, `本地没有 ${integ} 分支，ahead / behind 与合入记录基于 ${g.integrationRef}。`))));
+    }
     const prRow = (o: { branch: string; task: string | null; subject: string; state: 'merged' | 'review' | 'active'; ahead: number; behind: number; short: string; time: string; mergeShort: string | null; worktree: string | null; commitCount: number | null }) => {
       const c = cardFor(o.branch);
       const tag = o.state === 'merged' ? h('span', { class: 'chip grn' }, '已合入') : o.state === 'review' ? h('span', { class: 'chip blu' }, '待审查') : h('span', { class: 'chip acc' }, '进行中');

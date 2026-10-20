@@ -8,6 +8,7 @@ import { ymdhm } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
+import { activityLabels, activityTarget, activityTotal, sessionActivity, type ActivityKind } from '../lib/session-activity.ts';
 import { store, type ViewId } from '../store.ts';
 
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
@@ -24,6 +25,8 @@ export interface ShellHooks {
   /** 单击文件：在任务会话中列打开只读代码标签（003）。 */
   onFileClick(relPath: string): void;
   onError(text: string): void;
+  /** P0-3：点击活动徽标 / 状态栏计数时跳转到指定会话。 */
+  onJumpToSession(sessionId: string): void;
 }
 
 export interface ShellView {
@@ -47,6 +50,10 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const railBtn = (name: IconName, title: string, onClick: () => void) => h('a', { class: 'ri', title, on: { click: onClick } }, icon(name));
   const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code', agents: 'wt' };
   for (const [id, label] of NAV) railView[id] = railBtn(RAIL_ICON[id], label, () => setView(id));
+  // P0-3：任务会话图标上的活动徽标（运行中 / 待批准 / 出错）
+  const railBadge = h('span', { class: 'ri-badge', attrs: { hidden: '' } });
+  railBadge.hidden = true;
+  railView.session.append(railBadge);
   const rail = h('nav', { class: 'rail' },
     railBtn('side', '侧栏', () => explorer.toggleAttribute('hidden')),
     h('div', { class: 'gap26' }),
@@ -213,7 +220,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const statusL = h('span');
   /** Git 视图时显示的集成摘要（原 Git 顶部说明行，T-039）。 */
   const statusR = h('span', { class: 'st-r' });
-  const status = h('footer', { class: 'status' }, statusL, statusR);
+  /** P0-3：活动计数（运行中 / 待批准 / 错误），可点击跳转到对应会话。 */
+  const statusAct = h('span', { class: 'st-act' });
+  const status = h('footer', { class: 'status' }, statusL, statusAct, statusR);
   const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, status);
   app.append(rail, explorer, ws);
 
@@ -253,7 +262,49 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       statusL.replaceChildren(h('span', { class: 'dot' }), store.state.project ? (store.state.workspaceError ?? g?.reason ?? '读取中…') : '未打开项目');
     }
     renderGitStatus();
+    renderActivity();
     renderProject();
+  };
+
+  /**
+   * P0-3：活动计数（运行中 / 待批准 / 错误）——图标栏徽标 + 状态栏，点击直接跳到相关会话。
+   * 目标会话由 activityTarget 决定；无目标时不跳转（保持原地）。
+   */
+  const renderActivity = () => {
+    const cur = store.state.current;
+    const toolCalls = (cur?.messages ?? []).flatMap((m) => m.toolCalls ?? []);
+    const approvals = [...store.state.approvals.values()];
+    const input = {
+      running: store.state.running,
+      pending: approvals.length,
+      toolCalls,
+      currentSessionId: cur?.id ?? null,
+      approvalSessionIds: approvals.map((a) => a.sessionId),
+    };
+    const act = sessionActivity(input);
+    // 图标栏徽标：总数
+    const total = activityTotal(act);
+    railBadge.hidden = total === 0;
+    railBadge.textContent = total > 99 ? '99+' : String(total);
+    railBadge.className = `ri-badge${act.errors ? ' err' : act.pending ? ' pend' : ''}`;
+    railView.session.title = total
+      ? `${VIEW_TITLES.session}：${activityLabels(act).join(' · ')}（点击查看）`
+      : VIEW_TITLES.session;
+    // 状态栏：分段可点击
+    clear(statusAct);
+    const seg = (kind: ActivityKind, label: string, n: number) => {
+      if (!n) return;
+      const target = activityTarget(kind, input);
+      const el = h('span', { class: `act act-${kind}`, title: target ? `点击跳转到「${target}」` : '当前会话' }, label);
+      if (target) {
+        el.classList.add('clickable');
+        el.addEventListener('click', () => hooks.onJumpToSession(target));
+      }
+      statusAct.append(el);
+    };
+    seg('running', `${act.running} 运行中`, act.running);
+    seg('pending', `${act.pending} 待批准`, act.pending);
+    seg('errors', `${act.errors} 错误`, act.errors);
   };
 
   const renderGitStatus = () => {
@@ -368,6 +419,10 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   };
 
   store.on('workspace', renderChrome);
+  // P1-3：活动徽标 / 状态栏计数随运行态、审批与消息实时更新
+  for (const t of ['running', 'approvals', 'current', 'messages'] as const) store.on(t, renderActivity);
+  // P1-8：窗口获得焦点时刷新工作区快照（看板 / Git 可能已被外部改动）
+  window.addEventListener('focus', () => void refreshWorkspace());
   store.on('project', () => {
     kidsCache.clear();
     expanded.clear();
