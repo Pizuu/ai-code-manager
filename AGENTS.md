@@ -9,6 +9,7 @@
 - **技术栈**：TypeScript / Node.js
 - **目录布局**：前后端分层
 - **默认分支**：`main`
+- **应用形态**：Electron 桌面应用；`src/backend/` = 主进程（Agent 核心），`src/frontend/` = 渲染进程（纯 DOM + CSS）；两侧共享类型只来自 `contracts/`
 
 ## 目录职责
 
@@ -28,10 +29,12 @@
 
 ## 开发与验证要求
 
-- 测试命令：`npm run test`
+- 测试命令：`npm run test`（Node ≥ 22.18，直接运行 `tests/**/*.test.ts`）
 - Lint：`npx eslint .`
-- 构建：`npm run build`
-- 标为「待确认」的命令是未经确认的占位，接入 CI 前请与维护者确认。
+- 类型检查：`npx tsc --noEmit`
+- 构建：`npm run build`（tsc → `dist/`）
+- 运行：`npm start`；打包（Windows）：`npm run dist`
+- 以上命令已确认（ADR 0004），无「待确认」项。
 - 本地一键检查优先使用 `scripts/verify.sh`。
 
 ## 变更纪律（平衡）
@@ -47,6 +50,8 @@
 - 覆盖范围变化时，同步更新 `docs/testing/test-matrix.md`。
 
 ## 安全基线
+
+> 桌面应用特有的安全原则见宪法 九–十四（写入/命令审批、密钥不进渲染进程、项目根沙箱、渲染进程最小权限），与下列通用基线冲突时以宪法为准；SQL、cookie、限流等 Web 条目对本项目不适用（ADR 0004）。
 
 ### 注入
 - SQL 一律参数化查询，禁止字符串拼接；系统命令禁止拼接用户输入。
