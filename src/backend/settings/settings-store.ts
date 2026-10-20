@@ -7,6 +7,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { AgentCliConfig, AgentCliInput, AgentRef, PermissionMode, ProviderId, PublicSettings, SettingsUpdate } from '../../../contracts/ipc.ts';
 import type { CliRuntimeConfig } from '../agent-cli/cli-runner.ts';
+import { normalizeCliRuntimeFields } from '../agent-cli/normalize.ts';
 import { resolveOpencodeMode, type OpencodeMode } from '../agent-cli/serve-runner.ts';
 import { ipcError } from '../ipc/validate.ts';
 
@@ -146,7 +147,9 @@ export class SettingsStore {
         if (e.encrypted) env[e.name] = this.cipher.decrypt(e.encrypted);
       } else if (e.value !== undefined) env[e.name] = e.value;
     }
-    return { id: c.id, name: c.name, preset: c.preset, args: [...c.args], resumeArgs: [...c.resumeArgs], modelArgs: [...c.modelArgs], model: c.model, outputFormat: c.outputFormat, env };
+    // 存量归一化：检测添加存成通用格式的 opencode 在运行时升级为 opencode-json（不改存盘数据）
+    const n = normalizeCliRuntimeFields(c);
+    return { id: c.id, name: c.name, preset: n.preset, args: n.args, resumeArgs: n.resumeArgs, modelArgs: n.modelArgs, model: c.model, outputFormat: n.outputFormat, env };
   }
 
   getAgentCliCommand(id: string): { command: string; preset: string; name: string } | null {

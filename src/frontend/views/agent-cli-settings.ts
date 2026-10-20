@@ -4,7 +4,7 @@
  */
 import type { AgentCliConfig, AgentCliDetection, AgentCliOutputFormat } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
-import { configToForm, formToInput, OPENCODE_FORM_EXAMPLE, previewCommand, type AgentCliForm, type EnvRow } from '../lib/agent-cli-form.ts';
+import { configToForm, detectedToForm, formToInput, OPENCODE_FORM_EXAMPLE, previewCommand, type AgentCliForm, type EnvRow } from '../lib/agent-cli-form.ts';
 import { clear, h } from '../lib/dom.ts';
 import { store } from '../store.ts';
 
@@ -76,7 +76,7 @@ export function mountAgentCliSettings(container: HTMLElement): void {
           add.addEventListener('click', async () => {
             add.disabled = true;
             try {
-              store.state.settings = await api.invoke('agentCli:save', formToInput({ name: d.name, preset: 'custom', command: d.command, args: '{prompt}', resumeArgs: '', modelArgs: '', model: '', outputFormat: 'text', env: [] }));
+              store.state.settings = await api.invoke('agentCli:save', formToInput(detectedToForm(d)));
               store.emit('settings');
               renderList();
             } catch (e) {

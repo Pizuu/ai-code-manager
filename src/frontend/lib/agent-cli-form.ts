@@ -49,6 +49,27 @@ export interface AgentCliForm {
 
 export const splitLines = (text: string): string[] => text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '');
 
+/** command 的可执行名：剥目录（/ 与 \）与 .exe/.cmd/.bat 后缀、转小写，用于按命令名识别 CLI。 */
+export function commandBaseName(command: string): string {
+  const base = command.trim().split(/[\\/]/).pop() ?? '';
+  return base.replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
+}
+
+/**
+ * 「自动检测」结果 → 新增表单。opencode 必须以 opencode-json 存入（ACP/serve 分发只认该格式），
+ * 故按官方示例模板预填参数；其它 CLI 用通用文本模板（消息经 {prompt} 传入）。
+ */
+export function detectedToForm(d: { name: string; command: string }): AgentCliForm {
+  if (commandBaseName(d.command) === 'opencode') {
+    return {
+      name: d.name, preset: 'opencode', command: d.command,
+      args: OPENCODE_FORM_EXAMPLE.args, resumeArgs: OPENCODE_FORM_EXAMPLE.resumeArgs, modelArgs: OPENCODE_FORM_EXAMPLE.modelArgs,
+      model: '', outputFormat: 'opencode-json', env: [],
+    };
+  }
+  return { name: d.name, preset: 'custom', command: d.command, args: '{prompt}', resumeArgs: '', modelArgs: '', model: '', outputFormat: 'text', env: [] };
+}
+
 export function configToForm(c: AgentCliConfig): AgentCliForm {
   return {
     id: c.id, name: c.name, preset: c.preset, command: c.command,

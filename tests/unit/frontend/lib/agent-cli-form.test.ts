@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { PublicSettings } from '../../../../contracts/ipc.ts';
-import { configToForm, formToInput, OPENCODE_FORM_EXAMPLE, OPENCODE_FORM_PRESET, previewCommand, splitLines } from '../../../../src/frontend/lib/agent-cli-form.ts';
+import { commandBaseName, configToForm, detectedToForm, formToInput, OPENCODE_FORM_EXAMPLE, OPENCODE_FORM_PRESET, previewCommand, splitLines } from '../../../../src/frontend/lib/agent-cli-form.ts';
 import { agentName, agentOptions, agentWho, isCli } from '../../../../src/frontend/lib/agent-label.ts';
 
 test('003: the opencode form preset is blank (type only); the example is opt-in', () => {
@@ -17,6 +17,44 @@ test('opencode example form → AgentCliInput matches the backend example', () =
     model: '', outputFormat: 'opencode-json', env: [{ name: 'ANTHROPIC_API_KEY', secret: true, value: 'k' }],
   });
   assert.deepEqual(splitLines(' a \n\n b\r\n'), ['a', 'b']);
+});
+
+test('commandBaseName strips directories, windows suffixes and case', () => {
+  assert.equal(commandBaseName('opencode'), 'opencode');
+  assert.equal(commandBaseName('/usr/local/bin/opencode'), 'opencode');
+  assert.equal(commandBaseName('C:\\Users\\me\\opencode.exe'), 'opencode');
+  assert.equal(commandBaseName('C:\\tools\\OPENCODE.CMD'), 'opencode');
+  assert.equal(commandBaseName('claude'), 'claude');
+});
+
+test('detected opencode becomes the opencode form (example args, opencode-json) so it can reach ACP/serve', () => {
+  const f = detectedToForm({ name: 'opencode', command: 'opencode' });
+  assert.equal(f.preset, 'opencode');
+  assert.equal(f.outputFormat, 'opencode-json');
+  assert.equal(f.args, OPENCODE_FORM_EXAMPLE.args);
+  assert.equal(f.resumeArgs, OPENCODE_FORM_EXAMPLE.resumeArgs);
+  assert.equal(f.modelArgs, OPENCODE_FORM_EXAMPLE.modelArgs);
+  assert.equal(f.model, '');
+  assert.deepEqual(f.env, []);
+  assert.deepEqual(formToInput(f), {
+    name: 'opencode', preset: 'opencode', command: 'opencode',
+    args: ['run', '--format', 'json', '--dir', '{cwd}'], resumeArgs: ['--session', '{session}'], modelArgs: ['--model', '{model}'],
+    model: '', outputFormat: 'opencode-json', env: [],
+  });
+});
+
+test('detected opencode is recognized from path and .exe forms; detection name/command are kept', () => {
+  const f = detectedToForm({ name: 'opencode 1.19.3', command: 'C:\\Users\\me\\AppData\\Roaming\\npm\\opencode.exe' });
+  assert.equal(f.preset, 'opencode');
+  assert.equal(f.outputFormat, 'opencode-json');
+  assert.equal(f.name, 'opencode 1.19.3');
+  assert.equal(f.command, 'C:\\Users\\me\\AppData\\Roaming\\npm\\opencode.exe');
+});
+
+test('detected non-opencode CLI keeps the generic custom text form', () => {
+  const f = detectedToForm({ name: 'Claude Code', command: 'claude' });
+  assert.deepEqual(f, { name: 'Claude Code', preset: 'custom', command: 'claude', args: '{prompt}', resumeArgs: '', modelArgs: '', model: '', outputFormat: 'text', env: [] });
+  assert.deepEqual(formToInput(f).args, ['{prompt}']);
 });
 
 test('saved secret keeps value undefined (unchanged) on round trip; plain values pass through', () => {
