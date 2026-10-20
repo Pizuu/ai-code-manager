@@ -6,6 +6,23 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-20
+
+### Added
+
+- 功能 `002-workspace-boards` 的完整 Spec Kit 制品（spec 含 Clarifications、plan、research、data-model、quickstart、checklists、tasks、analysis）。
+- 契约 `contracts/ipc.ts` 修订 v1.1（纯增量）：`agentCli:save|delete|check`、`sessions:setAgent`、`board:get`、`git:get` 通道，Agent CLI / 看板 / Git 类型，会话与设置的可选字段，错误码 `E_CLI`；opencode 1.19.3 真实 JSONL 样例。
+- 三板块工作台：泳道看板、任务会话、Git 分支与集成，视觉 1:1 沿用 HTML 原型（ADR 0005）；看板状态由 git 推导并标出声明冲突；Git 板块由主进程只读调用 git CLI。
+- 外部 Agent CLI：多 CLI 配置、opencode 预设、可执行文件解析（含 Windows npm `opencode.cmd` → `opencode.exe`）、`opencode run --format json` 事件流解析、`--session` 续接、停止结束进程树、按权限模式映射 `OPENCODE_PERMISSION`、敏感环境变量加密（ADR 0006）。
+- 会话可选择 agent（内置 API agent / 任一 CLI），新会话使用默认 agent。
+- 测试：新增 45 个单元 / 集成测试（共 160 个），含临时 git 仓库上的看板与 Git 快照、假 opencode 可执行文件的完整对话路径。
+- ADR 0005、0006。
+
+### Changed
+
+- 渲染进程由三栏布局改为工作台外框 + 三板块；`sidebar.ts`、`right-panel.ts`、`terminal-view.ts` 移除，会话列表、Diff、终端、Spec 任务能力迁入任务会话板块。
+- 设置对话框分为「内置 agent（API）」与「Agent CLI」两个分区；设置入口移到左侧图标栏（齿轮）。
+
 ## [0.1.0] - 2026-10-20
 
 ### Added
