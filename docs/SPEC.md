@@ -15,7 +15,7 @@
 | 编号 | 功能 | 目录 | 状态 |
 |---|---|---|---|
 | 001 | 桌面 Agent MVP | `specs/001-agent-desktop/` | 已实现，converge 追加 2 项（T040 Electron E2E、T041 Windows 打包验证） |
-| 002 | 三板块工作台（泳道看板 / 任务会话 / Git 分支与集成）+ Agent CLI（opencode） | `specs/002-workspace-boards/` | 实施中 |
+| 002 | 三板块工作台（泳道看板 / 任务会话 / Git 分支与集成）+ Agent CLI（opencode） | `specs/002-workspace-boards/` | 已实现，converge 追加 3 项（T123 E2E、T124 Windows 实机 opencode、T125 逐条审批评估） |
 
 ## 4. 需求编号
 
