@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 001 | 桌面 Agent MVP | `specs/001-agent-desktop/` | 已实现，converge 追加 2 项（T040 Electron E2E、T041 Windows 打包验证） |
 | 002 | 三板块工作台（泳道看板 / 任务会话 / Git 分支与集成）+ Agent CLI（opencode） | `specs/002-workspace-boards/` | 已实现，converge 追加 3 项（T123 E2E、T124 Windows 实机 opencode、T125 逐条审批评估） |
-| 003 | 只读代码查看、全局「发送到任务会话」、Web 预览 UI 定位、agent 配置默认空白 | `specs/003-code-view-web-locator/` | 实施中 |
+| 003 | 只读代码查看、全局「发送到任务会话」、Web 预览 UI 定位、agent 配置默认空白 | `specs/003-code-view-web-locator/` | 已实现，converge 追加 2 项（T213 Web 预览服务器自动化冒烟、T214 Windows 打包核对） |
 
 ## 4. 需求编号
 

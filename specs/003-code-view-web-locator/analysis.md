@@ -8,3 +8,4 @@
 | A2 | 宪法 | 视图 DOM 无测试 | 宪法 五（1.2.0）简单 UI 改动，截图冒烟核对（SC-305） |
 | A3 | 契约 | v1.2 新通道使 preload / handlers 穷举检查在 backend 合入前失败 | 连续合入 T-023、T-024、T-025（plan Complexity Tracking） |
 | A4 | 风险 | Web 预览服务器读取项目文件 | 只监听 127.0.0.1、GET/HEAD、复用 resolveSafe（ADR 0008） |
+| A5 | 收敛 | Web 预览服务器只有手动验证；打包排除未在 Windows 产物中实测 | converge 追加 T213、T214 |
