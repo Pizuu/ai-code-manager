@@ -12,7 +12,7 @@
 - [x] 核心流程跑通并有测试覆盖（115 个单元/集成测试）
 - [ ] CI 流水线变绿（本地 `scripts/verify.sh` 全绿；尚无远端仓库运行 GitHub Actions）
 - [ ] Electron E2E（T040 / 卡片 T-011）
-- [ ] Windows 安装包与便携版实机验证（T041 / 卡片 T-012）——CI 作业已就绪，待首跑
+- [x] Windows 安装包与便携版实机验证（T041 / 卡片 T-012）——windows-latest CI 通过
 
 ### 阶段 1.5：三板块工作台与 Agent CLI（v0.2.0，功能 002）
 
