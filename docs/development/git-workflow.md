@@ -6,7 +6,7 @@
 - 功能分支：`feat/<范围>-<描述>`；修复：`fix/<描述>`；文档：`docs/<描述>`。
 - 合并前 rebase 到 `main`；功能分支用 `--no-ff` 合并。
 
-- 多 Agent 模式：集成分支 `dev`；worker 用 `feat/<泳道>/<任务>` 分支并向它提 PR；只有负责人把 `dev` 合入 `main`。详见 `docs/development/multi-agent.md`。
+- 多 Agent 模式：集成分支 `manus`；worker 用 `feat/<泳道>/<任务>` 分支并向它提 PR；只有负责人把 `manus` 合入 `main`。详见 `docs/development/multi-agent.md`。
 
 ## 提交信息
 
