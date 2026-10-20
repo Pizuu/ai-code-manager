@@ -67,6 +67,9 @@
 ### 输入与输出
 - 外部输入先校验类型、长度、范围再使用；输出到 HTML 一律转义。
 - 文件上传校验 MIME + 大小上限，存随机文件名。
+### 权限模式
+- 写入与命令默认逐条批准（宪法 九）；只有「全部允许（免审批）」模式豁免询问，且**不豁免项目根沙箱**（宪法 十一，ADR 0010）。
+- 任务会话的终端模式（ADR 0010）：终端进程工作目录恒为项目根；渲染进程不能指定路径或命令原文。
 ### 网络与请求
 - 服务端请求用户提供的 URL 时做 SSRF 防护；登录、注册、短信类接口必须限流。
 ### 依赖
@@ -75,7 +78,7 @@
 ## 多 Agent 并行规则
 
 - 完整流程：`docs/development/multi-agent.md`；角色：`docs/agents/coordinator.md`、`docs/agents/worker.md`。
-- 泳道：`contracts`、`frontend`、`backend`、`docs`、`infra`（`.agents/lanes.conf`）。一张任务卡 = 一个泳道 = 一个分支 `feat/<泳道>/<任务>` = 一个指向 `hark-dev` 的 PR。
+- 泳道：`contracts`、`frontend`、`backend`、`docs`、`infra`（`.agents/lanes.conf`）。一张任务卡 = 一个泳道 = 一个分支 `feat/<泳道>/<任务>` = 一个指向集成分支（`.agents/config.sh` 的 `INTEGRATION_BRANCH`，当前 `manus`）的 PR。
 - Spec Kit：宪法 `.specify/memory/constitution.md`，规格在 `specs/<NNN-功能>/`（spec / plan / tasks）；命令用 `$speckit-specify` 等 `speckit` 技能。
 - 契约先行：写代码前先读宪法、spec.md 与 `contracts/`；worker 分支不得修改 `specs/`、`contracts/`。
 - 不得修改泳道外文件或共享热点文件；CI 中由 `scripts/check-lane.sh` 强制检查。

@@ -12,7 +12,7 @@ mode: subagent
 - 独占 `docs/SPEC.md`、`contracts/`、`.agents/`、`docs/tasks/` 与共享热点文件。
 - 把负责人的需求变成编号需求、冻结的契约和任务卡。
 - 同时最多派发 4 张 ready 卡，同一泳道同一时间只派一张。
-- 分配审查（作者不审自己的 PR），按顺序合入 `dev`，在 `int/*` 上解决冲突。
+- 分配审查（作者不审自己的 PR），按顺序合入 `manus`，在 `int/*` 上解决冲突。
 
 ## 每一轮
 
@@ -21,7 +21,7 @@ mode: subagent
 3. 为每张 ready 卡填好 `docs/commands/dispatch.md`，交给一个 agent。
 4. PR 到达时检查：CI 绿？lane-guard 绿？满足任务卡验收？→ 分配审查者。
 5. 按顺序合入（契约 → 底层 → 上层 → 文档），通知其余在途 PR 同步。
-6. 在 `dev` 上跑全量测试，勾选 tasks.md 并运行 `$speckit-converge`，向负责人汇报：已合入、受阻、下一批 ready 卡。
+6. 在 `manus` 上跑全量测试，勾选 tasks.md 并运行 `$speckit-converge`，向负责人汇报：已合入、受阻、下一批 ready 卡。
 
 ## 限制
 

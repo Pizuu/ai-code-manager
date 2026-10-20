@@ -1,7 +1,9 @@
 # 任务看板
 
 > 由 coordinator 维护。前置任务全部合入的卡即为 **ready**；来自不同泳道的 ready 卡可以同时派发。
+> 集成分支：以 `.agents/config.sh` 的 `INTEGRATION_BRANCH` 为准，当前为 `manus`（历史名依次为 `dev` → `hark-dev`）。下方「003 / 002 记录」是当时的历史事实，保留原样。
 > 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-031）。当前 ready：T-020（frontend）、T-021（infra）。下一步候选：contracts v1.4 暴露 opencodeMode 设置；真实 opencode serve 联调。T-012 同时承担 003 的 T214（打包核对）。
+> 004 记录：T-037…T-045 一批（ADR 0010 终端模式 / 自动授权 + 看板自省 P0-1·P1-7·P1-8）此前在工作区未提交，卡片却已写「done」；本轮由 coordinator 按泳道拆分后逐支合入 `manus`：契约 v1.6（`b3c247c`）→ 契约 v1.7（`ebd00a9`）→ 后端 T-038（`2f189c8`）→ 后端 T-041（`7b332bc`）→ 前端 T-039/T-042（`dc17495`）→ infra T-044（`ba56b5a`）→ contracts T-043（`abe1fd8`）→ docs T-045（`38346a9`）。约定：契约先行期间干净树 typecheck 预期为红（preload / handler 穷举检查），T-039 合入后转绿。
 > 003 记录：T-023（契约 v1.2）合入提交 `cc62487` 到 T-025 合入提交 `7f900e1` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（同 002，plan.md Complexity Tracking）；三者连续合入，其余每次合入后 lint / typecheck / 测试为绿。
 > 002 记录：T-013（契约 v1.1）合入提交 `1ec10b8` 到 T-015 合入提交 `ce20063` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（有意的防漏机制，plan.md Complexity Tracking）；二者已连续合入，其余每次合入后 `scripts/verify.sh` 为绿。集成分支已更名 `hark-dev`；任务分支合入后删除，状态以合并提交追溯。
 > 说明：T015（应用入口/preload/handlers）因依赖后续模块，从 T-004 移到 T-006 执行（flow-back 已同步卡片）。无 Git 远端，「PR」列为本地合入 `dev` 的分支名（见 plan.md Complexity Tracking）。
@@ -44,6 +46,15 @@
 | T-034 | opencode serve 逐条审批接入（实验开关） | backend | T-033 | done | hark | `feat/backend/T-034-opencode-serve-wire`（本地 --no-ff 合入） |
 | T-035 | 新审批种类卡片 | frontend | T-033 | done | hark | `feat/frontend/T-035-approval-cards`（本地 --no-ff 合入） |
 | T-036 | Web 预览 UI 修改记录器 | frontend | T-030 | done | hark | `feat/frontend/T-036-locator-recorder`（本地 --no-ff 合入） |
+| T-037 | 契约 v1.6：终端模式通道与「全部允许」权限模式 | contracts | T-036 | done | codex / claude | `feat/contracts/T-037-contract-v1.6`（本地 --no-ff 合入 `b3c247c`） |
+| T-038 | 主进程：终端进程池与「全部允许」权限落地 | backend | T-037 | done | codex / claude | `feat/backend/T-038-terminal-manager`（本地 --no-ff 合入 `2f189c8`） |
+| T-039 | 渲染进程：任务会话「对话 / 终端」双视图 | frontend | T-038 | done | codex / claude | `feat/frontend/T-039-session-terminal-view`（本地 --no-ff 合入 `dc17495`；与 T-042 同提交） |
+| T-040 | 契约 v1.7：集成分支引用回退、合入冲突预演与 git 引用变更事件 | contracts | T-037 | done | claude | `feat/contracts/T-040-contract-v1.7`（本地 --no-ff 合入 `ebd00a9`） |
+| T-041 | 主进程：看板自省、合入冲突预演与 git 引用变化监听 | backend | T-040 | done | claude | `feat/backend/T-041-board-truth`（本地 --no-ff 合入 `7b332bc`） |
+| T-042 | 渲染进程批次：回合制对话改版、活动徽标、错误分区与看板冲突预警 | frontend | T-041 | done | claude | `feat/frontend/T-039-session-terminal-view`（本地 --no-ff 合入 `dc17495`；与 T-039 同提交） |
+| T-043 | ADR 0010（终端模式与自动授权）与宪法 1.3.0 | contracts | T-037 | done | claude | `feat/contracts/T-043-adr-0010-constitution`（本地 --no-ff 合入 `abe1fd8`） |
+| T-044 | infra：泳道守卫按集成分支触发 + 集成分支名一致性检查 | infra | 无 | done | claude | `feat/infra/T-044-infra-batch`（本地 --no-ff 合入 `ba56b5a`） |
+| T-045 | docs：终端双视图 / 自动授权 / 看板自省批次的用户与测试文档 | docs | T-042 | done | claude | `feat/docs/T-045-docs-batch`（本地 --no-ff 合入 `38346a9`） |
 
 ## 依赖图
 
@@ -86,4 +97,13 @@ graph LR
   T029 --> T030[T-030 @shared 收尾]
   T030 --> T031[T-031 infra Web 预览冒烟]
   T030 -.T214.-> T012
+  T036 --> T037[T-037 contracts 契约 v1.6]
+  T037 --> T038[T-038 backend 终端进程池]
+  T038 --> T039[T-039 frontend 对话/终端双视图]
+  T037 --> T040[T-040 contracts 契约 v1.7]
+  T040 --> T041[T-041 backend 看板自省/预演/监听]
+  T041 --> T042[T-042 frontend 回合制对话/徽标/错误分区]
+  T037 --> T043[T-043 contracts ADR 0010 + 宪法 1.3.0]
+  T044[T-044 infra 泳道守卫触发修复]
+  T042 --> T045[T-045 docs 用户与测试文档]
 ```
