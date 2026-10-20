@@ -40,7 +40,7 @@
 | Web 预览服务器 `scripts/web-dev.ts`（405 / 404 / E_PATH_ESCAPE / Host 校验） | — | — | ❌（手动 curl 验证，见 specs/003 quickstart；未纳入 CI） | infra |
 | 界面视图 `src/frontend/views/*`、`main.ts`、`web/locator.ts`、`web/mock-api.ts` | — | — | ❌（T040；002 三板块、003 右键菜单与 UI 定位另有仓库外无头截图冒烟；纯 UI 按宪法 五跳过） | frontend |
 | Electron 入口 `main.ts` / `preload.cts`（窗口安全选项、app:// 协议） | — | — | ❌（T040） | backend |
-| Windows 打包（FR-016） | — | — | 🟡（`windows-dist.yml` 已就绪，待 windows-latest 首跑；T041） | infra |
+| Windows 打包（FR-016） | — | — | ✅（`windows-dist.yml`，windows-latest 打包 + 启动冒烟；T041） | infra |
 | asar 内容核对（T214） | ✅ `check-asar.ts --self-test` | ✅ 真实 electron-builder 产物 | ✅ CI 打包后复核 | infra |
 | opencode serve 逐条审批原型（T125） | ✅ 17 条（假 HTTP/SSE 服务器） | ✅ 1.19.3 真实服务器手测 | — | backend |
 

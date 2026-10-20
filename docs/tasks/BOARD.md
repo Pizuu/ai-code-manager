@@ -1,7 +1,7 @@
 # 任务看板
 
 > 由 coordinator 维护。前置任务全部合入的卡即为 **ready**；来自不同泳道的 ready 卡可以同时派发。
-> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-031）。当前 ready：T-011（frontend）、T-021（infra）；review：T-012（待 Windows CI 首跑）。T-012 同时承担 003 的 T214（打包核对）。
+> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-031）。当前 ready：T-011（frontend）、T-021（infra）。T-012 同时承担 003 的 T214（打包核对）。
 > 003 记录：T-023（契约 v1.2）合入提交 `cc62487` 到 T-025 合入提交 `7f900e1` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（同 002，plan.md Complexity Tracking）；三者连续合入，其余每次合入后 lint / typecheck / 测试为绿。
 > 002 记录：T-013（契约 v1.1）合入提交 `1ec10b8` 到 T-015 合入提交 `ce20063` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（有意的防漏机制，plan.md Complexity Tracking）；二者已连续合入，其余每次合入后 `scripts/verify.sh` 为绿。集成分支已更名 `hark-dev`；任务分支合入后删除，状态以合并提交追溯。
 > 说明：T015（应用入口/preload/handlers）因依赖后续模块，从 T-004 移到 T-006 执行（flow-back 已同步卡片）。无 Git 远端，「PR」列为本地合入 `dev` 的分支名（见 plan.md Complexity Tracking）。
@@ -18,7 +18,7 @@
 | T-008 | Diff/终端/Tasks/会话/斜杠命令 | frontend | T-007 | done | claude | `feat/frontend/T-008-panels-commands`（本地 --no-ff 合入） |
 | T-009 | 用户与测试/安全文档 | docs | T-005, T-008 | done | codex | `feat/docs/T-009-user-docs`（本地 --no-ff 合入） |
 | T-011 | Electron E2E 核心路径 | frontend | T-010 | ready | （待派发） | — |
-| T-012 | Windows 打包验证与 CI | infra | T-010 | review | hark | `feat/infra/T-012-windows-ci`（已合入；待 windows-latest 首跑转绿后 done） |
+| T-012 | Windows 打包验证与 CI | infra | T-010 | done | hark | `feat/infra/T-012-windows-ci`（已合入；windows-latest 首跑 run 39388669953 通过） |
 | T-010 | 收尾：路线图与看板 | @shared | T-009 | done | coordinator | `int/T-010-closeout`（本地 --no-ff 合入） |
 | T-013 | 功能 002 规格、契约 v1.1 与 ADR | contracts | 无 | done | coordinator | `feat/contracts/T-013-spec-002`（本地 --no-ff 合入） |
 | T-014 | 002 拆卡与看板 | @shared | T-013 | done | coordinator | `int/T-014-split`（本地 --no-ff 合入） |
