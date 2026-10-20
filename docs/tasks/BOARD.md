@@ -40,6 +40,7 @@
 | T-030 | 003 收尾：路线图、看板与版本号 | @shared | T-029 | done | coordinator | `feat/contracts/T-030-converge` + `int/T-030-closeout`（本地 --no-ff 合入） |
 | T-031 | Web 预览服务器自动化冒烟 | infra | T-030 | done | hark | `feat/infra/T-031-web-dev-smoke`（本地 --no-ff 合入） |
 | T-032 | 界面重新设计：对齐 Claude MCP Apps 设计规范（ADR 0009） | frontend | T-030 | done | hark | `feat/contracts/T-032-adr-0009` + `feat/frontend/T-032-ui-redesign`（本地 --no-ff 合入） |
+| T-033 | 契约 v1.3：ApprovalRequest 承载 opencode 其他权限类型 | contracts | T-022 | review | hark | `feat/contracts/T-033-approval-kinds`（待合入） |
 
 ## 依赖图
 
@@ -68,6 +69,7 @@ graph LR
   T011 --> T020[T-020 frontend 三板块 E2E]
   T019 --> T021[T-021 infra Windows opencode]
   T019 --> T022[T-022 backend serve 逐条审批]
+  T022 --> T033[T-033 contracts 审批种类 v1.3]
   T023[T-023 contracts 003] --> T024[T-024 @shared 拆卡/规则]
   T024 --> T025[T-025 backend fs:read/配置空白]
   T024 --> T026[T-026 frontend 代码查看/右键]

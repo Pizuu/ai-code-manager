@@ -30,7 +30,7 @@
 
 | 契约 | 版本 | 说明 |
 |---|---|---|
-| `contracts/ipc.ts` | v1（修订 v1.2，功能 002 / 003 纯增量） | 主进程 ↔ 渲染进程 IPC；v1.1 增加 Agent CLI、泳道看板、Git 分支与集成；v1.2 增加只读 `fs:read` 与 `E_NOT_CONFIGURED` |
+| `contracts/ipc.ts` | v1（修订 v1.3，功能 002 / 003 与 T-033 纯增量） | 主进程 ↔ 渲染进程 IPC；v1.1 增加 Agent CLI、泳道看板、Git 分支与集成；v1.2 增加只读 `fs:read` 与 `E_NOT_CONFIGURED`；v1.3 扩展 `ApprovalKind`（webfetch / loop / subagent / external-dir / other）与 `ApprovalRequest` 可选字段 |
 | `contracts/ui.ts` | v1 | 渲染层右键「发送到任务会话」来源模型与 `data-send-*` 标记、UI 定位 `data-src` |
 | `contracts/web-dev.ts` | v1 | Web 预览开发服务器 ↔ 浏览器 `window.api` 适配器的只读通道 |
 | `contracts/tools.ts` | v1 | Agent ↔ 模型工具 Schema 与上限 |
