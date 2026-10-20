@@ -17,7 +17,7 @@ import http from 'node:http';
 import { stripTypeScriptTypes } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import type { AgentCliCheck, AgentEvent, IpcInvokeChannel } from '../contracts/ipc.ts';
+import type { AgentCliCheck, AgentCliDetection, AgentEvent, IpcInvokeChannel } from '../contracts/ipc.ts';
 import { WEB_DEV_API_PREFIX, WEB_DEV_CHANNELS, WEB_DEV_DEFAULT_PORT, WEB_DEV_EVENTS_PATH } from '../contracts/web-dev.ts';
 import { AppState } from '../src/backend/app-state.ts';
 import { createHandlers, effectiveAgent } from '../src/backend/ipc/handlers.ts';
@@ -126,6 +126,9 @@ for (const [channel, fn] of Object.entries(handlers)) {
 api['agentCli:check'] = async (): Promise<AgentCliCheck> => ({
   ok: false, resolvedPath: null, version: null, message: 'Web 预览不检查、不启动本机 CLI。',
 });
+
+// Agent CLI 例外三：detect 不做任何本机探测，直接返回空数组
+api['agentCli:detect'] = async (): Promise<AgentCliDetection[]> => [];
 
 // Agent CLI 例外二：send 到外部 CLI 会话时在进入真实 handlers 前拒绝。
 // handlers 未暴露 CLI 执行器注入点（runCliTurn 为直接 import，resolveDeps 也无法携带拒绝理由），

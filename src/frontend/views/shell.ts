@@ -51,7 +51,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     railBtn('side', '侧栏', () => explorer.toggleAttribute('hidden')),
     h('div', { class: 'gap26' }),
     ...NAV.map(([id]) => railView[id]),
-    railBtn('plus', '新建会话', () => hooks.onNewSession()),
     h('div', { class: 'sp' }),
     h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
     h('div', { class: 'av', title: 'Owner（人类，未署名）' }, icon('grid', 14)),
@@ -61,16 +60,8 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const badge = h('div', { class: 'mono-badge' });
   const pname = h('b');
   const pdesc = h('span');
-  // 已打开项目时点击打开工作根目录（系统文件管理器）；尚未打开项目时走选目录切换项目（pickProject 在后段定义，闭包引用）
-  const openRootOrPick = async () => {
-    if (!store.state.project) return pickProject();
-    try {
-      await api.invoke('project:openRoot');
-    } catch (e) {
-      hooks.onError(`打开工作根目录失败：${errorText(e)}`);
-    }
-  };
-  const psel = h('div', { class: 'psel', title: '点击打开工作根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void openRootOrPick(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void openRootOrPick(); } } } },
+  // 点击打开文件夹作为工程根目录（pickProject 在后段定义，闭包引用）
+  const psel = h('div', { class: 'psel', title: '点击打开文件夹作为工程根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
     badge, h('div', { class: 'pid' }, pname, pdesc), h('span', { class: 'mute' }, icon('caret')));
   const navloc = h('div', { class: 'navloc' });
   const navItems = {} as Record<ViewId, HTMLAnchorElement>;
@@ -161,7 +152,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     crumbChip.textContent = g?.available ? (g.remotes.length ? `远端 ${g.remotes.join(',')}` : '本地仓库') : '非 Git 仓库';
     snapTime.textContent = b ? `快照 · ${ymdhm(b.generatedAt)}（本地时间）` : '快照 · —';
     snapTime.title = b?.generatedAt ?? '';
-    readRef.textContent = b?.integrationBranch ?? g?.integrationBranch ?? '';
+    readRef.textContent = g?.currentBranch ?? '';
     if (g?.available) {
       statusL.replaceChildren(h('span', { class: 'dot grn' }), `本地工作区 ${g.currentBranch ?? ''}（${g.worktrees.length} 个 worktree · ${g.dirtyCount} 个未提交文件）`);
     } else {

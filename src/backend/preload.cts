@@ -27,6 +27,7 @@ const INVOKE_CHANNELS = [
   'agentCli:save',
   'agentCli:delete',
   'agentCli:check',
+  'agentCli:detect',
   'sessions:setAgent',
   'board:get',
   'git:get',

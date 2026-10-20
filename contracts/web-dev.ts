@@ -11,6 +11,7 @@
  *   承载运行状态、流式回复、审批请求、终端输出与 diff 等全部 agent:event。
  * - 仅 Agent CLI 保持模拟（负责人决定）：
  *   - `agentCli:check` 恒返回 `{ ok: false, resolvedPath: null, version: null, message: 'Web 预览不检查、不启动本机 CLI。' }`；
+ *   - `agentCli:detect` 恒返回空数组 `[]`（不做任何本机探测）；
  *   - `agent:send` 当会话 agent 为外部 CLI（cli:*）时被服务器拒绝（E_CLI 错误 + 同内容的 error 事件），绝不启动真实 CLI 进程；
  *   - `agentCli:save` / `agentCli:delete` 是设置数据，随 settings 真实落盘。
  * - `project:pick` 无系统对话框：恒返回 null（项目由 `--project` 参数在启动时确定）；
@@ -53,6 +54,7 @@ export const WEB_DEV_CHANNELS = [
   'agentCli:save',
   'agentCli:delete',
   'agentCli:check',
+  'agentCli:detect',
   'board:get',
   'git:get',
 ] as const satisfies readonly IpcInvokeChannel[];

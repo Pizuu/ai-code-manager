@@ -5,8 +5,9 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { AgentCliCheck, AgentEvent, AgentRef, ApprovalRequest, GitSnapshot, IpcInvokeChannel, IpcInvokeMap, ProjectInfo, Session } from '../../../contracts/ipc.ts';
+import type { AgentCliCheck, AgentCliDetection, AgentEvent, AgentRef, ApprovalRequest, GitSnapshot, IpcInvokeChannel, IpcInvokeMap, ProjectInfo, Session } from '../../../contracts/ipc.ts';
 import { runCliTurn } from '../agent-cli/cli-runner.ts';
+import { detectInstalledClis, probeCliVersion } from '../agent-cli/detect.ts';
 import { installHint } from '../agent-cli/presets.ts';
 import { OpencodeServeManager, prepareServeTurn, runServeCliTurn, type PreparedServeTurn } from '../agent-cli/serve-runner.ts';
 import { defaultResolveDeps, resolveExecutable, type ResolveDeps } from '../agent-cli/resolve.ts';
@@ -293,6 +294,10 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
         ? { ok: true, resolvedPath: r.path, version: v.out.split('\n')[0] ?? v.out, message: `可用：${r.path}` }
         : { ok: false, resolvedPath: r.path, version: null, message: `找到 ${r.path}，但运行 --version 失败：${v.out}` };
     },
+    'agentCli:detect': async (): Promise<AgentCliDetection[]> => detectInstalledClis({
+      resolveDeps: resolveDeps(),
+      probeVersion: (file, cwd) => probeCliVersion(file, cwd, deps.cliBaseEnv ?? process.env),
+    }),
     'sessions:setAgent': async (id, agent) => {
       const sid = asSessionId(id);
       const ref = asAgentRef(agent);

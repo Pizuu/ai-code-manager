@@ -2,10 +2,9 @@
  * 设置 ›「Agent CLI」分区（FR-110、FR-114、FR-115）：增删改外部 CLI agent，内置 opencode 预设，检查可用性。
  * 敏感环境变量只进不出：输入框永远为空，已保存时只显示「已保存」（宪法 十）。
  */
-import type { AgentCliConfig, AgentCliOutputFormat } from '../../../contracts/ipc.ts';
+import type { AgentCliConfig, AgentCliDetection, AgentCliOutputFormat } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { configToForm, formToInput, OPENCODE_FORM_EXAMPLE, previewCommand, type AgentCliForm, type EnvRow } from '../lib/agent-cli-form.ts';
-import { agentOptions } from '../lib/agent-label.ts';
 import { clear, h } from '../lib/dom.ts';
 import { store } from '../store.ts';
 
@@ -22,20 +21,7 @@ export function mountAgentCliSettings(container: HTMLElement): void {
     clear(container);
     const st = store.state.settings;
     const clis: AgentCliConfig[] = st?.agentClis ?? [];
-    const def = h('select');
-    def.append(h('option', { attrs: { value: '', disabled: '' } }, ''));
-    for (const o of agentOptions(st)) def.append(h('option', { attrs: { value: o.ref } }, o.label));
-    def.value = st?.defaultAgent ?? 'builtin';
     const err = h('div', { class: 'error-text' });
-    def.addEventListener('change', async () => {
-      try {
-        store.state.settings = await api.invoke('settings:set', { defaultAgent: def.value as 'builtin' });
-        store.emit('settings');
-      } catch (e) {
-        err.textContent = errorText(e);
-      }
-    });
-    container.append(field('新会话默认 agent', def, '每个会话也可在任务会话顶部单独切换。'));
     const list = h('div', { class: 'cli-list' });
     for (const c of clis) {
       const out = h('div', { class: 'check-out', attrs: { hidden: '' } });
@@ -75,9 +61,46 @@ export function mountAgentCliSettings(container: HTMLElement): void {
           del),
         out));
     }
+    const detectOut = h('div', { class: 'detect-out' });
+    const detect = h('button', { class: 'btn', attrs: { type: 'button' } }, '自动检测');
+    detect.addEventListener('click', async () => {
+      detect.disabled = true;
+      detect.textContent = '检测中…';
+      err.textContent = '';
+      clear(detectOut);
+      try {
+        const found: AgentCliDetection[] = await api.invoke('agentCli:detect');
+        if (!found.length) detectOut.append(h('div', { class: 'mute' }, '未检测到已安装的热门 CLI'));
+        for (const d of found) {
+          const add = h('button', { class: 'btn', attrs: { type: 'button' } }, '添加');
+          add.addEventListener('click', async () => {
+            add.disabled = true;
+            try {
+              store.state.settings = await api.invoke('agentCli:save', formToInput({ name: d.name, preset: 'custom', command: d.command, args: '{prompt}', resumeArgs: '', modelArgs: '', model: '', outputFormat: 'text', env: [] }));
+              store.emit('settings');
+              renderList();
+            } catch (e) {
+              err.textContent = errorText(e);
+              add.disabled = false;
+            }
+          });
+          detectOut.append(h('div', { class: 'cli-item' },
+            h('div', { class: 'grow0' }, h('b', {}, d.name), h('div', { class: 'mono' }, `${d.command} · ${d.resolvedPath}${d.version ? ` · ${d.version}` : ''}`)),
+            add));
+        }
+      } catch (e) {
+        err.textContent = errorText(e);
+      } finally {
+        detect.disabled = false;
+        detect.textContent = '自动检测';
+      }
+    });
     container.append(list,
       h('div', { class: 'fx8' },
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => { editing = { name: '', preset: 'custom', command: '', args: '{prompt}', resumeArgs: '', modelArgs: '', model: '', outputFormat: 'text', env: [] }; renderEdit(); } } }, '添加自定义 CLI')),
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => { editing = { name: '', preset: 'custom', command: '', args: '{prompt}', resumeArgs: '', modelArgs: '', model: '', outputFormat: 'text', env: [] }; renderEdit(); } } }, '添加自定义 CLI'),
+        h('span', { class: 'flex1' }),
+        detect),
+      detectOut,
       h('div', { class: 'help' }, '外部 CLI 以当前项目根为工作目录、以参数数组启动（不经 shell）。权限：仅规划 = 禁止编辑与命令；自动批准编辑 = 允许编辑、禁止命令；每次询问 = 每轮先批准命令行（ADR 0006）。'),
       err);
   };

@@ -242,6 +242,8 @@ export interface IpcInvokeMap {
   'agentCli:delete':  { args: [id: string];               result: PublicSettings };
   /** 解析可执行文件并运行版本命令，检查 CLI 是否可用（不发送任何提示词）。 */
   'agentCli:check':   { args: [id: string];               result: AgentCliCheck };
+  /** 扫描 PATH，检测本机已安装的热门 Agent CLI（设置页「自动检测」）。 */
+  'agentCli:detect':  { args: [];                         result: AgentCliDetection[] };
   /** 切换会话使用的 agent（运行中不可切换）。 */
   'sessions:setAgent': { args: [id: string, agent: AgentRef]; result: Session };
   /** 泳道看板：读取当前项目的 lanes.conf / 任务卡 / BOARD.md / tasks.md 并与 git 交叉核对。 */
@@ -373,6 +375,18 @@ export interface AgentCliCheck {
   version: string | null;
   /** 中文说明；不可用时含安装指引。 */
   message: string;
+}
+
+/** agentCli:detect 的单条结果：本机已安装的一个热门 Agent CLI。 */
+export interface AgentCliDetection {
+  /** 展示名（候选清单中的产品名）。 */
+  name: string;
+  /** 可执行文件命令名。 */
+  command: string;
+  /** 在 PATH 中解析到的绝对路径。 */
+  resolvedPath: string;
+  /** `--version` 输出首行；探测失败为 null。 */
+  version: string | null;
 }
 
 // ───────────────────────── v1.1：泳道看板（功能 002） ─────────────────────────
