@@ -9,6 +9,7 @@ import { parseTasksMarkdown } from '../specs/tasks-parser.ts';
 import { countChecklist, featureStages, parseBoardRows, parseSpec, parseTaskCard, type ParsedCard } from './cards.ts';
 import { gitOut, mapLimit, type GitRunner } from './git.ts';
 import { laneCheck, parseAgentsConfig, parseLaneOwners, parseLanesConf, type AgentsConfig, type LanesConfig } from './lanes.ts';
+import { previewMerge } from './merge-preview.ts';
 
 async function readText(root: string, rel: string): Promise<string | null> {
   try {
@@ -89,6 +90,7 @@ export async function readFeature(root: string, selectedId?: string | null): Pro
 export function emptyBoard(cfg: AgentsConfig, reason: string, now: string): BoardSnapshot {
   return {
     available: false, reason, generatedAt: now, integrationBranch: cfg.integrationBranch, mainBranch: cfg.mainBranch,
+    integrationRef: cfg.integrationBranch, integrationRefRemote: false, integrationMissing: null,
     maxParallel: cfg.maxParallel, lanes: [], shared: [], feature: null, features: [], cards: [], contractVersion: null, boardFile: null, conflicts: [],
   };
 }
@@ -161,8 +163,15 @@ export async function buildBoard(root: string, git: GitRunner, gitSnap: GitSnaps
   const facts = gitFacts(gitSnap);
   const statuses = deriveStatuses(parsed, facts);
   const conflicts: string[] = [];
-  const changed = gitSnap.available ? await mapLimit(parsed, 8, (c) => changedFiles(git, c, facts, cfg.integrationBranch)) : parsed.map(() => []);
+  // 集成分支的实际引用（本地缺失时回退 origin/<分支>）；本地与远端都没有则为 null（P0-1）
+  const integRef = gitSnap.integrationRefRemote ? gitSnap.integrationRef : cfg.integrationBranch;
+  const integMissing = gitSnap.available && !gitSnap.integrationRefRemote && !gitSnap.branches.some((b) => b.name === cfg.integrationBranch)
+    ? `集成分支 ${cfg.integrationBranch} 在本地与 origin 均不存在：无法据此判定任务卡是否已合入（请先 git fetch 并创建该分支）。`
+    : null;
+  const changed = gitSnap.available ? await mapLimit(parsed, 8, (c) => changedFiles(git, c, facts, integRef)) : parsed.map(() => []);
   const cards: BoardCard[] = [];
+  /** 声明 done 但 git 未确认合入的卡（P0-1：集成分支缺失时全部同因，合并为一条）。 */
+  const unmerged: Array<{ id: string; status: string }> = [];
   for (const [ci, c] of parsed.entries()) {
     const row = rows.get(c.id);
     const lane = c.lane ?? row?.lane ?? '';
@@ -179,20 +188,44 @@ export async function buildBoard(root: string, git: GitRunner, gitSnap: GitSnaps
     const laneFiles = files.filter((f) => !ownDocs.has(f));
     const laneOk = laneFiles.length && workerLane ? laneFiles.every((f) => laneCheck(lanesCfg, f, lane).ok) : null;
     const declaredMismatch = declared === 'done' && st.status !== 'merged';
-    if (declaredMismatch) conflicts.push(`${c.id}：任务卡 / BOARD.md 声明 done，但 git 中未合入 ${cfg.integrationBranch}（按 git 显示为「${st.status}」）`);
+    if (declaredMismatch) unmerged.push({ id: c.id, status: st.status });
     if (row && c.declaredStatus && row.declaredStatus && row.declaredStatus !== c.declaredStatus) conflicts.push(`${c.id}：任务卡状态「${c.declaredStatus}」与 BOARD.md「${row.declaredStatus}」不一致`);
     if (laneOk === false) conflicts.push(`${c.id}：分支改动越出泳道 ${lane}`);
+    // P1-7：预演合入集成分支是否冲突（只读 merge-tree，不落盘）
+    let mergePreview: BoardCard['mergePreview'] = 'unknown';
+    let mergeConflictFiles: string[] = [];
+    if (c.branch && !merge && gitSnap.available && integRef) {
+      const pv = await previewMerge(git, integRef, c.branch);
+      mergePreview = pv.result;
+      mergeConflictFiles = pv.files;
+      if (pv.result === 'conflict') conflicts.push(`${c.id}：合入 ${cfg.integrationBranch} 会冲突（${pv.files.join('、')}）`);
+    }
     cards.push({
       id: c.id, title: c.title || row?.title || c.id, lane, frs: c.frs, frsLabel: c.frsLabel, specTaskIds: c.specTaskIds,
       branch: c.branch, prTarget: c.prTarget, deps: c.deps, unmetDeps: st.unmet, assignee: c.assignee ?? row?.assignee ?? '',
       declaredStatus: declared, status: st.status, declaredMismatch, goal: c.goal, acceptance: c.acceptance,
       file: `docs/tasks/${c.id}.md`, merge, ahead: br?.ahead ?? null, behind: br?.behind ?? null, worktree: br?.worktree ?? null,
-      laneOk, changedFiles: files.length, lastActivity: merge?.time ?? br?.time ?? null,
+      laneOk, mergePreview, mergeConflictFiles, changedFiles: files.length, lastActivity: merge?.time ?? br?.time ?? null,
     });
+  }
+  // 声明 done 但 git 未确认合入：P0-1 合并为一条（同因不逐卡刷屏）
+  if (unmerged.length) {
+    if (integMissing) {
+      // 根因就是集成分支缺失：一条说明 + 受影响的卡号，不再逐卡重复
+      conflicts.unshift(`${integMissing} 受影响的任务卡（${unmerged.length} 张）：${unmerged.map((u) => u.id).join('、')}`);
+    } else if (unmerged.length === 1) {
+      const u = unmerged[0] as { id: string; status: string };
+      conflicts.unshift(`${u.id}：任务卡 / BOARD.md 声明 done，但 git 中未合入 ${cfg.integrationBranch}（按 git 显示为「${u.status}」）`);
+    } else {
+      const ids = unmerged.map((u) => u.id).join('、');
+      conflicts.unshift(`${unmerged.length} 张任务卡 / BOARD.md 声明 done，但 git 中未合入 ${cfg.integrationBranch}：${ids}`);
+    }
   }
   const ipc = await readText(root, 'contracts/ipc.ts');
   return {
-    available: true, generatedAt: now, integrationBranch: cfg.integrationBranch, mainBranch: cfg.mainBranch, maxParallel: cfg.maxParallel,
+    available: true, generatedAt: now, integrationBranch: cfg.integrationBranch, mainBranch: cfg.mainBranch,
+    integrationRef: integRef, integrationRefRemote: gitSnap.integrationRefRemote, integrationMissing: integMissing,
+    maxParallel: cfg.maxParallel,
     lanes: lanesCfg.lanes.map((l) => ({ name: l.name, globs: l.globs, ownerRole: owners[l.name] ?? null })),
     shared: lanesCfg.shared, feature: await readFeature(root, selectedFeatureId), features: await listFeatures(root), cards,
     contractVersion: ipc ? (/IPC_CONTRACT_REVISION\s*=\s*'([^']+)'/.exec(ipc)?.[1] ?? /IPC_CONTRACT_VERSION\s*=\s*'([^']+)'/.exec(ipc)?.[1] ?? null) : null,

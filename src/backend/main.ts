@@ -15,6 +15,8 @@ import { SessionStore } from './sessions/session-store.ts';
 import { SettingsStore, type KeyCipher } from './settings/settings-store.ts';
 import { resolveInsideRoot } from './tools/sandbox.ts';
 import { TerminalManager } from './terminal/terminal-manager.ts';
+import { createGitRunner } from './workspace/git.ts';
+import { watchRefs } from './workspace/refs-watcher.ts';
 
 const APP_SCHEME = 'app';
 const APP_HOST = 'bundle';
@@ -157,6 +159,15 @@ async function bootstrap(): Promise<void> {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
   });
+
+  // P1-8：监听项目 git 引用变化（分支增删 / 移动 / 切换 HEAD）→ 通知渲染进程重拉看板与 Git 快照。
+  // 只读轮询，不修改仓库；窗口获得焦点时渲染进程也会主动刷新一次。
+  const stopRefsWatcher = watchRefs(
+    (root) => createGitRunner(root),
+    () => state.project?.root ?? null,
+    () => emit({ type: 'git-changed' }),
+  );
+  app.on('will-quit', stopRefsWatcher);
 }
 
 if (!app.requestSingleInstanceLock()) {

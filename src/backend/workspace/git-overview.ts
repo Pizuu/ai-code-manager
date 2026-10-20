@@ -17,7 +17,9 @@ const REC = '\x1e';
 export function emptyGitSnapshot(cfg: AgentsConfig, reason: string, now: string): GitSnapshot {
   return {
     available: false, reason, generatedAt: now, currentBranch: null,
-    integrationBranch: cfg.integrationBranch, mainBranch: cfg.mainBranch, integrationHead: null, mainHead: null,
+    integrationBranch: cfg.integrationBranch, mainBranch: cfg.mainBranch,
+    integrationRef: cfg.integrationBranch, integrationRefRemote: false,
+    integrationHead: null, mainHead: null,
     integrationAheadOfMain: 0, mainAheadOfIntegration: 0, branches: [], commits: [], merges: [], mainMerges: [],
     worktrees: [], tags: [], remotes: [], dirtyCount: 0, pullRequests: null, ci: null,
   };
@@ -84,13 +86,30 @@ async function dirtyCount(git: GitRunner): Promise<number> {
   return (await gitOut(git, ['status', '--porcelain', '--untracked-files=normal'])).split('\n').filter((l) => l.trim()).length;
 }
 
+/**
+ * 解析集成分支的实际引用（P0-1）：
+ * 本地有该分支 → 用本地引用；本地没有但远端有 → 回退到 `origin/<分支>`。
+ * 两者都没有 → null（看板据此提示根因，而不是把「集成分支缺失」误报成几十条「未合入」冲突）。
+ */
+export async function resolveIntegrationRef(git: GitRunner, branch: string): Promise<{ ref: string; remote: boolean } | null> {
+  const local = await git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]);
+  if (local.ok) return { ref: branch, remote: false };
+  const remote = await git(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`]);
+  if (remote.ok) return { ref: `origin/${branch}`, remote: true };
+  return null;
+}
+
 export async function readGitSnapshot(git: GitRunner, root: string, cfg: AgentsConfig, now: string, worktreeGit: (dir: string) => GitRunner): Promise<GitSnapshot> {
   const probe = await probeRepo(git);
   if (!probe.ok) return emptyGitSnapshot(cfg, probe.reason ?? '不可用', now);
   const integ = cfg.integrationBranch;
   const main = cfg.mainBranch;
+  // 集成分支的实际引用：本地缺失时回退 origin/<分支>（P0-1）
+  const integRef = await resolveIntegrationRef(git, integ);
+  const integGitRef = integRef?.ref ?? integ;
   const has = async (ref: string) => (await git(['rev-parse', '--verify', '--quiet', `refs/heads/${ref}`])).ok;
-  const [hasInteg, hasMain] = await Promise.all([has(integ), has(main)]);
+  const [hasMain] = await Promise.all([has(main)]);
+  const hasInteg = integRef !== null;
   const current = (await gitOut(git, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim() || null;
 
   const wtList = parsePorcelainWorktrees(await gitOut(git, ['worktree', 'list', '--porcelain']));
@@ -108,9 +127,9 @@ export async function readGitSnapshot(git: GitRunner, root: string, cfg: AgentsC
     const wt = worktrees.find((w) => w.branch === name);
     return {
       name, sha, short: sha.slice(0, 7), time, subject, kind, lane, task,
-      ahead: vsInteg ? await countRange(git, `${integ}..${name}`) : 0,
-      behind: vsInteg ? await countRange(git, `${name}..${integ}`) : 0,
-      mergedIntoIntegration: vsInteg ? (await git(['merge-base', '--is-ancestor', name, integ])).ok : name === integ,
+      ahead: vsInteg ? await countRange(git, `${integGitRef}..${name}`) : 0,
+      behind: vsInteg ? await countRange(git, `${name}..${integGitRef}`) : 0,
+      mergedIntoIntegration: vsInteg ? (await git(['merge-base', '--is-ancestor', name, integGitRef])).ok : name === integ,
       worktree: wt ? (wt.isMain ? path.basename(wt.path) : path.relative(rootParent, wt.path) || wt.path) : null,
       current: name === current,
     };
@@ -125,17 +144,23 @@ export async function readGitSnapshot(git: GitRunner, root: string, cfg: AgentsC
   });
 
   const head = (ref: string) => branches.find((b) => b.name === ref)?.short ?? null;
+  // 集成分支的头提交：本地缺失时从实际引用（origin/<分支>）取
+  const integHead = integRef
+    ? ((await gitOut(git, ['rev-parse', '--short', integRef.ref])).trim() || null)
+    : null;
   const [merges, mainMerges, tags, remotes, aheadMain, behindMain] = await Promise.all([
-    hasInteg ? firstParentMerges(git, integ) : Promise.resolve([]),
+    hasInteg ? firstParentMerges(git, integGitRef) : Promise.resolve([]),
     hasMain ? firstParentMerges(git, main) : Promise.resolve([]),
     gitOut(git, ['tag', '--list']),
     gitOut(git, ['remote']),
-    hasInteg && hasMain ? countRange(git, `${main}..${integ}`) : Promise.resolve(0),
-    hasInteg && hasMain ? countRange(git, `${integ}..${main}`) : Promise.resolve(0),
+    hasInteg && hasMain ? countRange(git, `${main}..${integGitRef}`) : Promise.resolve(0),
+    hasInteg && hasMain ? countRange(git, `${integGitRef}..${main}`) : Promise.resolve(0),
   ]);
   return {
     available: true, generatedAt: now, currentBranch: current, integrationBranch: integ, mainBranch: main,
-    integrationHead: head(integ), mainHead: head(main),
+    integrationHead: integHead ?? head(integ), mainHead: head(main),
+    integrationRef: integGitRef,
+    integrationRefRemote: integRef?.remote ?? false,
     integrationAheadOfMain: aheadMain,
     mainAheadOfIntegration: behindMain,
     branches, commits, merges, mainMerges, worktrees,
