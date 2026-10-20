@@ -34,14 +34,17 @@ export function expandTemplate(tpl: readonly string[], vars: Record<'prompt' | '
 
 const usesPrompt = (tpl: readonly string[]) => tpl.some((a) => a.includes('{prompt}'));
 
-/** opencode 权限映射：plan 禁止编辑与命令；auto-edits 允许编辑、禁止命令；ask（每轮已批准）全部允许。 */
+/**
+ * opencode 权限映射：plan 禁止编辑与命令；auto-edits 允许编辑、禁止命令；
+ * ask（每轮已批准）与 allow-all（v1.6，免审批）全部允许。
+ */
 export function opencodePermission(mode: PermissionMode): OpencodePermission {
   if (mode === 'plan') return { edit: 'deny', bash: 'deny' };
   if (mode === 'auto-edits') return { edit: 'allow', bash: 'deny' };
   return { edit: 'allow', bash: 'allow' };
 }
 
-/** 是否在启动前需要用户批准本轮命令行（宪法 九：命令永远需要批准）。 */
+/** 是否在启动前需要用户批准本轮命令行（宪法 九：命令默认永远需要批准；allow-all 模式除外）。 */
 export function needsTurnApproval(mode: PermissionMode): boolean {
   return mode === 'ask';
 }

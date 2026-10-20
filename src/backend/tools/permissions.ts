@@ -8,12 +8,13 @@ export type PermissionDecision = 'allow' | 'ask' | 'deny';
 
 /**
  * - read / meta：任何模式都放行。
- * - write：ask → 询问；auto-edits → 放行；plan → 拒绝。
- * - execute：plan → 拒绝；其余一律询问（命令永远需要批准）。
+ * - write：ask → 询问；auto-edits → 放行；plan → 拒绝；allow-all（v1.6）→ 放行。
+ * - execute：plan → 拒绝；allow-all（v1.6）→ 放行；其余一律询问（命令默认永远需要批准）。
  */
 export function decide(mode: PermissionMode, effect: ToolEffect): PermissionDecision {
   if (effect === 'read' || effect === 'meta') return 'allow';
   if (mode === 'plan') return 'deny';
+  if (mode === 'allow-all') return 'allow';
   if (effect === 'execute') return 'ask';
   return mode === 'auto-edits' ? 'allow' : 'ask';
 }
@@ -32,4 +33,5 @@ export const PERMISSION_MODE_LABELS: Readonly<Record<PermissionMode, string>> = 
   ask: '每次询问',
   'auto-edits': '自动批准编辑',
   plan: '仅规划（只读）',
+  'allow-all': '全部允许（免审批）',
 };

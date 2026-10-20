@@ -14,6 +14,7 @@ import { OpencodeServeManager } from './agent-cli/serve-runner.ts';
 import { SessionStore } from './sessions/session-store.ts';
 import { SettingsStore, type KeyCipher } from './settings/settings-store.ts';
 import { resolveInsideRoot } from './tools/sandbox.ts';
+import { TerminalManager } from './terminal/terminal-manager.ts';
 
 const APP_SCHEME = 'app';
 const APP_HOST = 'bundle';
@@ -117,9 +118,18 @@ async function bootstrap(): Promise<void> {
   // opencode ACP 进程池（默认通道）：退出时统一结束
   const acpManager = new AcpProcessManager({ platform: process.platform });
   app.on('will-quit', () => acpManager.closeAll());
+  // v1.6：任务会话「终端模式」的终端进程池：退出时统一结束
+  // 输出与退出经 agent:event 推给渲染进程（契约 v1.6 的 terminal-data / terminal-exit）。
+  const terminalManager = new TerminalManager({
+    platform: process.platform,
+    onData: (sessionId, terminalId, data) => emit({ type: 'terminal-data', sessionId, terminalId, data }),
+    onExit: (sessionId, terminalId, code) => emit({ type: 'terminal-exit', sessionId, terminalId, code }),
+  });
+  app.on('will-quit', () => terminalManager.closeAll());
   const handlers = createHandlers({
     serveManager,
     acpManager,
+    terminalManager,
     settings,
     sessions,
     state,

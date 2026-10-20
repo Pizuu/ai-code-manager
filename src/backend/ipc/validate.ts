@@ -13,13 +13,17 @@ import type {
   PermissionMode,
   ProviderId,
   SettingsUpdate,
+  TerminalCloseRequest,
+  TerminalInputRequest,
+  TerminalKind,
+  TerminalOpenRequest,
 } from '../../../contracts/ipc.ts';
 
 export const MAX_MESSAGE_CHARS = 200_000;
 const MAX_FIELD_CHARS = 2_000;
 const MAX_REL_PATH_CHARS = 1_000;
 const PROVIDERS: readonly ProviderId[] = ['openai', 'anthropic'];
-const MODES: readonly PermissionMode[] = ['ask', 'auto-edits', 'plan'];
+const MODES: readonly PermissionMode[] = ['ask', 'auto-edits', 'plan', 'allow-all'];
 const SESSION_ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 
 /** 构造带错误码的 Error，供 handler 抛出。 */
@@ -157,6 +161,38 @@ export function validateApprovalDecision(value: unknown): ApprovalDecision {
   const v = asRecord(value, 'decision');
   if (typeof v.approved !== 'boolean') fail('approved 必须是布尔值');
   return { approvalId: asString(v.approvalId, 'approvalId', { max: 100 }), approved: v.approved };
+}
+
+// ───────── v1.6：终端模式 ─────────
+
+const TERMINAL_KINDS: readonly TerminalKind[] = ['shell', 'cli'];
+/** 单次输入上限（一条命令的长度）。 */
+export const MAX_TERMINAL_INPUT_CHARS = 8_000;
+
+/**
+ * terminal:open 的参数。kind 缺省 = 'shell'；restart 缺省 = false（复用已有终端）。
+ * 渲染进程不能指定工作目录或命令原文——主进程按 kind 决定（宪法 十一：工作目录恒为项目根）。
+ */
+export function asTerminalOpenRequest(value: unknown): TerminalOpenRequest {
+  const v = asRecord(value, 'terminalOpen');
+  const kind = v.kind === undefined ? 'shell' : asOneOf(v.kind, TERMINAL_KINDS, 'kind');
+  const restart = v.restart === undefined ? false : v.restart;
+  if (typeof restart !== 'boolean') fail('restart 必须是布尔值');
+  return { sessionId: asSessionId(v.sessionId), kind, restart };
+}
+
+/** terminal:input 的参数：data 为用户输入原文（允许含换行，长度受限）。 */
+export function asTerminalInputRequest(value: unknown): TerminalInputRequest {
+  const v = asRecord(value, 'terminalInput');
+  const data = asString(v.data, 'data', { max: MAX_TERMINAL_INPUT_CHARS, allowEmpty: true });
+  if (/\0/.test(data)) fail('data 不能包含 NUL');
+  return { sessionId: asSessionId(v.sessionId), data };
+}
+
+/** terminal:close 的参数。 */
+export function asTerminalCloseRequest(value: unknown): TerminalCloseRequest {
+  const v = asRecord(value, 'terminalClose');
+  return { sessionId: asSessionId(v.sessionId) };
 }
 
 // ───────── v1.1：Agent CLI（功能 002） ─────────

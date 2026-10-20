@@ -10,6 +10,7 @@ const MODE_TEXT: Readonly<Record<PermissionMode, string>> = {
   ask: '每次询问：文件修改与命令执行都需要用户逐条批准。',
   'auto-edits': '自动批准编辑：文件修改自动生效，命令执行仍需用户批准。',
   plan: '仅规划（只读）：不能修改文件或执行命令，只能阅读代码并给出计划。',
+  'allow-all': '全部允许：文件修改与命令执行都自动生效，不再逐条询问；但仍只能在项目根内操作，越界路径一律拒绝。',
 };
 
 export interface SystemPromptInput {

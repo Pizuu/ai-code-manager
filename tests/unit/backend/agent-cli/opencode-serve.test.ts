@@ -250,6 +250,14 @@ test('serveRules: every mode sends an explicit ruleset; commands always ask unle
   assert.equal(action('ask', 'read'), 'allow');
 });
 
+test('serveRules: allow-all (v1.6) allows edits and commands but still denies external directories', () => {
+  const action = (mode: 'ask' | 'auto-edits' | 'plan' | 'allow-all', perm: string) => [...serveRules(mode)].reverse().find((r) => r.permission === perm || r.permission === '*')?.action;
+  assert.equal(serveRules('allow-all')[0]?.permission, '*');
+  assert.equal(action('allow-all', 'edit'), 'allow');
+  assert.equal(action('allow-all', 'bash'), 'allow');
+  assert.equal(action('allow-all', 'external_directory'), 'deny');
+});
+
 test('toApprovalRequest maps real bash / edit permission events to v1.3 kinds, always carrying permission + patterns', () => {
   const bash = parsePermissionRequest(REAL_PERM_BASH);
   const edit = parsePermissionRequest(REAL_PERM_EDIT);

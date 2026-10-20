@@ -6,6 +6,9 @@ import {
   validateSendRequest,
   validateSettingsUpdate,
   asRelPath,
+  asTerminalCloseRequest,
+  asTerminalInputRequest,
+  asTerminalOpenRequest,
 } from '../../../../src/backend/ipc/validate.ts';
 
 test('accepts a valid settings update and strips trailing slashes from baseUrl', () => {
@@ -18,6 +21,10 @@ test('rejects unknown providers, non-http urls and wrong types', () => {
   assert.throws(() => validateSettingsUpdate({ baseUrl: 'file:///etc/passwd' }), /E_VALIDATION/);
   assert.throws(() => validateSettingsUpdate({ permissionMode: 'yolo' }), /E_VALIDATION/);
   assert.throws(() => validateSettingsUpdate(null), /E_VALIDATION/);
+});
+
+test('allow-all (v1.6) is an accepted permission mode', () => {
+  assert.deepEqual(validateSettingsUpdate({ permissionMode: 'allow-all' }), { permissionMode: 'allow-all' });
 });
 
 test('session ids cannot contain path separators', () => {
@@ -41,4 +48,21 @@ test('003: an empty baseUrl clears it; fs:read paths must be non-empty strings',
   assert.throws(() => asRelPath(''), /E_VALIDATION/);
   assert.throws(() => asRelPath(null), /E_VALIDATION/);
   assert.throws(() => asRelPath('x'.repeat(1001)), /E_VALIDATION/);
+});
+
+test('v1.6: terminal requests are validated (kind 枚举、sessionId、输入长度)', () => {
+  assert.deepEqual(asTerminalOpenRequest({ sessionId: 's-1' }), { sessionId: 's-1', kind: 'shell', restart: false });
+  assert.deepEqual(asTerminalOpenRequest({ sessionId: 's-1', kind: 'cli', restart: true }), { sessionId: 's-1', kind: 'cli', restart: true });
+  assert.throws(() => asTerminalOpenRequest({ sessionId: 's-1', kind: 'bash -c evil' }), /E_VALIDATION/);
+  assert.throws(() => asTerminalOpenRequest({ sessionId: 's-1', restart: 'yes' }), /E_VALIDATION/);
+  assert.throws(() => asTerminalOpenRequest({ sessionId: '../etc' }), /E_VALIDATION/);
+
+  assert.deepEqual(asTerminalInputRequest({ sessionId: 's-1', data: 'ls\n' }), { sessionId: 's-1', data: 'ls\n' });
+  assert.deepEqual(asTerminalInputRequest({ sessionId: 's-1', data: '' }), { sessionId: 's-1', data: '' });
+  assert.throws(() => asTerminalInputRequest({ sessionId: 's-1', data: 123 }), /E_VALIDATION/);
+  assert.throws(() => asTerminalInputRequest({ sessionId: 's-1', data: 'x'.repeat(8001) }), /E_VALIDATION/);
+  assert.throws(() => asTerminalInputRequest({ sessionId: 's-1', data: 'a\u0000b' }), /E_VALIDATION/);
+
+  assert.deepEqual(asTerminalCloseRequest({ sessionId: 's-1' }), { sessionId: 's-1' });
+  assert.throws(() => asTerminalCloseRequest({ sessionId: '' }), /E_VALIDATION/);
 });

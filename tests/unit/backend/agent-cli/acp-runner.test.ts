@@ -386,6 +386,12 @@ test('acpAutoDecision：三模式 × 权限类别矩阵', () => {
   assert.equal(acpAutoDecision('plan', 'fetch'), 'ask');
 });
 
+test('acpAutoDecision：allow-all（v1.6）一律自动允许，不打扰用户', () => {
+  for (const kind of ['edit', 'delete', 'move', 'execute', 'read', 'search', 'fetch', 'other']) {
+    assert.equal(acpAutoDecision('allow-all', kind), 'allow');
+  }
+});
+
 test('toAcpApprovalRequest / parseAcpPermissionRequest：形状映射', () => {
   const perm = parseAcpPermissionRequest({
     sessionId: 'ses_1',

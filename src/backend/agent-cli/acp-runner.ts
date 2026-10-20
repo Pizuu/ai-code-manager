@@ -144,9 +144,11 @@ export function acpPermissionClass(kind: string): AcpPermissionClass {
 
 /**
  * 权限模式的客户端等价裁决（参照 serveRules 语义；ACP 无服务端规则集，由本客户端代行）：
- * ask = 逐条问；auto-edits = edit 类自动允许、其余仍问；plan = edit / execute 类自动拒绝、read 类自动允许、其余仍问。
+ * ask = 逐条问；auto-edits = edit 类自动允许、其余仍问；plan = edit / execute 类自动拒绝、read 类自动允许、其余仍问；
+ * allow-all（v1.6）= 一律自动允许（不再打扰用户；项目根沙箱仍由本应用把关）。
  */
 export function acpAutoDecision(mode: PermissionMode, kind: string): 'allow' | 'reject' | 'ask' {
+  if (mode === 'allow-all') return 'allow';
   const cls = acpPermissionClass(kind);
   if (mode === 'plan') {
     if (cls === 'edit' || cls === 'execute') return 'reject';
@@ -217,6 +219,7 @@ export function toAcpApprovalRequest(perm: AcpPermissionRequest, opts: { approva
 export function describeAcpPermission(mode: PermissionMode): string {
   if (mode === 'plan') return 'ACP 模式：仅规划，编辑与命令自动拒绝，读取与搜索自动允许。';
   if (mode === 'auto-edits') return 'ACP 模式：编辑自动批准，其余工具调用逐条审批。';
+  if (mode === 'allow-all') return 'ACP 模式：全部允许，不弹出审批。';
   return 'ACP 模式：每次工具调用逐条审批。';
 }
 
