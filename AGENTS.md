@@ -34,6 +34,7 @@
 - 类型检查：`npx tsc --noEmit`
 - 构建：`npm run build`（tsc → `dist/`）
 - 运行：`npm start`；打包（Windows）：`npm run dist`
+- Web 预览（仅开发，定位 UI 修改）：`npm run web`（浏览器打开同一套渲染层，主进程 API 为只读 / 内存模拟，不写盘、不进打包；ADR 0008）
 - 以上命令已确认（ADR 0004），无「待确认」项。
 - 本地一键检查优先使用 `scripts/verify.sh`。
 
@@ -46,6 +47,7 @@
 ## 测试要求
 
 - 新行为必须有测试：逻辑用单元测试，边界用集成测试。
+- **简单 UI 修改跳过测试**（宪法 1.2.0 原则 五，ADR 0007）：简单 UI 修改指仅改 CSS / 文案 / DOM 布局，不涉及 IPC、安全、数据逻辑；不要求新增或修改测试，但仍需 lint + typecheck + build 通过，并在提交说明或任务卡注明。同一改动中触及逻辑的部分照常写测试。
 - 测试必须确定：单元测试不依赖网络与真实时间。
 - 覆盖范围变化时，同步更新 `docs/testing/test-matrix.md`。
 

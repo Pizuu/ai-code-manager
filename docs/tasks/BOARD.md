@@ -1,7 +1,7 @@
 # 任务看板
 
 > 由 coordinator 维护。前置任务全部合入的卡即为 **ready**；来自不同泳道的 ready 卡可以同时派发。
-> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）。当前 ready：T-011（frontend）、T-012（infra）、T-021（infra）、T-022（backend）——T-012 与 T-021 同泳道，不同时派发。
+> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-030）。当前 ready：T-025（backend）、T-026（frontend）；另有 001/002 遗留 ready 卡 T-011（frontend）、T-012 / T-021（infra）、T-022（backend）。
 > 002 记录：T-013（契约 v1.1）合入提交 `1ec10b8` 到 T-015 合入提交 `ce20063` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（有意的防漏机制，plan.md Complexity Tracking）；二者已连续合入，其余每次合入后 `scripts/verify.sh` 为绿。集成分支已更名 `hark-dev`；任务分支合入后删除，状态以合并提交追溯。
 > 说明：T015（应用入口/preload/handlers）因依赖后续模块，从 T-004 移到 T-006 执行（flow-back 已同步卡片）。无 Git 远端，「PR」列为本地合入 `dev` 的分支名（见 plan.md Complexity Tracking）。
 
@@ -29,6 +29,14 @@
 | T-020 | 三板块 Electron E2E | frontend | T-011 | blocked | （待派发） | — |
 | T-021 | Windows 实机验证 opencode 集成 | infra | T-019 | ready | （待派发） | — |
 | T-022 | 评估 opencode serve 逐条工具审批 | backend | T-019 | ready | （待派发） | — |
+| T-023 | 功能 003 规格、契约 v1.2 与 ADR | contracts | 无 | done | coordinator | `feat/contracts/T-023-spec-003`（本地 --no-ff 合入） |
+| T-024 | 003 拆卡、测试规则与 Web 预览脚本入口 | @shared | T-023 | done | coordinator | `int/T-024-split`（本地 --no-ff 合入） |
+| T-025 | 主进程：只读 fs:read 与 agent 配置默认空白 | backend | T-024 | ready | coordinator | — |
+| T-026 | 渲染进程：代码查看器、全局右键发送与配置空白提示 | frontend | T-024 | ready | coordinator | — |
+| T-027 | Web 预览渲染层：只读适配器与 UI 定位 | frontend | T-026 | blocked | coordinator | — |
+| T-028 | Web 预览开发服务器 | infra | T-025 | blocked | coordinator | — |
+| T-029 | 003 用户与测试 / 安全文档 | docs | T-026, T-027, T-028 | blocked | coordinator | — |
+| T-030 | 003 收尾：路线图、看板与版本号 | @shared | T-029 | blocked | coordinator | — |
 
 ## 依赖图
 
@@ -57,4 +65,13 @@ graph LR
   T011 --> T020[T-020 frontend 三板块 E2E]
   T019 --> T021[T-021 infra Windows opencode]
   T019 --> T022[T-022 backend serve 逐条审批]
+  T023[T-023 contracts 003] --> T024[T-024 @shared 拆卡/规则]
+  T024 --> T025[T-025 backend fs:read/配置空白]
+  T024 --> T026[T-026 frontend 代码查看/右键]
+  T026 --> T027[T-027 frontend Web 预览]
+  T025 --> T028[T-028 infra Web 服务器]
+  T026 --> T029[T-029 docs]
+  T027 --> T029
+  T028 --> T029
+  T029 --> T030[T-030 @shared 收尾]
 ```

@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc -p .",
     "start": "npm run build && electron .",
+    "web": "node scripts/web-dev.ts",
     "dist": "npm run build && electron-builder --win nsis portable --x64"
   },
   "workspaces": [
@@ -35,7 +36,9 @@
       "src/frontend/index.html",
       "src/frontend/styles.css",
       "package.json",
-      "!dist/tests/**/*"
+      "!dist/tests/**/*",
+      "!dist/src/frontend/web/**/*",
+      "!dist/scripts/**/*"
     ],
     "win": {
       "target": [
