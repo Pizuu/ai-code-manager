@@ -48,6 +48,8 @@ export interface HandlerDeps {
   emit(event: AgentEvent): void;
   /** 打开系统目录选择框，返回绝对路径或 null。 */
   pickDirectory(): Promise<string | null>;
+  /** 在系统文件管理器中打开目录（main.ts 注入 Electron shell.openPath）；缺省为 no-op。 */
+  openPath?: (path: string) => Promise<void>;
   platform: NodeJS.Platform;
   providerFactory?: (id: 'openai' | 'anthropic', config: ProviderConfig) => Provider;
   /** v1.1：可注入的可执行文件解析依赖、git 可执行文件与 CLI 子进程基础环境（测试用）。 */
@@ -245,6 +247,9 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       return info;
     },
     'project:current': async () => state.project,
+    'project:openRoot': async () => {
+      await deps.openPath?.(requireProject(state).root);
+    },
     'fs:tree': async (relDir) => listTree(requireProject(state).root, asRelDir(relDir)),
     'fs:read': async (relPath) => readFileForView(requireProject(state).root, asRelPath(relPath)),
     'sessions:list': async () => sessions.list(),

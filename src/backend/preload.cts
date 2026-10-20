@@ -13,6 +13,7 @@ const INVOKE_CHANNELS = [
   'settings:set',
   'project:pick',
   'project:current',
+  'project:openRoot',
   'fs:tree',
   'sessions:list',
   'sessions:create',

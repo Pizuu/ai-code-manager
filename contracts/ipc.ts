@@ -221,6 +221,8 @@ export interface IpcInvokeMap {
   'settings:set':    { args: [update: SettingsUpdate];   result: PublicSettings };
   'project:pick':    { args: [];                         result: ProjectInfo | null };
   'project:current': { args: [];                         result: ProjectInfo | null };
+  /** 在系统文件管理器中打开当前项目根目录。 */
+  'project:openRoot': { args: [];                        result: void };
   /** 列出某目录下一层（懒加载）；relDir '' 为根。 */
   'fs:tree':         { args: [relDir: string];           result: FileNode[] };
   'sessions:list':   { args: [];                         result: SessionSummary[] };

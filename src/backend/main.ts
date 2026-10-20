@@ -125,6 +125,9 @@ async function bootstrap(): Promise<void> {
       const res = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
       return res.canceled ? null : (res.filePaths[0] ?? null);
     },
+    openPath: async (p) => {
+      await shell.openPath(p);
+    },
   });
   for (const channel of Object.keys(handlers) as IpcInvokeChannel[]) {
     const handler = handlers[channel] as (...args: unknown[]) => Promise<unknown>;
