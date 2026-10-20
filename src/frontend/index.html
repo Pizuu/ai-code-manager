@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <!-- 严格 CSP（宪法 十二）：只允许本应用 app:// 源的脚本与样式，禁止内联脚本 -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'">
+  <meta name="color-scheme" content="light dark">
+  <title>AI Code Manager</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="../../dist/src/frontend/main.js"></script>
+</head>
+<body>
+  <div id="app" class="layout">
+    <aside id="sidebar" class="sidebar" aria-label="会话与项目"></aside>
+    <main id="chat" class="chat" aria-label="对话"></main>
+    <section id="right" class="right" aria-label="Diff、终端与任务"></section>
+  </div>
+  <dialog id="settings-dialog" class="dialog" aria-label="设置"></dialog>
+</body>
+</html>
