@@ -5,10 +5,11 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { AgentCliCheck, AgentCliDetection, AgentEvent, AgentRef, ApprovalRequest, BoardSnapshot, GitSnapshot, IpcInvokeChannel, IpcInvokeMap, ProjectInfo, Session } from '../../../contracts/ipc.ts';
+import type { AgentCliCheck, AgentCliDetection, AgentEvent, AgentRef, ApprovalRequest, BoardSnapshot, GitSnapshot, IpcInvokeChannel, IpcInvokeMap, ProjectInfo, Session, TerminalInfo } from '../../../contracts/ipc.ts';
 import { AcpProcessManager, prepareAcpTurn, runAcpCliTurn, type PreparedAcpTurn } from '../agent-cli/acp-runner.ts';
 import { runCliTurn, type CliRuntimeConfig } from '../agent-cli/cli-runner.ts';
 import { detectInstalledClis, probeCliVersion } from '../agent-cli/detect.ts';
+import { expandTemplate } from '../agent-cli/invocation.ts';
 import { listOpencodeModels } from '../agent-cli/models.ts';
 import { installHint } from '../agent-cli/presets.ts';
 import { OpencodeServeManager, prepareServeTurn, runServeCliTurn, type PreparedServeTurn } from '../agent-cli/serve-runner.ts';
@@ -24,6 +25,7 @@ import { readFileForView } from '../fs/file-view.ts';
 import { summarizeSession, type SessionStore } from '../sessions/session-store.ts';
 import { builtinConfigProblem, type SettingsStore } from '../settings/settings-store.ts';
 import { loadSpecTasks } from '../specs/tasks-parser.ts';
+import { interactiveArgs, shellCommand, TerminalManager, type TerminalHandle } from '../terminal/terminal-manager.ts';
 import { buildBoard, listFeatures, readAgentsConfig } from '../workspace/board.ts';
 import { emptyGitSnapshot, readGitSnapshot } from '../workspace/git-overview.ts';
 import { createGitRunner } from '../workspace/git.ts';
@@ -36,6 +38,9 @@ import {
   asRelPath,
   asSessionId,
   asSessionModelInput,
+  asTerminalCloseRequest,
+  asTerminalInputRequest,
+  asTerminalOpenRequest,
   ipcError,
   validateAgentCliInput,
   validateApprovalDecision,
@@ -72,6 +77,10 @@ export interface HandlerDeps {
    * 模式为 acp（默认）时 opencode 会话先走 ACP，启动失败回退既有 serve / run 逻辑。
    */
   acpManager?: AcpProcessManager;
+  /**
+   * v1.6：任务会话「终端模式」的终端进程池；main.ts 传入并在退出时 closeAll()。缺省时内部新建。
+   */
+  terminalManager?: TerminalManager;
   /** 读取 AICM_OPENCODE_MODE 的环境（默认 process.env；测试注入）。 */
   modeEnv?: NodeJS.ProcessEnv;
 }
@@ -141,6 +150,12 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
 
   const serveManager = deps.serveManager ?? new OpencodeServeManager({ platform: deps.platform });
   const acpManager = deps.acpManager ?? new AcpProcessManager({ platform: deps.platform });
+  // v1.6：终端模式。输出与退出统一走 agent:event（契约 v1.6 的 terminal-data / terminal-exit）。
+  const terminalManager = deps.terminalManager ?? new TerminalManager({
+    platform: deps.platform,
+    onData: (sessionId, terminalId, data) => emit({ type: 'terminal-data', sessionId, terminalId, data }),
+    onExit: (sessionId, terminalId, code) => emit({ type: 'terminal-exit', sessionId, terminalId, code }),
+  });
   const resolveDeps = () => deps.resolveDeps ?? defaultResolveDeps(deps.platform);
   let gitCache: { root: string; at: number; snap: GitSnapshot } | null = null;
   const gitSnapshot = async (root: string): Promise<GitSnapshot> => {
@@ -282,6 +297,36 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       });
   };
 
+  // ── v1.6：终端模式（任务会话）──
+  const terminalInfo = (t: TerminalHandle): TerminalInfo => ({
+    id: t.id, sessionId: t.sessionId, kind: t.kind, program: t.program, cwd: t.cwd, startedAt: t.startedAt, alive: t.alive,
+  });
+
+  /**
+   * 终端的启动参数（主进程决定，渲染进程不可控）：
+   * - shell：项目根下的 PowerShell / bash；
+   * - cli：本会话选定的外部 Agent CLI，去掉 JSON 输出参数后以人可读形式输出。
+   * 工作目录恒为项目根（宪法 十一）。
+   */
+  const terminalSpec = async (sessionId: string, kind: 'shell' | 'cli') => {
+    const root = state.project?.root;
+    if (!root) throw ipcError('E_NO_PROJECT', '请先打开项目文件夹。');
+    if (kind === 'shell') {
+      const sh = shellCommand(deps.platform);
+      return { sessionId, kind, cwd: root, file: sh.file, args: sh.args, program: sh.program };
+    }
+    const s = await sessions.get(sessionId);
+    const agent = effectiveAgent(s, settings.getActive().defaultAgent);
+    if (agent === 'builtin') {
+      throw ipcError('E_CLI', '本会话未选择外部 Agent CLI，无法以 CLI 模式打开终端。请在会话顶部切换 agent，或改用 shell 模式。');
+    }
+    const { runtime, executable, meta } = await resolveCli(agent.slice(4));
+    const vars = { prompt: '', model: runtime.model, session: '', cwd: root };
+    const args = expandTemplate(interactiveArgs(runtime.args), vars);
+    if (runtime.model.trim()) args.push(...expandTemplate(runtime.modelArgs, vars));
+    return { sessionId, kind, cwd: root, file: executable, args, program: meta.name, env: runtime.env };
+  };
+
   return {
     'settings:get': async () => settings.getPublic(),
     'settings:set': async (update) => settings.update(validateSettingsUpdate(update)),
@@ -304,6 +349,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     'sessions:delete': async (id) => {
       const sid = asSessionId(id);
       state.stop(sid);
+      terminalManager.close(sid); // v1.6：会话删除时一并结束其终端
       await sessions.delete(sid);
     },
     'sessions:clear': async (id) => {
@@ -409,6 +455,26 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       if (!r.ok) throw ipcError('E_GIT', (r.stderr || r.stdout).trim() || `git checkout ${name} 失败`);
       gitCache = null;
       return gitSnapshot(root);
+    },
+    // ── v1.6：终端模式 ──
+    'terminal:open': async (arg) => {
+      const req = asTerminalOpenRequest(arg);
+      // 会话必须存在（避免为不存在的会话启动进程）
+      await sessions.get(req.sessionId);
+      const existing = terminalManager.get(req.sessionId);
+      if (existing && existing.alive && !req.restart) return terminalInfo(existing);
+      const spec = await terminalSpec(req.sessionId, req.kind ?? 'shell');
+      return terminalInfo(terminalManager.open(spec, req.restart));
+    },
+    'terminal:input': async (arg) => {
+      const req = asTerminalInputRequest(arg);
+      if (!terminalManager.write(req.sessionId, req.data)) {
+        throw ipcError('E_NOT_FOUND', '该会话没有正在运行的终端。请先打开终端。');
+      }
+    },
+    'terminal:close': async (arg) => {
+      const req = asTerminalCloseRequest(arg);
+      terminalManager.close(req.sessionId);
     },
   };
 }

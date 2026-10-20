@@ -257,5 +257,6 @@ export async function runServeCliTurn(session: Session, userText: string, prepar
 export function describeServePermission(mode: PermissionMode): string {
   if (mode === 'plan') return 'serve 模式（实验）：仅规划，编辑与命令均禁止；访问项目外目录禁止。';
   if (mode === 'auto-edits') return 'serve 模式（实验）：编辑自动批准，每条命令逐条审批；访问项目外目录禁止。';
+  if (mode === 'allow-all') return 'serve 模式（实验）：全部允许，不弹审批；访问项目外目录禁止。';
   return 'serve 模式（实验）：每次编辑与每条命令逐条审批；访问项目外目录禁止。';
 }

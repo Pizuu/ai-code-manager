@@ -36,6 +36,9 @@ const INVOKE_CHANNELS = [
   'git:get',
   'git:checkout',
   'fs:read',
+  'terminal:open',
+  'terminal:input',
+  'terminal:close',
 ] as const satisfies readonly IpcInvokeChannel[];
 
 // 编译期穷举检查：契约新增通道而此处遗漏时，类型变为 never 导致编译失败

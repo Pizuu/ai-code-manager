@@ -33,6 +33,13 @@ test('permission mapping keeps constitution IX semantics', () => {
   assert.match(describePermission(cfg, 'auto-edits'), /编辑文件 允许，执行命令 禁止/);
 });
 
+test('allow-all (v1.6) grants everything and skips the per-turn approval', () => {
+  assert.deepEqual(opencodePermission('allow-all'), { edit: 'allow', bash: 'allow' });
+  assert.equal(needsTurnApproval('allow-all'), false);
+  assert.deepEqual(JSON.parse(permissionEnv(cfg, 'allow-all').OPENCODE_PERMISSION ?? '{}'), { edit: 'allow', bash: 'allow' });
+  assert.match(describePermission(cfg, 'allow-all'), /编辑文件 允许，执行命令 允许/);
+});
+
 test('formats a display command line with platform quoting', () => {
   assert.equal(formatCommandLine('C:\\bin\\opencode.exe', ['run', 'a b', 'it"s'], 'win32'), 'C:\\bin\\opencode.exe run "a b" "it\\"s"');
   assert.equal(formatCommandLine('/usr/bin/opencode', ['run', "it's"], 'linux'), "/usr/bin/opencode run 'it'\\''s'");

@@ -109,6 +109,10 @@ export function serveRules(mode: PermissionMode): ServePermissionRule[] {
   if (mode === 'plan') {
     return [...base, { permission: 'edit', pattern: '*', action: 'deny' }, { permission: 'bash', pattern: '*', action: 'deny' }, ...tail];
   }
+  if (mode === 'allow-all') {
+    // 全部允许（v1.6）：不再弹审批；但项目根沙箱不可协商，越界目录照旧拒绝。
+    return [...base, { permission: 'edit', pattern: '*', action: 'allow' }, { permission: 'bash', pattern: '*', action: 'allow' }, { permission: 'external_directory', pattern: '*', action: 'deny' }];
+  }
   const edit: ServePermissionAction = mode === 'auto-edits' ? 'allow' : 'ask';
   // 宪法 九：命令永远需要批准（自动批准编辑也不例外）。
   return [...base, { permission: 'edit', pattern: '*', action: edit }, { permission: 'bash', pattern: '*', action: 'ask' }, ...tail];
