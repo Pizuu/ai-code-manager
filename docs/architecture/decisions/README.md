@@ -10,3 +10,5 @@
 | [0004](0004-generator-conventions-vs-electron.md) | 生成器默认约定与 Electron 应用的冲突及处理 | 已采纳 |
 | [0005](0005-html-prototype-port.md) | 三板块 UI 以 HTML 原型 1:1 移植，数据改为 IPC 实时快照 | 已采纳 |
 | [0006](0006-agent-cli-opencode.md) | 外部 Agent CLI 以 `opencode run --format json` 集成，按权限模式映射 CLI 权限 | 已采纳 |
+| [0007](0007-simple-ui-changes-skip-tests.md) | 简单 UI 修改跳过测试 | 已采纳 |
+| [0008](0008-code-view-context-send-web-preview.md) | 只读代码查看、全局「发送到任务会话」与 Web 预览 UI 定位 | 已采纳 |

@@ -8,7 +8,7 @@
 
 ## 2. 宪法
 
-`.specify/memory/constitution.md`（v1.1.0）。
+`.specify/memory/constitution.md`（v1.2.0）。
 
 ## 3. 功能规格
 
@@ -16,6 +16,7 @@
 |---|---|---|---|
 | 001 | 桌面 Agent MVP | `specs/001-agent-desktop/` | 已实现，converge 追加 2 项（T040 Electron E2E、T041 Windows 打包验证） |
 | 002 | 三板块工作台（泳道看板 / 任务会话 / Git 分支与集成）+ Agent CLI（opencode） | `specs/002-workspace-boards/` | 已实现，converge 追加 3 项（T123 E2E、T124 Windows 实机 opencode、T125 逐条审批评估） |
+| 003 | 只读代码查看、全局「发送到任务会话」、Web 预览 UI 定位、agent 配置默认空白 | `specs/003-code-view-web-locator/` | 实施中 |
 
 ## 4. 需求编号
 
@@ -29,7 +30,9 @@
 
 | 契约 | 版本 | 说明 |
 |---|---|---|
-| `contracts/ipc.ts` | v1（修订 v1.1，功能 002 纯增量） | 主进程 ↔ 渲染进程 IPC；v1.1 增加 Agent CLI、泳道看板、Git 分支与集成 |
+| `contracts/ipc.ts` | v1（修订 v1.2，功能 002 / 003 纯增量） | 主进程 ↔ 渲染进程 IPC；v1.1 增加 Agent CLI、泳道看板、Git 分支与集成；v1.2 增加只读 `fs:read` 与 `E_NOT_CONFIGURED` |
+| `contracts/ui.ts` | v1 | 渲染层右键「发送到任务会话」来源模型与 `data-send-*` 标记、UI 定位 `data-src` |
+| `contracts/web-dev.ts` | v1 | Web 预览开发服务器 ↔ 浏览器 `window.api` 适配器的只读通道 |
 | `contracts/tools.ts` | v1 | Agent ↔ 模型工具 Schema 与上限 |
 
 详见 `contracts/README.md`。

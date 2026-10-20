@@ -12,7 +12,9 @@ export const IPC_CONTRACT_VERSION = 'v1' as const;
  * 契约修订号：v1.1 = 功能 002（三板块 + Agent CLI）的纯增量扩展——只新增通道、类型与可选字段，
  * 未修改或删除任何 v1 字段，因此主版本保持 v1（宪法 II）。
  */
-export const IPC_CONTRACT_REVISION = 'v1.1' as const;
+export const IPC_CONTRACT_REVISION = 'v1.2' as const;
+// v1.2 = 功能 003（只读代码查看、配置空白）的纯增量：新增 `fs:read` 通道、`FileContent` 类型、`FILE_VIEW_LIMITS`
+// 常量与错误码 `E_NOT_CONFIGURED`；未修改或删除任何既有字段。
 
 // ───────────────────────── 基础模型 ─────────────────────────
 
@@ -25,8 +27,9 @@ export type PermissionMode = 'ask' | 'auto-edits' | 'plan';
 /** 发往渲染进程的设置：不含密钥，只含是否已配置（FR-003）。 */
 export interface PublicSettings {
   provider: ProviderId;
-  /** 例：https://api.openai.com/v1 或 https://api.anthropic.com */
+  /** 由用户填写，默认 ''（v1.2 起不预填任何服务商地址）。例：https://<你的服务>/v1 */
   baseUrl: string;
+  /** 由用户填写，默认 ''（v1.2 起不预填任何模型名）。 */
   model: string;
   permissionMode: PermissionMode;
   /** 每个 provider 是否已保存 Key（加密存储于主进程）。 */
@@ -212,6 +215,9 @@ export interface IpcInvokeMap {
   'board:get':        { args: [];                         result: BoardSnapshot };
   /** Git 分支与集成：主进程用 git CLI 只读采集。 */
   'git:get':          { args: [];                         result: GitSnapshot };
+  // ── v1.2（功能 003）──
+  /** 只读读取项目内文件供代码查看器显示；路径经项目根沙箱（宪法 十一），大文件截断 / 拒绝，二进制不返回内容。 */
+  'fs:read':          { args: [relPath: string];          result: FileContent };
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeMap;
@@ -268,6 +274,7 @@ export type IpcErrorCode =
   | 'E_BUSY'            // 会话已有运行中的 agent
   | 'E_PROVIDER'        // 模型服务返回错误
   | 'E_CLI'             // v1.1：外部 Agent CLI 不可用或异常退出
+  | 'E_NOT_CONFIGURED'  // v1.2：内置 agent 未配置 Base URL / 模型（界面提示「请先在设置中配置 agent」）
   ;
 
 // ───────────────────────── v1.1：Agent CLI 配置（功能 002） ─────────────────────────
@@ -306,7 +313,7 @@ export interface AgentCliConfig {
   resumeArgs: string[];
   /** model 非空时追加，例如 ["--model","{model}"]。 */
   modelArgs: string[];
-  /** 例：anthropic/claude-sonnet-4-5；空 = 用 CLI 自身默认。 */
+  /** 例：<provider>/<model>；空 = 用 CLI 自身默认。 */
   model: string;
   outputFormat: AgentCliOutputFormat;
   env: AgentCliEnvVar[];
@@ -502,4 +509,31 @@ export interface GitSnapshot {
   /** 本地仓库读不到 PR / CI / 审查者：恒为 null，界面显示「暂无」。 */
   pullRequests: null;
   ci: null;
+}
+
+// ───────────────────────── v1.2：只读代码查看（功能 003） ─────────────────────────
+
+/** 代码查看的大小上限（字节）。 */
+export const FILE_VIEW_LIMITS = Object.freeze({
+  /** 超过即 kind='too-large'，不返回内容。 */
+  maxBytes: 2_000_000,
+  /** 超过即只返回前 previewBytes 字节（截到最后一个完整行），truncated=true。 */
+  previewBytes: 512_000,
+  /** 前 N 字节含 NUL 视为二进制。 */
+  binarySniffBytes: 8_000,
+});
+
+/** text = 可显示文本；binary = 二进制（不返回内容）；too-large = 超过 maxBytes（不返回内容）。 */
+export type FileContentKind = 'text' | 'binary' | 'too-large';
+
+export interface FileContent {
+  /** 规范化后的相对项目根路径（/ 分隔）。 */
+  relPath: string;
+  /** 文件字节数。 */
+  size: number;
+  kind: FileContentKind;
+  /** kind='text' 时为 UTF-8 文本（可能被截断）；其余为 ''。 */
+  content: string;
+  /** 内容是否被截断到 previewBytes。 */
+  truncated: boolean;
 }
