@@ -20,3 +20,7 @@
 - [x] CLI 权限按模式映射，「每次询问」每轮批准命令行，不使用 `--auto`（ADR 0006）
 - [x] git 只读、`--no-optional-locks`（`src/backend/workspace/git.ts`）
 - [x] 新 IPC 通道参数校验 + preload 白名单（`validate.ts`、`preload.cts`）
+- [x] `fs:read` 只读、经项目根沙箱（含 realpath），大文件 / 二进制保护（`src/backend/fs/file-view.ts`，测试 `file-view.test.ts`，功能 003）
+- [x] 代码查看与右键菜单用 `textContent` 渲染，不自动发送（`views/code-view.ts`、`views/context-menu.ts`）
+- [x] Web 预览只监听 127.0.0.1、仅 GET / HEAD、Host 校验、只读通道白名单（`scripts/web-dev.ts`，`contracts/web-dev.ts`）
+- [x] 内置 agent 配置默认空白，不预填第三方服务地址 / 模型（`settings-store.ts`）

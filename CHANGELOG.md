@@ -6,6 +6,24 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
+### Added
+
+- 功能 `003-code-view-web-locator` 的精简 Spec Kit 制品（spec、plan、tasks、analysis、checklist）。
+- 契约 `contracts/ipc.ts` 修订 v1.2（纯增量）：只读通道 `fs:read`、`FileContent`、`FILE_VIEW_LIMITS`、错误码 `E_NOT_CONFIGURED`；新增 `contracts/ui.ts` v1（右键发送来源与 `data-send-*` 标记）、`contracts/web-dev.ts` v1（Web 预览只读通道）。
+- 只读代码查看：文件树单击在任务会话中列以标签页打开，行号 + 轻量高亮；大文件截断 / 超大与二进制不显示；路径经项目根沙箱（含符号链接）。
+- 全局右键「发送到任务会话」：选中文本、代码选区 / 行 / 文件、文件树节点、看板任务卡、Git 提交 / 分支 / 合入记录，带来源标注插入输入框，不自动发送。
+- Web 预览 `npm run web`（仅开发，不打包）：同一套渲染层、只读适配器 + 内存模拟；「UI 定位」模式显示元素源文件:行与 CSS 选择器并一键复制。
+- 测试：新增 26 个（共 186 个），覆盖 `fs:read` 沙箱 / 二进制 / 截断 / 超大、右键内容组装、高亮分词、配置为空与 `E_NOT_CONFIGURED`、UI 定位纯函数。
+- 宪法 1.2.0（原则 五：简单 UI 修改跳过测试）、ADR 0007、0008。
+
+### Changed
+
+- **内置 agent 的 Base URL 与模型默认空白**，切换提供方不再自动填入地址或模型；opencode 预设字段值为空（placeholder 示例 +「按示例填写」）；未配置时发送返回「请先在设置中配置 agent」。已保存的设置不受影响。
+- 文件树单击由「插入 `@路径`」改为打开只读代码标签（插入引用改用右键发送）。
+- 清理代码、测试、文档中的 ChatGPT / gpt 默认值与示例。
+
 ## [0.2.0] - 2026-10-20
 
 ### Added
