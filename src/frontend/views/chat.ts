@@ -54,13 +54,13 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     h('span', { class: 'agent-pick' }, h('span', { class: 'md-sel' }, agentLabel, h('span', { class: 'mute vmid' }, icon('caret'))), agentSel, runningDot),
     h('button', { class: 'circ acc', title: '新建会话', on: { click: hooks.onNewSession } }, icon('plus')));
   // ── .thd ──
-  const thTitle = h('span');
+  const thTitle = h('span', { class: 'th-title' });
   const thRight = h('span', { class: 'mute' });
   const thChip = h('span', { class: 'chip acc' });
   const thDesc = h('span', { class: 'mute' });
   const thd = h('div', { class: 'thd' },
     h('div', { class: 'r' }, thTitle, thRight),
-    h('div', { class: 'r' }, h('span', { class: 'fx8' }, thChip, thDesc), h('span', { class: 'mute' }, '会话记录（本机持久化，含每次工具调用）')));
+    h('div', { class: 'r' }, h('span', { class: 'fx8' }, thChip, thDesc)));
   const log = h('div', { class: 'log' });
   // ── .comp ──
   const ctxChip = h('span', { class: 'chip acc' });

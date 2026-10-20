@@ -4,7 +4,7 @@
  */
 import type { AgentCliConfig, AgentCliOutputFormat } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
-import { configToForm, formToInput, OPENCODE_FORM_EXAMPLE, OPENCODE_FORM_PRESET, previewCommand, type AgentCliForm, type EnvRow } from '../lib/agent-cli-form.ts';
+import { configToForm, formToInput, OPENCODE_FORM_EXAMPLE, previewCommand, type AgentCliForm, type EnvRow } from '../lib/agent-cli-form.ts';
 import { agentOptions } from '../lib/agent-label.ts';
 import { clear, h } from '../lib/dom.ts';
 import { store } from '../store.ts';
@@ -23,6 +23,7 @@ export function mountAgentCliSettings(container: HTMLElement): void {
     const st = store.state.settings;
     const clis: AgentCliConfig[] = st?.agentClis ?? [];
     const def = h('select');
+    def.append(h('option', { attrs: { value: '', disabled: '' } }, ''));
     for (const o of agentOptions(st)) def.append(h('option', { attrs: { value: o.ref } }, o.label));
     def.value = st?.defaultAgent ?? 'builtin';
     const err = h('div', { class: 'error-text' });
@@ -36,7 +37,6 @@ export function mountAgentCliSettings(container: HTMLElement): void {
     });
     container.append(field('新会话默认 agent', def, '每个会话也可在任务会话顶部单独切换。'));
     const list = h('div', { class: 'cli-list' });
-    if (!clis.length) list.append(h('div', { class: 'check-out' }, '尚未添加外部 CLI。「添加 opencode 预设」只设定类型与字段说明，各项需自行填写（可点「按示例填写」，需先安装 opencode）。'));
     for (const c of clis) {
       const out = h('div', { class: 'check-out', attrs: { hidden: '' } });
       const check = h('button', { class: 'btn', attrs: { type: 'button' } }, '检查');
@@ -77,7 +77,6 @@ export function mountAgentCliSettings(container: HTMLElement): void {
     }
     container.append(list,
       h('div', { class: 'fx8' },
-        h('button', { class: 'btn pri', attrs: { type: 'button' }, on: { click: () => { editing = { ...OPENCODE_FORM_PRESET, env: [] }; renderEdit(); } } }, '添加 opencode 预设'),
         h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => { editing = { name: '', preset: 'custom', command: '', args: '{prompt}', resumeArgs: '', modelArgs: '', model: '', outputFormat: 'text', env: [] }; renderEdit(); } } }, '添加自定义 CLI')),
       h('div', { class: 'help' }, '外部 CLI 以当前项目根为工作目录、以参数数组启动（不经 shell）。权限：仅规划 = 禁止编辑与命令；自动批准编辑 = 允许编辑、禁止命令；每次询问 = 每轮先批准命令行（ADR 0006）。'),
       err);

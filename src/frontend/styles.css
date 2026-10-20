@@ -299,7 +299,8 @@ input,select,textarea{font:inherit;color:inherit}
 .field input,.field select,.field textarea{height:34px;border:1px solid var(--line);border-radius:8px;padding:0 10px;background:var(--bg);outline:none;font-size:13px}
 .field textarea{height:auto;padding:6px 10px;font-family:var(--mono);font-size:12px;resize:vertical}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent2)}
-.dialog .actions{display:flex;justify-content:flex-end;gap:8px}
+.dialog .actions{display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;justify-content:flex-end;gap:8px}
+.dialog .actions .btn{flex:none;width:auto}
 .dialog .btn{height:32px;font-size:13px}
 .error-text{color:var(--err);font-size:12px;min-height:1em;white-space:pre-wrap}
 .cli-list{display:flex;flex-direction:column;gap:8px}
@@ -488,6 +489,9 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .thd{padding:4px 24px 12px;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary)}
 .thd .r{font-size:var(--font-caption)}
 .thd .r:first-child{font-size:var(--font-heading-sm);font-weight:var(--font-weight-semibold)}
+.thd .r:first-child{gap:8px;min-width:0}
+.thd .th-title{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thd .r:first-child>:not(.th-title){flex:none}
 .log{padding:16px 32px}
 .meta{margin:16px 0 6px;font-size:var(--font-caption)}
 .msg{padding-left:28px;font-size:var(--font-body);line-height:1.6}
