@@ -26,9 +26,9 @@
 | diff 行分类 `lib/diff-lines.ts` | ✅ | — | — | frontend |
 | 界面视图 `src/frontend/views/*`、`main.ts` | — | — | ❌（T040） | frontend |
 | Electron 入口 `main.ts` / `preload.cts`（窗口安全选项、app:// 协议） | — | — | ❌（T040） | backend |
-| Windows 打包（FR-016） | — | — | ❌（T040，需 Windows 机器） | coordinator |
+| Windows 打包（FR-016） | — | — | ❌（T041，需 Windows 机器） | coordinator |
 
-> ❌ 行由 `specs/001-agent-desktop/tasks.md` 的 Convergence 任务 **T040** 跟踪（本仓库无远端 issue 系统，以任务号代替 issue）。
+> ❌ 行由 `specs/001-agent-desktop/tasks.md` 的 Convergence 任务 **T040 / T041** 跟踪（本仓库无远端 issue 系统，以任务号代替 issue）。
 > 界面视图已用无头 Chromium + 模拟 `window.api` 做过一次手工冒烟（亮/暗主题、待批准 diff、任务面板、斜杠提示），但该脚本未纳入仓库，故不计为 ✅。
 
 ## 如何保持真实
