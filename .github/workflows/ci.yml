@@ -2,7 +2,7 @@ name: CI
 
 "on":
   push:
-    branches: [main, hark-dev]
+    branches: [main, hark-dev, manus]
   pull_request: {}
 
 permissions:
@@ -25,3 +25,15 @@ jobs:
       - run: npm run test
       - run: npm run build
       - run: node scripts/web-smoke.ts
+
+  # Electron E2E 核心路径（T040）：真实 Electron + 假 OpenAI 兼容服务器，xvfb 提供显示。
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: sudo apt-get update && sudo apt-get install -y xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libxcomposite1 libxdamage1 libatk-bridge2.0-0
+      - run: xvfb-run -a npm run test:e2e

@@ -18,7 +18,8 @@
     "build": "tsc -p .",
     "start": "npm run build && electron .",
     "web": "node scripts/web-dev.ts",
-    "dist": "npm run build && electron-builder --win nsis portable --x64"
+    "dist": "npm run build && electron-builder --win nsis portable --x64",
+    "test:e2e": "node --test tests/e2e/frontend/*.test.ts"
   },
   "workspaces": [
     "src/frontend",
@@ -73,6 +74,7 @@
     "electron-builder": "^26.15.3",
     "eslint": "^10.13.0",
     "globals": "^17.13.0",
+    "playwright-core": "1.64.1",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.0"
   }
