@@ -100,6 +100,11 @@ async function handleStatic(res: http.ServerResponse, url: URL, head: boolean): 
     res.end();
     return;
   }
+  if (rel === 'favicon.ico') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   if (!SERVED_PREFIXES.some((p) => rel.startsWith(p))) return send(res, 404, 'Not found', 'text/plain; charset=utf-8', head);
   let abs: string;
   try {
@@ -143,5 +148,5 @@ const server = http.createServer((req, res) => {
 server.listen(port, HOST, () => {
   console.log(`AI Code Manager · Web 预览（仅开发，只读）：http://${HOST}:${port}/`);
   console.log(`项目：${projectRoot}（只读通道：${WEB_DEV_READONLY_CHANNELS.join('、')}）`);
-  console.log('右下角「UI 定位」开关：悬停高亮、点击显示源文件:行与选择器。Ctrl+C 退出。');
+  console.log('Alt+Q 或右下角「UI 定位」开关：悬停高亮、点击定位，可记录修改 / 删除并一键复制。Ctrl+C 退出。');
 });

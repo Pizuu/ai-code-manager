@@ -43,6 +43,7 @@
 | T-033 | 契约 v1.3：ApprovalRequest 承载 opencode 其他权限类型 | contracts | T-022 | done | hark | `feat/contracts/T-033-approval-kinds`（本地 --no-ff 合入；后续 T127 backend / T128 frontend） |
 | T-034 | opencode serve 逐条审批接入（实验开关） | backend | T-033 | done | hark | `feat/backend/T-034-opencode-serve-wire`（本地 --no-ff 合入） |
 | T-035 | 新审批种类卡片 | frontend | T-033 | done | hark | `feat/frontend/T-035-approval-cards`（本地 --no-ff 合入） |
+| T-036 | Web 预览 UI 修改记录器 | frontend | T-030 | done | hark | `feat/frontend/T-036-locator-recorder`（本地 --no-ff 合入） |
 
 ## 依赖图
 
