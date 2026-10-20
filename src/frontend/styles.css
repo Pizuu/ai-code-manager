@@ -70,8 +70,8 @@ button{font:inherit;color:inherit}
 .fo .t{display:flex;gap:10px;align-items:center;font-size:12px}
 .fo .d{color:var(--mute);margin-top:6px}
 .prog{margin-top:16px;background:var(--panel);border-radius:8px;height:48px;display:flex;align-items:center;padding:0 18px;gap:18px;font-size:12px}
-.prog .stg{display:flex;gap:14px;color:var(--mute);margin-left:auto}
-.prog .stg span.ok{color:var(--ink2)}
+.prog .stg{display:flex;gap:14px;color:var(--ink2);margin-left:auto}
+.prog .stg span.ok{color:var(--ink);font-weight:600}
 .cap{display:flex;align-items:center;height:44px;margin-top:16px;gap:12px;font-size:12px}
 .cap .sep{width:1px;height:22px;background:var(--line);margin:0 12px}
 .ctl{display:flex;align-items:center;gap:8px;margin-top:16px;height:44px}
