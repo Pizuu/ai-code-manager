@@ -604,3 +604,52 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .fpane .cvh .p{flex:0 1 auto;min-width:40px}
 .fpane .cvh .btn{flex:none}
 @media (max-width:1599px){.sx.has-file .ctxp{display:none}}
+/* ── T-038：按 UI 定位记录调整看板矩阵与文件标签栏 ── */
+/* 看板工具条：搜索框 / 筛选按钮 / 下拉框统一 radius-md 与焦点环 */
+.ctl .inp,.ctl .ibtn,.ctl .selw,.ctl .selw select.chip{border-radius:var(--border-radius-md)}
+.ctl .selw select.chip:focus-visible{outline:0;border-color:var(--color-border-primary);box-shadow:0 0 0 3px var(--color-background-secondary)}
+/* 状态色圆点（列头、泳道行首） */
+.mh .dot,.lanec .dot{width:7px;height:7px;margin:0;flex:none}
+.matrix .dot.st-none{background:var(--color-text-ghost)}
+.matrix .dot.st-blu{background:var(--color-text-info)}
+.matrix .dot.st-acc{background:var(--accent)}
+.matrix .dot.st-amb{background:var(--color-text-warning)}
+.matrix .dot.st-grn{background:var(--color-text-success)}
+/* 列头：拖动调整状态列顺序 */
+.mh{gap:8px}
+.mh.drag{cursor:grab;user-select:none;-webkit-user-select:none;transition:background .12s}
+.mh.drag:hover{background:var(--color-background-secondary)}
+.mh.dragging{opacity:.45}
+.mh.over{box-shadow:inset 2px 0 0 var(--color-border-info);background:var(--color-background-info)}
+/* 泳道行首：名称 > 所有者 > 范围 > 计数徽标 */
+.lanec{padding:10px 12px;display:flex;flex-direction:column;gap:4px;min-width:0;color:var(--color-text-secondary)}
+.lanec .nm{display:flex;align-items:center;gap:6px;min-width:0}
+.lanec .nm .t{font-size:var(--font-body);font-weight:var(--font-weight-semibold);color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lanec .o{font-weight:var(--font-weight-normal);color:var(--color-text-secondary);overflow-wrap:anywhere;line-height:1.4}
+.lanec .g{margin:0;color:var(--color-text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;word-break:normal}
+.lanec .s{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.lanec .lb{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--border-radius-sm);font-size:11px;line-height:18px;white-space:nowrap;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.lanec .lb.blu{background:var(--color-background-info);color:var(--color-text-info)}
+.lanec .lb.amb{background:var(--color-background-warning);color:var(--color-text-warning)}
+.lanec .lb.grn{background:var(--color-background-success);color:var(--color-text-success)}
+/* 单元格：降低高度；整行无卡片时更矮 */
+.cell{min-height:52px;padding:6px;gap:6px}
+.mrow.empty .cell{min-height:36px}
+.mrow.empty .lanec{padding-top:8px;padding-bottom:8px}
+.cell.none{justify-content:center}
+.cell .empty{font-size:11px;line-height:1}
+.card{padding:8px 10px}
+.card .r1{flex-wrap:wrap;column-gap:6px;row-gap:0;line-height:1.45}
+.card .r1>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.card .r4 .dot{margin-right:5px}
+.card .tt{margin:4px 0 2px}
+.card .r4,.card .warn{margin-top:4px}
+/* 文件标签栏：次级面背景、隐藏滚动条（滚轮 / 触控板仍可横向滚动） */
+.fpane .ftabs{height:36px;padding:0 6px;gap:2px;align-items:flex-end;background:var(--color-background-secondary);border-bottom:var(--border-width-regular) solid var(--color-border-tertiary);overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none}
+.fpane .ftabs::-webkit-scrollbar{display:none}
+.fpane .ftabs .ft{flex:none;height:30px;padding:0 6px 0 10px;gap:4px;border-radius:var(--border-radius-md) var(--border-radius-md) 0 0;border:var(--border-width-regular) solid transparent;border-bottom:0;color:var(--color-text-tertiary);font-weight:var(--font-weight-normal);max-width:200px}
+.fpane .ftabs .ft:hover{color:var(--color-text-primary);background:var(--color-background-tertiary)}
+.fpane .ftabs .ft.on{height:31px;margin-bottom:-.5px;background:var(--color-background-primary);border-color:var(--color-border-tertiary);color:var(--color-text-primary);font-weight:var(--font-weight-semibold)}
+.fpane .ftabs .ft .x{display:grid;place-items:center;width:18px;height:18px;padding:0;border-radius:var(--border-radius-xs);color:var(--color-text-tertiary);visibility:hidden}
+.fpane .ftabs .ft:hover .x,.fpane .ftabs .ft.on .x{visibility:visible}
+.fpane .ftabs .ft .x:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}

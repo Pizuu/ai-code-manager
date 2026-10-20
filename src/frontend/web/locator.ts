@@ -1,8 +1,9 @@
 /**
  * Web 预览「UI 定位」与 UI 修改记录器（FR-306，ADR 0008）：仅在 `npm run web` 中加载，不进 Electron 打包。
  * installSourceHook()：包装 createElement / createElementNS，按调用栈给元素写 data-src="文件:行"。
- * mountLocator()：Alt+Q（或右下角「UI 定位」按钮）为唯一开关。开启后悬停高亮；点击（捕获阶段拦截）显示元素定位卡片，
- *   并在点击点右侧显示固定操作条（复制 / 修改 / 删除 + 备注）；右上角修改记录卡片可一键复制、单条删除；
+ * mountLocator()：Alt+Q（或右下角「UI 定位」按钮）为唯一开关。开启后悬停高亮；点击（捕获阶段拦截）只在点击点右侧
+ *   显示固定操作条（复制 / 修改 / 删除 + 备注；「复制」文本含源文件与选择器）；修改记录卡片可一键复制、单条删除，
+ *   拖动标题栏移动（夹在视口内，位置存 localStorage）；
  *   被记录元素在独立覆盖层上显示蓝 / 红临时边框与注释。原生 showModal 弹窗打开时，定位器节点挂入该弹窗以进入 Top Layer。
  */
 import { LOCATOR_SRC_ATTR } from '../../../contracts/ui.ts';
@@ -13,6 +14,8 @@ import {
 } from './locator-core.ts';
 
 const UI_ATTR = 'data-locator-ui';
+/** 修改记录卡片位置（仅本机界面偏好）。 */
+const REC_POS_KEY = 'acm.locator.recordPanelPos';
 
 export function installSourceHook(): void {
   Error.stackTraceLimit = 50;
@@ -45,6 +48,16 @@ function toElLike(el: Element): ElLike {
       return parent ? toElLike(parent) : null;
     },
   };
+}
+
+function loadRecPos(): { left: number; top: number } | null {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(REC_POS_KEY) ?? 'null');
+    if (v && typeof v === 'object' && 'left' in v && 'top' in v && typeof v.left === 'number' && typeof v.top === 'number') return { left: v.left, top: v.top };
+  } catch {
+    /* 忽略损坏的值 */
+  }
+  return null;
 }
 
 function srcChain(el: Element, max = 4): string[] {
@@ -93,8 +106,6 @@ export function mountLocator(): void {
   toggle.title = 'Alt+Q 开关：悬停高亮元素，点击查看源文件与选择器并记录修改';
   const bar = mk('div', 'loc-bar');
   bar.append(mk('span', 'loc-chip', 'Web 预览 · 只读模拟'), toggle);
-  // ── 元素定位卡片（只展示信息） ──
-  const panel = mk('div', 'loc-panel');
   // ── 固定操作条 ──
   const actionBar = mk('div', 'loc-action-bar');
   const actionRow = mk('div', 'loc-action-row');
@@ -102,7 +113,10 @@ export function mountLocator(): void {
   const btnModify = mk('button', 'loc-act', '修改');
   const btnRemove = mk('button', 'loc-act', '删除');
   const actStatus = mk('span', 'loc-status');
-  actionRow.append(btnCopy, btnModify, btnRemove, actStatus);
+  const btnClose = mk('button', 'loc-x', '✕');
+  btnClose.title = '关闭操作条';
+  btnClose.setAttribute('aria-label', '关闭操作条');
+  actionRow.append(btnCopy, btnModify, btnRemove, actStatus, btnClose);
   const editor = mk('div', 'loc-editor');
   const noteInput = mk('input', 'loc-note');
   noteInput.type = 'text';
@@ -119,16 +133,17 @@ export function mountLocator(): void {
   const recRight = mk('div', 'loc-head-r');
   recRight.append(recStatus, btnCopyAll);
   recHead.append(recTitle, recRight);
+  recHead.classList.add('loc-drag');
+  recHead.title = '拖动移动';
   const recList = mk('div', 'loc-record-list');
   recordPanel.append(recHead, recList);
   // ── 临时标记覆盖层 ──
   const recordLayer = mk('div', 'loc-record-layer');
 
-  const locatorElements: HTMLElement[] = [box, panel, recordPanel, bar, actionBar, recordLayer];
+  const locatorElements: HTMLElement[] = [box, recordPanel, bar, actionBar, recordLayer];
   for (const el of locatorElements) document.body.append(el);
 
   let on = false;
-  let panelOpen = false;
   let barOpen = false;
   let editing: RecordAction | null = null;
   let picked: Picked | null = null;
@@ -141,7 +156,6 @@ export function mountLocator(): void {
 
   const sync = () => {
     box.hidden = !on || box.hidden;
-    panel.hidden = !(on && panelOpen);
     actionBar.hidden = !(on && barOpen);
     recordPanel.hidden = !on;
     recordLayer.hidden = !on;
@@ -158,6 +172,7 @@ export function mountLocator(): void {
     if (!v) box.hidden = true;
     sync();
     if (v) {
+      requestAnimationFrame(() => applyRecPos());
       positionMarkers();
       if (picked && barOpen) requestAnimationFrame(() => positionActionBar());
     }
@@ -241,34 +256,12 @@ export function mountLocator(): void {
     void navigator.clipboard.writeText(formatRecords(records)).then(() => flash(recStatus, '已复制'), () => flash(recStatus, '复制失败'));
   });
 
-  // ── 元素定位卡片 + 操作条 ──
+  // ── 操作条（复制文本含源文件:行与选择器） ──
   const show = (el: Element, x: number, y: number) => {
-    const chain = srcChain(el);
     const selector = cssPath(toElLike(el));
-    const text = copyText(chain[0] ?? null, selector);
+    const text = copyText(srcChain(el, 1)[0] ?? null, selector);
     picked = { el, text, x, y };
-    panel.replaceChildren();
-    const row = (k: string, v: string) => {
-      const r = mk('div', 'loc-row');
-      r.append(mk('span', 'k', k), mk('code', 'v', v));
-      return r;
-    };
-    const head = mk('div', 'loc-head');
-    const close = mk('button', 'loc-x', '✕');
-    close.title = '关闭定位卡片与操作条';
-    close.addEventListener('click', () => {
-      panelOpen = false;
-      barOpen = false;
-      editing = null;
-      sync();
-    });
-    head.append(mk('b', '', '元素定位'), close);
-    panel.append(head,
-      row('源文件', chain[0] ?? '未标记（不是由 src/frontend 创建的元素）'),
-      row('选择器', selector),
-      row('祖先链', chain.slice(1).join('\n') || '—'),
-      row('定位文本', text));
-    panelOpen = true;
+    btnCopy.title = text;
     barOpen = true;
     highlight(el);
     editing = null;
@@ -277,6 +270,49 @@ export function mountLocator(): void {
     sync();
     positionActionBar();
   };
+  btnClose.addEventListener('click', () => {
+    barOpen = false;
+    editing = null;
+    sync();
+  });
+
+  // ── 修改记录卡片拖动：标题栏按住拖动，夹在视口内，位置存 localStorage ──
+  let recPos = loadRecPos();
+  const applyRecPos = () => {
+    if (!recPos || recordPanel.hidden) return;
+    const r = recordPanel.getBoundingClientRect();
+    const m = 8;
+    const left = Math.max(m, Math.min(recPos.left, window.innerWidth - m - r.width));
+    const top = Math.max(m, Math.min(recPos.top, window.innerHeight - m - r.height));
+    recordPanel.style.left = `${left}px`;
+    recordPanel.style.top = `${top}px`;
+    recordPanel.style.right = 'auto';
+  };
+  let drag: { dx: number; dy: number; id: number } | null = null;
+  recHead.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0 || (ev.target instanceof Element && ev.target.closest('button'))) return;
+    const r = recordPanel.getBoundingClientRect();
+    drag = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, id: ev.pointerId };
+    recHead.setPointerCapture(ev.pointerId);
+    recordPanel.classList.add('dragging');
+    ev.preventDefault();
+  });
+  recHead.addEventListener('pointermove', (ev) => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    recPos = { left: ev.clientX - drag.dx, top: ev.clientY - drag.dy };
+    applyRecPos();
+  });
+  const endDrag = (ev: PointerEvent) => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    drag = null;
+    recordPanel.classList.remove('dragging');
+    if (recHead.hasPointerCapture(ev.pointerId)) recHead.releasePointerCapture(ev.pointerId);
+    const r = recordPanel.getBoundingClientRect();
+    recPos = { left: Math.round(r.left), top: Math.round(r.top) };
+    localStorage.setItem(REC_POS_KEY, JSON.stringify(recPos));
+  };
+  recHead.addEventListener('pointerup', endDrag);
+  recHead.addEventListener('pointercancel', endDrag);
 
   btnCopy.addEventListener('click', () => {
     if (!picked) return;
@@ -334,7 +370,7 @@ export function mountLocator(): void {
     ev.stopImmediatePropagation();
   };
   document.addEventListener('mousemove', (ev) => {
-    // 选中元素后暂停悬停高亮，高亮框停在已选元素上；关闭卡片后恢复。
+    // 选中元素后暂停悬停高亮，高亮框停在已选元素上；关闭操作条后恢复。
     if (!on || barOpen || isUi(ev.target) || !(ev.target instanceof Element)) return;
     highlight(ev.target);
   }, true);
@@ -360,6 +396,7 @@ export function mountLocator(): void {
     if (!on) return;
     positionMarkers();
     positionActionBar();
+    applyRecPos();
   });
 
   // ── Top Layer：原生 modal dialog 打开时把定位器节点挂进去，关闭后回到 body ──
@@ -369,7 +406,14 @@ export function mountLocator(): void {
   };
   const mountAll = () => {
     const h = host();
-    for (const el of locatorElements) if (el.parentElement !== h) h.append(el);
+    let moved = false;
+    for (const el of locatorElements) {
+      if (el.parentElement !== h) {
+        h.append(el);
+        moved = true;
+      }
+    }
+    if (moved) requestAnimationFrame(() => applyRecPos());
   };
   // 观察 open 属性与子节点：弹窗内容重绘（replaceChildren）会带走定位器节点，需要补回。
   new MutationObserver(mountAll).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['open'], childList: true });

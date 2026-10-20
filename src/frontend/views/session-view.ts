@@ -80,6 +80,12 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const ftabs = h('div', { class: 'ftabs', attrs: { role: 'tablist' } });
   const filePane = h('div', { class: 'fpane' }, ftabs, codePane);
   filePane.hidden = true;
+  // 标签栏隐藏了滚动条：竖向滚轮转为横向滚动（触控板横滑原生可用）
+  ftabs.addEventListener('wheel', (ev) => {
+    if (Math.abs(ev.deltaY) <= Math.abs(ev.deltaX) || ftabs.scrollWidth <= ftabs.clientWidth) return;
+    ftabs.scrollLeft += ev.deltaY;
+    ev.preventDefault();
+  }, { passive: false });
   const mid = h('div', { class: 'mid split' }, chatCol, filePane);
   const ctxp = h('aside', { class: 'ctxp' });
   const sx = h('div', { class: 'sx' }, slist, mid, ctxp);
@@ -103,6 +109,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         for (const [k, v] of Object.entries(sendAttrs({ kind: 'file', path: f, dir: false }))) el.setAttribute(k, v);
         return el;
       }));
+    ftabs.querySelector('.ft.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   };
   const setActive = (f: string | null) => {
     const changed = active !== f;
