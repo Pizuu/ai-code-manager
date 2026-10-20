@@ -6,7 +6,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-const SCRIPT = String.raw`
+export const FAKE_RUN_SCRIPT = String.raw`
 const fs = require('node:fs');
 const argv = process.argv.slice(2);
 if (argv[0] === '--version') { console.log('1.19.3'); process.exit(0); }
@@ -35,7 +35,7 @@ out({ type: 'step_finish', part: { id: 'prt_g', reason: 'stop', messageID: msg, 
 /** 在 dir 中写出可执行的假 opencode，返回其绝对路径（POSIX，shebang 指向当前 Node）。 */
 export async function writeFakeOpencode(dir: string): Promise<string> {
   const file = path.join(dir, 'opencode');
-  await fs.writeFile(file, `#!${process.execPath}\n(function(){${SCRIPT}\n})();\n`, { mode: 0o755 });
+  await fs.writeFile(file, `#!${process.execPath}\n(function(){${FAKE_RUN_SCRIPT}\n})();\n`, { mode: 0o755 });
   return file;
 }
 
