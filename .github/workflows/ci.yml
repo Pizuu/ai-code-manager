@@ -16,8 +16,11 @@ jobs:
       # 本技术栈的标准命令。项目未配置的工具请删除对应步骤。
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - run: npm install
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - run: npx eslint .
       - run: npx tsc --noEmit
       - run: npm run test
+      - run: npm run build
