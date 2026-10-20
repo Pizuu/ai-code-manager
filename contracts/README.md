@@ -15,10 +15,21 @@
 4. 破坏性变更要升版本（`v1` → `v2`），旧版本保留到所有使用方迁移完。
 5. 代码中的类型一律从这里生成或导入，禁止手抄。
 
+## 已登记契约
+
+| 契约 | 版本 | 边界 | 提供方 → 使用方 | 状态 | 样例 |
+|---|---|---|---|---|---|
+| `ipc.ts` | v1 | Electron 主进程 ↔ 渲染进程（invoke 通道 + `agent:event` 事件 + `window.api` 桥） | backend ↔ frontend | 已冻结 2026-10-20 | `fixtures/session.sample.json`、`fixtures/agent-events.sample.json` |
+| `tools.ts` | v1 | Agent 核心 ↔ 大模型（工具 JSON Schema、上限） | backend → 模型 | 已冻结 2026-10-20 | `fixtures/openai-stream.sample.txt`、`fixtures/anthropic-stream.sample.txt` |
+| `tasks.md` 语法（见 `ipc.ts` 的 `SpecTask`） | v1 | 项目内 `specs/*/tasks.md` → Tasks 面板 | 文件 → backend 解析 → frontend | 已冻结 2026-10-20 | `fixtures/tasks.sample.md` |
+
+> 本项目的「线上格式」是 Electron 结构化克隆的 IPC 消息与模型 API 的 JSON，没有 HTTP API，因此不写 OpenAPI；工具参数直接以 JSON Schema 形式写在 `tools.ts` 的 `TOOL_DEFINITIONS` 中（运行时原样发送给模型）。
+> 渲染进程运行在沙箱中，preload 不能 `require` 本地模块，因此 preload 内联通道白名单，并用 `satisfies readonly IpcInvokeChannel[]` 让 tsc 校验它与本契约一致。
+
 ## 契约冻结检查单
 
-- [ ] 每个字段都有类型、必填/可选与示例
-- [ ] 定义了错误结构与错误码
-- [ ] 写明分页 / 上限 / 超时
-- [ ] 已加版本号并登记到 `docs/SPEC.md` 第 6 节
-- [ ] 在 `contracts/fixtures/` 提供 mock 或样例数据
+- [x] 每个字段都有类型、必填/可选与示例
+- [x] 定义了错误结构与错误码（`IpcErrorCode`，handler 抛出 `Error('E_xxx: 说明')`）
+- [x] 写明分页 / 上限 / 超时（`TOOL_LIMITS`；`fs:tree` 按目录懒加载）
+- [x] 已加版本号并登记到 `docs/SPEC.md` 第 6 节
+- [x] 在 `contracts/fixtures/` 提供 mock 或样例数据

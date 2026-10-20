@@ -1,0 +1,11 @@
+[
+  { "type": "status", "sessionId": "s-sample-0001", "running": true },
+  { "type": "message-start", "sessionId": "s-sample-0001", "message": { "id": "m5", "role": "assistant", "content": "", "createdAt": "2026-10-20T02:02:00.000Z" } },
+  { "type": "text-delta", "sessionId": "s-sample-0001", "messageId": "m5", "delta": "我来修改 README。" },
+  { "type": "tool-call", "sessionId": "s-sample-0001", "messageId": "m5", "call": { "id": "call_2", "name": "edit_file", "input": { "path": "README.md", "old_string": "# demo", "new_string": "# Demo" }, "status": "awaiting-approval", "diff": "--- a/README.md\n+++ b/README.md\n@@ -1,1 +1,1 @@\n-# demo\n+# Demo\n" } },
+  { "type": "approval-request", "sessionId": "s-sample-0001", "approval": { "id": "ap-1", "sessionId": "s-sample-0001", "toolCallId": "call_2", "kind": "edit", "path": "README.md", "diff": "--- a/README.md\n+++ b/README.md\n@@ -1,1 +1,1 @@\n-# demo\n+# Demo\n" } },
+  { "type": "approval-resolved", "sessionId": "s-sample-0001", "approvalId": "ap-1", "approved": true },
+  { "type": "terminal", "sessionId": "s-sample-0001", "toolCallId": "call_3", "stream": "stdout", "data": "ok\n" },
+  { "type": "todos", "sessionId": "s-sample-0001", "todos": [ { "id": "1", "content": "改标题", "status": "completed" } ] },
+  { "type": "status", "sessionId": "s-sample-0001", "running": false }
+]
