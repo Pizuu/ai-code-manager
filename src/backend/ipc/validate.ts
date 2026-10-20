@@ -66,6 +66,20 @@ export function asRelPath(value: unknown): string {
   return asString(value, 'relPath', { max: MAX_REL_PATH_CHARS });
 }
 
+const MAX_BRANCH_CHARS = 255;
+
+/**
+ * git:checkout 的分支名：非空字符串；不以 '-' 开头（防被 git 当作选项），
+ * 不含空白与控制字符（git 引用名规则同样禁止，提前以 E_VALIDATION 拒绝）。
+ * 切换时以参数数组传给 git（不经 shell），此处校验是第二道防线。
+ */
+export function asBranchName(value: unknown): string {
+  const name = asString(value, 'branch', { max: MAX_BRANCH_CHARS }).trim();
+  if (name.startsWith('-')) fail('branch 不能以 - 开头');
+  if ([...name].some((ch) => (ch.codePointAt(0) ?? 0) <= 0x20 || ch.codePointAt(0) === 0x7f)) fail('branch 不能包含空白或控制字符');
+  return name;
+}
+
 /** baseUrl：空字符串 = 清空（003 起默认空白，由用户填写）；非空须为 http(s) URL。 */
 function asHttpUrl(value: unknown): string {
   const raw = asString(value, 'baseUrl', { max: MAX_FIELD_CHARS, allowEmpty: true }).trim();

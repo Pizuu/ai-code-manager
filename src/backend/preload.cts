@@ -31,6 +31,7 @@ const INVOKE_CHANNELS = [
   'sessions:setAgent',
   'board:get',
   'git:get',
+  'git:checkout',
   'fs:read',
 ] as const satisfies readonly IpcInvokeChannel[];
 

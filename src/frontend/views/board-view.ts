@@ -110,8 +110,9 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       const st = lane === '@shared' ? { label: '共享热点 · 受保护', cls: 'amb' } : laneState(all);
       const badge = (text: string, cls = '', title = '') => h('span', { class: `lb${cls ? ` ${cls}` : ''}`, title }, text);
       const row = h('div', { class: `mrow${lc.length ? '' : ' empty'}` }, h('div', { class: 'lanec' },
-        h('span', { class: 'ltag', title: st.label, attrs: { style: `background:${LANE_COLORS[lane] ?? '#9B8EAA'}` } }, lane),
-        h('span', { class: 'o' }, lane === '@shared' ? 'coordinator · int/*' : `${meta?.ownerRole ?? ''}${owners.length ? ` · ${owners.join('/')}` : ''}`),
+        h('div', { class: 'lr1' },
+          h('span', { class: 'ltag', title: st.label, attrs: { style: `background:${LANE_COLORS[lane] ?? '#9B8EAA'}` } }, lane),
+          h('span', { class: 'o' }, lane === '@shared' ? 'coordinator · int/*' : `${meta?.ownerRole ?? ''}${owners.length ? ` · ${owners.join('/')}` : ''}`)),
         globs.length ? h('span', { class: 'g', title: globs.join('\n') }, globs.slice(0, 2).join(' · ') + (globs.length > 2 ? ' …' : '')) : null,
         h('span', { class: 's' },
           lane === '@shared' ? badge('受保护', 'amb', '共享热点，仅 coordinator 修改') : badge(`${all.length} 张`, '', '任务卡总数'),

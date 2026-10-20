@@ -71,6 +71,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     nav.append(navItems[id]);
   }
   const readRef = h('span', { class: 'mono' });
+  /** 当前分支名旁的切换指示（caret）；无 Git 快照 / 无分支时隐藏，菜单逻辑在下方分支下拉一节。 */
+  const brCaret = h('span', { class: 'br-caret', title: '切换分支' }, icon('caret', 12));
+  brCaret.hidden = true;
   const tree = h('div', { class: 'tree' });
   tree.hidden = localStorage.getItem(TREE_COLLAPSED_KEY) === '1';
   const exToggle = h('button', { class: `exh-t${tree.hidden ? '' : ' open'}`, title: '折叠 / 展开项目结构', attrs: { type: 'button', 'aria-expanded': String(!tree.hidden) } }, icon('caret', 12), h('span', {}, '项目结构'));
@@ -81,7 +84,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     localStorage.setItem(TREE_COLLAPSED_KEY, tree.hidden ? '1' : '0');
   });
   const moreBtn = h('button', { class: 'exh-more', title: '更多操作', attrs: { type: 'button', 'aria-haspopup': 'menu' } }, icon('more', 14));
-  const explorer = h('aside', { class: 'explorer' }, psel, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, moreBtn), tree);
+  const explorer = h('aside', { class: 'explorer' }, psel, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, brCaret, moreBtn), tree);
 
   // 「⋯」菜单：当前只支持单项目根（无多文件夹工作区），「打开文件夹」= 切换项目（project:pick）
   const exMenu = h('div', { class: 'ctxmenu exmenu', attrs: { role: 'menu' } });
@@ -102,6 +105,45 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   });
   document.addEventListener('click', (ev) => { if (!exMenu.hidden && !exMenu.contains(ev.target as Node)) exMenu.hidden = true; });
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') exMenu.hidden = true; });
+
+  // ── 分支下拉：点击当前分支名（readRef / caret）展开本地分支列表，选中走 git:checkout 切换并全量同步 ──
+  const brMenu = h('div', { class: 'ctxmenu brmenu', attrs: { role: 'menu' } });
+  brMenu.hidden = true;
+  document.body.append(brMenu);
+  const closeBrMenu = () => { brMenu.hidden = true; };
+  const checkoutBranch = async (branch: string) => {
+    try {
+      store.state.git = await api.invoke('git:checkout', branch);
+      // 全局同步：目录树缓存失效重读 + refreshWorkspace 重拉 board/git 并 emit('workspace')（页头、状态栏、各视图随之更新）
+      kidsCache.clear();
+      void renderTree();
+      await refreshWorkspace();
+      hooks.onError(`已切换到分支「${branch}」。`);
+    } catch (e) {
+      hooks.onError(errorText(e));
+    }
+  };
+  const toggleBrMenu = (ev: Event) => {
+    ev.stopPropagation();
+    const g = store.state.git;
+    if (!g?.available || g.branches.length === 0) return;
+    if (!brMenu.hidden) { closeBrMenu(); return; }
+    exMenu.hidden = true;
+    brMenu.replaceChildren(...g.branches.map((b) => h('button', {
+      class: `mi${b.current ? ' on' : ''}`,
+      attrs: { type: 'button', role: 'menuitem', ...(b.current ? { disabled: '' } : {}) },
+      on: { click: () => { closeBrMenu(); void checkoutBranch(b.name); } },
+    }, h('span', {}, b.current ? `✓ ${b.name}` : b.name))));
+    const r = readRef.getBoundingClientRect();
+    brMenu.hidden = false;
+    brMenu.style.left = `${Math.max(8, r.right - brMenu.offsetWidth)}px`;
+    brMenu.style.top = `${r.bottom + 4}px`;
+  };
+  readRef.title = '切换分支';
+  readRef.addEventListener('click', toggleBrMenu);
+  brCaret.addEventListener('click', toggleBrMenu);
+  document.addEventListener('click', (ev) => { if (!brMenu.hidden && !brMenu.contains(ev.target as Node)) closeBrMenu(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeBrMenu(); });
 
   // ── workspace header（原型 header()）──
   const crumbProject = h('span');
@@ -153,6 +195,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     snapTime.textContent = b ? `快照 · ${ymdhm(b.generatedAt)}（本地时间）` : '快照 · —';
     snapTime.title = b?.generatedAt ?? '';
     readRef.textContent = g?.currentBranch ?? '';
+    const canSwitchBranch = Boolean(g?.available && g.branches.length > 0);
+    brCaret.hidden = !canSwitchBranch;
+    readRef.classList.toggle('br-on', canSwitchBranch);
     if (g?.available) {
       statusL.replaceChildren(h('span', { class: 'dot grn' }), `本地工作区 ${g.currentBranch ?? ''}（${g.worktrees.length} 个 worktree · ${g.dirtyCount} 个未提交文件）`);
     } else {

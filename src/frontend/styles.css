@@ -563,6 +563,16 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .exh-more:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
 .exmenu{min-width:180px}
 .exmenu .mi{font-size:var(--font-caption)}
+/* 当前分支下拉切换：分支名可点 + caret 指示 + 分支菜单 */
+.exh .mono.br-on{cursor:pointer}
+.exh .mono.br-on:hover{color:var(--color-text-primary)}
+.br-caret{display:inline-flex;align-items:center;color:var(--color-text-tertiary);cursor:pointer;margin-left:-2px}
+.br-caret[hidden]{display:none}
+.br-caret:hover{color:var(--color-text-primary)}
+.brmenu{min-width:180px;max-height:320px;overflow-y:auto}
+.brmenu .mi.on{color:var(--accent);font-weight:600}
+.brmenu .mi[disabled]{cursor:default}
+.brmenu .mi[disabled]:hover{background:none}
 /* 目录树：目录单击折叠 / 展开 */
 .te .tw{flex:none;width:12px;display:grid;place-items:center;color:var(--color-text-tertiary)}
 .te.dir .tw svg{transform:rotate(-90deg);transition:transform .12s}
@@ -627,13 +637,14 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .mh.drag:hover{background:var(--color-background-secondary)}
 .mh.dragging{opacity:.45}
 .mh.over{box-shadow:inset 2px 0 0 var(--color-border-info);background:var(--color-background-info)}
-/* 泳道行首：单行——颜色标签（泳道名）> 所有者 > 范围 > 计数徽标，不换行、溢出省略 */
-.lanec{padding:10px 12px;display:flex;flex-direction:row;align-items:center;gap:8px;min-width:0;white-space:nowrap;overflow:hidden;color:var(--color-text-secondary)}
+/* 泳道行首：纵向分行 containment——标签行（标签不收缩 + 角色可换行）/ 路径行（任意断行）/ 统计徽标行（整组换行），任何内容不越出单元 */
+.lanec{padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden;color:var(--color-text-secondary)}
+.lanec .lr1{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
 .lanec .ltag{flex:none;border-radius:4px;padding:1px 6px;font-size:var(--font-body);font-weight:600;color:#fff;white-space:nowrap}
-.lanec .o{flex:none;font-weight:var(--font-weight-normal);color:var(--color-text-secondary);white-space:nowrap}
-.lanec .g{flex:1 1 auto;min-width:0;margin:0;color:var(--color-text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;word-break:normal}
-.lanec .s{display:inline-flex;flex:none;align-items:center;gap:4px;margin-top:0}
-.lanec .lb{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--border-radius-sm);font-size:11px;line-height:18px;white-space:nowrap;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.lanec .o{flex:0 1 auto;min-width:0;font-weight:var(--font-weight-normal);color:var(--color-text-secondary);overflow-wrap:anywhere}
+.lanec .g{display:block;margin:0;color:var(--color-text-tertiary);white-space:normal;overflow-wrap:anywhere;word-break:normal}
+.lanec .s{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:0}
+.lanec .lb{display:inline-flex;flex:none;align-items:center;height:18px;padding:0 6px;border-radius:var(--border-radius-sm);font-size:11px;line-height:18px;white-space:nowrap;background:var(--color-background-secondary);color:var(--color-text-secondary)}
 .lanec .lb.blu{background:var(--color-background-info);color:var(--color-text-info)}
 .lanec .lb.amb{background:var(--color-background-warning);color:var(--color-text-warning)}
 .lanec .lb.grn{background:var(--color-background-success);color:var(--color-text-success)}
@@ -740,3 +751,10 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 #wb-git .pr .fx12>span{white-space:nowrap}
 .lr .tasks .mute+.mute::before{content:'· ';}
 .gq .qhint{position:sticky;top:-14px;z-index:1;margin:8px -4px 0;padding:6px 8px;border-radius:var(--border-radius-md);background:var(--color-background-secondary);color:var(--color-text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 分支颜色图示：提交图面板内、图下方一行；色点与提交图 lanes 同源取色，条目单行、整体可换行 */
+.glegend{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;flex:none;margin-top:10px;padding-top:10px;border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
+.glegend .gi{display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:240px;font-size:11px;color:var(--color-text-secondary)}
+.glegend .gi .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.glegend .gi .gn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 分支背景联动：悬停某分支时，队列条目与左侧同分支行以该分支色（--hl）浅染背景；与 .hl 图形联动相互独立 */
+#wb-git .brhl{background:color-mix(in srgb, var(--hl) 14%, transparent)}

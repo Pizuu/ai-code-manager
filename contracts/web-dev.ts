@@ -57,6 +57,7 @@ export const WEB_DEV_CHANNELS = [
   'agentCli:detect',
   'board:get',
   'git:get',
+  'git:checkout',
 ] as const satisfies readonly IpcInvokeChannel[];
 
 export type WebDevChannel = (typeof WEB_DEV_CHANNELS)[number];

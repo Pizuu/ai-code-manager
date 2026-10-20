@@ -7,7 +7,7 @@ import type { BoardCard, GitSnapshot } from '../../../contracts/ipc.ts';
 import { PR_LINE, STATUS_META, ymdhm } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
-import { layoutGraphVertical } from '../lib/git-graph.ts';
+import { fallbackColor, layoutGraphVertical } from '../lib/git-graph.ts';
 import { icon, svgEl } from '../lib/icons.ts';
 import { store } from '../store.ts';
 
@@ -52,7 +52,8 @@ function drawGraph(wrap: HTMLElement, g: GitSnapshot, link: GraphLink, onHover: 
     const lane = laneName(r.lane);
     const key = link.keyOf.get(r.sha);
     const refs = r.commit.refs;
-    const row = h('div', { class: `gr${key ? ' linked' : ''}`, title: `${r.commit.short} · ${r.commit.subject}\n${r.commit.author} · ${ymdhm(r.commit.time)}${r.isMerge ? ' · merge' : ''}`, attrs: { 'data-sha': r.sha, ...sendAttrs({ kind: 'commit', sha: r.commit.sha, subject: r.commit.subject }) } },
+    // data-branch = 所属泳道名（分支键），供右侧队列 / 左侧行的分支背景联动（.brhl）按分支匹配
+    const row = h('div', { class: `gr${key ? ' linked' : ''}`, title: `${r.commit.short} · ${r.commit.subject}\n${r.commit.author} · ${ymdhm(r.commit.time)}${r.isMerge ? ' · merge' : ''}`, attrs: { 'data-sha': r.sha, ...(lane ? { 'data-branch': lane.name } : {}), ...sendAttrs({ kind: 'commit', sha: r.commit.sha, subject: r.commit.subject }) } },
       h('span', { class: 'mono sha' }, r.commit.short),
       lane && lane.kind === 'branch' ? h('span', { class: 'ln' }, lane.label.split(' · ')[0] ?? '') : null,
       ...refs.slice(0, 2).map((x) => h('span', { class: 'ref' }, x)),
@@ -76,6 +77,9 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
   let keyOf = new Map<string, string>();
   /** 持久选中：'c:<sha>' 或 'b:<分支>'。 */
   let selected = localStorage.getItem(SEL_KEY) ?? '';
+  /** 分支背景联动（.brhl）：当前被浅染的分支与分支 → 颜色表（与提交图 lanes 同源取色）。 */
+  let branchTint: string | null = null;
+  let branchColors = new Map<string, string>();
 
   /** 把 el 滚到 box 可视区内（只滚动 box 自身，不牵动整页）。 */
   const scrollWithin = (box: HTMLElement, el: Element) => {
@@ -137,6 +141,31 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     if (branch) mark(shasOf(branch), branch, true, fromQueue, !fromQueue);
     else apply(selected, false);
   };
+  /** 分支背景联动：悬停任一侧的分支行时，两侧同分支行一起以该分支色浅染背景；与 .hl 图形联动相互独立。 */
+  const TINT_SEL = '.q[data-branch], .pr[data-branch], .gr[data-branch]';
+  const applyTint = (branch: string | null) => {
+    if (branch === branchTint) return;
+    branchTint = branch;
+    for (const el of container.querySelectorAll('.brhl')) {
+      el.classList.remove('brhl');
+      (el as HTMLElement).style.removeProperty('--hl');
+    }
+    if (!branch) return;
+    const color = branchColors.get(branch) ?? fallbackColor(branch);
+    for (const el of container.querySelectorAll(TINT_SEL)) {
+      if (el.getAttribute('data-branch') !== branch) continue;
+      (el as HTMLElement).style.setProperty('--hl', color);
+      el.classList.add('brhl');
+    }
+  };
+  container.addEventListener('mouseover', (ev) => {
+    const t = (ev.target as Element).closest?.(TINT_SEL);
+    if (t && !t.contains(ev.relatedTarget as Node)) applyTint(t.getAttribute('data-branch'));
+  });
+  container.addEventListener('mouseout', (ev) => {
+    const t = (ev.target as Element).closest?.(TINT_SEL);
+    if (t && !t.contains(ev.relatedTarget as Node)) applyTint(null);
+  });
   const redraw = () => {
     const g = store.state.git;
     if (!graphWrap || !g?.available) return;
@@ -165,6 +194,7 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     graphWrap = null;
     prListEl = null;
     queueEl = null;
+    branchTint = null;
     const g = store.state.git;
     const b = store.state.board;
     if (!store.state.project) {
@@ -185,11 +215,31 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     const openBranches = g.branches.filter((x) => x.kind !== 'main' && x.kind !== 'integration' && !x.mergedIntoIntegration);
     const mergedList = g.merges.slice().reverse();
 
+    // 与提交图同一次布局：lanes 的 color 即图中实际用色，图例与分支背景联动都从这里取色
+    const lay = layoutGraphVertical(g);
+    branchColors = new Map(lay.lanes.map((l) => [l.name, l.color]));
+    // 分支颜色图示：集成分支 + 各泳道分支（去重，最多 8 项），无分支时不渲染
+    const legendLanes: typeof lay.lanes = [];
+    const seenLane = new Set<string>();
+    for (const l of lay.lanes) {
+      if (l.kind === 'main' || seenLane.has(l.name)) continue;
+      seenLane.add(l.name);
+      legendLanes.push(l);
+      if (legendLanes.length >= 8) break;
+    }
+    const legend = legendLanes.length
+      ? h('div', { class: 'glegend' }, ...legendLanes.map((l) => {
+          const dot = h('span', { class: 'dot' });
+          dot.style.background = l.color;
+          return h('span', { class: 'gi', title: l.name }, dot, h('span', { class: 'gn' }, l.name));
+        }))
+      : null;
+
     // T-040：整页固定高度，左栏提交图与列表、右栏按序集成各自滚动
     const left = h('div', { class: 'gcol' });
-    // 分支图：竖向（新 → 旧），固定高度可滚动，与下方分支列表联动
+    // 分支图：竖向（新 → 旧），固定高度可滚动，与下方分支列表联动；图下方附分支颜色图示
     graphWrap = h('div', { attrs: { id: 'graph' } });
-    left.append(h('div', { class: 'panel w gpanel' }, graphWrap));
+    left.append(h('div', { class: 'panel w gpanel' }, graphWrap, legend));
 
     // 提交与 PR
     left.append(h('div', { class: 'sec' }, h('span', {}, '提交与 Pull requests'), h('span', { class: 'mute' }, `${openBranches.length} 个未合入 · ${g.merges.length} 个已合入 · PR：暂无（本地仓库无远端）`)));
@@ -239,7 +289,7 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     container.append(h('div', { class: 'gx' }, left, right));
     // 提交 → 分支键：任务分支泳道上的提交归该分支；合并提交归被合入的分支
     keyOf = new Map<string, string>();
-    for (const lane of layoutGraphVertical(g).lanes) if (lane.kind === 'branch') for (const sha of lane.own) keyOf.set(sha, lane.name);
+    for (const lane of lay.lanes) if (lane.kind === 'branch') for (const sha of lane.own) keyOf.set(sha, lane.name);
     for (const m of g.merges) keyOf.set(m.sha, m.branch ?? m.subject);
     prListEl = prList;
     queueEl = queue;

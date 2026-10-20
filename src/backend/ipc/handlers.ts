@@ -27,6 +27,7 @@ import { emptyGitSnapshot, readGitSnapshot } from '../workspace/git-overview.ts'
 import { createGitRunner } from '../workspace/git.ts';
 import {
   asAgentRef,
+  asBranchName,
   asCliId,
   asRelDir,
   asRelPath,
@@ -319,6 +320,18 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       if (!state.project) return emptyGitSnapshot({ mainBranch: 'main', integrationBranch: 'dev', branchPrefix: 'feat', maxParallel: null }, '请先打开项目文件夹。', new Date().toISOString());
       gitCache = null;
       return gitSnapshot(state.project.root);
+    },
+    'git:checkout': async (branch) => {
+      const name = asBranchName(branch);
+      const { root } = requireProject(state);
+      const before = await gitSnapshot(root);
+      if (before.currentBranch === name) return before;
+      // 参数数组、不经 shell；分支名已经 asBranchName 校验（非空、不以 '-' 开头），
+      // 不用 `checkout -- <name>`（'--' 后按路径处理，不是切换分支的语义）。
+      const r = await createGitRunner(root, deps.gitBin)(['checkout', name]);
+      if (!r.ok) throw ipcError('E_GIT', (r.stderr || r.stdout).trim() || `git checkout ${name} 失败`);
+      gitCache = null;
+      return gitSnapshot(root);
     },
   };
 }

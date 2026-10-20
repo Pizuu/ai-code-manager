@@ -1,6 +1,6 @@
 /**
  * 设置对话框（FR-002/003、FR-110）：两个分区——「内置 agent」（提供方 / 模型 / Key / 权限）与「Agent CLI」。
- * Key 只进不出——输入框永远为空，已保存时只显示「已保存」。
+ * Key 只进不出——输入框永远为空，已保存时只显示「已保存」。Base URL / 模型同理留空打开、留空保存不修改。
  */
 import type { PermissionMode, ProviderId, SettingsUpdate } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
@@ -50,8 +50,9 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   }
 
   const provider = options(PROVIDER_LABELS, s.provider);
-  const baseUrl = h('input', { attrs: { type: 'url', value: s.baseUrl, spellcheck: 'false', placeholder: BASE_URL_PLACEHOLDER[s.provider] } });
-  const model = h('input', { attrs: { type: 'text', value: s.model, spellcheck: 'false', placeholder: MODEL_PLACEHOLDER[s.provider] } });
+  // Base URL / 模型与 Key 一样只进不出：输入框留空打开（只留 placeholder 示例），已保存值不回显；保存时留空 = 不修改。
+  const baseUrl = h('input', { attrs: { type: 'url', spellcheck: 'false', placeholder: BASE_URL_PLACEHOLDER[s.provider] } });
+  const model = h('input', { attrs: { type: 'text', spellcheck: 'false', placeholder: MODEL_PLACEHOLDER[s.provider] } });
   const key = h('input', { attrs: { type: 'password', autocomplete: 'off', placeholder: '' } });
   const mode = options(MODE_LABELS, s.permissionMode);
   const err = h('div', { class: 'error-text' });
@@ -103,7 +104,10 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     ev.preventDefault();
     err.textContent = '';
     const p = provider.value as ProviderId;
-    const update: SettingsUpdate = { provider: p, permissionMode: mode.value as PermissionMode, model: model.value.trim(), baseUrl: baseUrl.value.trim() };
+    const update: SettingsUpdate = { provider: p, permissionMode: mode.value as PermissionMode };
+    // 「空不修改」（同下方 Key）：Base URL / 模型留空时不提交该字段，保留已保存值，绝不用空串覆盖；填了才提交新值。
+    if (baseUrl.value.trim() !== '') update.baseUrl = baseUrl.value.trim();
+    if (model.value.trim() !== '') update.model = model.value.trim();
     if (key.value.trim() !== '') update.apiKey = { provider: p, value: key.value.trim() };
     try {
       store.state.settings = await api.invoke('settings:set', update);

@@ -250,6 +250,8 @@ export interface IpcInvokeMap {
   'board:get':        { args: [];                         result: BoardSnapshot };
   /** Git 分支与集成：主进程用 git CLI 只读采集。 */
   'git:get':          { args: [];                         result: GitSnapshot };
+  /** 切换主工作区的当前分支（git checkout，参数数组不经 shell）；成功后返回最新快照，git 拒绝时抛 E_GIT（携带 git stderr）。 */
+  'git:checkout':     { args: [branch: string];           result: GitSnapshot };
   // ── v1.2（功能 003）──
   /** 只读读取项目内文件供代码查看器显示；路径经项目根沙箱（宪法 十一），大文件截断 / 拒绝，二进制不返回内容。 */
   'fs:read':          { args: [relPath: string];          result: FileContent };
@@ -310,6 +312,7 @@ export type IpcErrorCode =
   | 'E_PROVIDER'        // 模型服务返回错误
   | 'E_CLI'             // v1.1：外部 Agent CLI 不可用或异常退出
   | 'E_NOT_CONFIGURED'  // v1.2：内置 agent 未配置 Base URL / 模型（界面提示「请先在设置中配置 agent」）
+  | 'E_GIT'             // git 写操作（切换分支等）被 git 拒绝，消息携带 git stderr 原文
   ;
 
 // ───────────────────────── v1.1：Agent CLI 配置（功能 002） ─────────────────────────
