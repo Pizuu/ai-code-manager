@@ -17,15 +17,15 @@ export interface KeyCipher {
   decrypt(cipherBase64: string): string;
 }
 
-export const DEFAULT_BASE_URLS: Readonly<Record<ProviderId, string>> = {
-  openai: 'https://api.openai.com/v1',
-  anthropic: 'https://api.anthropic.com',
-};
-
-export const DEFAULT_MODELS: Readonly<Record<ProviderId, string>> = {
-  openai: 'gpt-4o',
-  anthropic: 'claude-sonnet-4-5',
-};
+/**
+ * 内置 agent 未配置时的中文说明；已配置返回 null（FR-308）。
+ * 003 起 Base URL 与模型默认空白，不预填任何服务商地址或模型名（FR-307）。
+ */
+export function builtinConfigProblem(s: Pick<ActiveSettings, 'baseUrl' | 'model'>): string | null {
+  const missing = [s.baseUrl.trim() === '' ? 'Base URL' : null, s.model.trim() === '' ? '模型' : null].filter((x): x is string => x !== null);
+  if (!missing.length) return null;
+  return `内置 agent 尚未填写 ${missing.join('、')}（设置 › 内置 agent）；也可在 设置 › Agent CLI 中配置外部 CLI 并在会话顶部切换。`;
+}
 
 /** 存盘形状：敏感环境变量只有密文 encrypted，非敏感变量为明文 value。 */
 export interface StoredAgentCli extends Omit<AgentCliConfig, 'env'> {
@@ -53,9 +53,10 @@ export function newAgentCliId(name: string): string {
 
 function defaults(): StoredSettings {
   return {
+    // provider 只是协议类型（OpenAI 兼容 / Anthropic）；地址与模型由用户填写
     provider: 'openai',
-    baseUrl: DEFAULT_BASE_URLS.openai,
-    model: DEFAULT_MODELS.openai,
+    baseUrl: '',
+    model: '',
     permissionMode: 'ask',
     encryptedKeys: {},
     lastProjectPath: null,
@@ -186,14 +187,10 @@ export class SettingsStore {
 
   async update(update: SettingsUpdate): Promise<PublicSettings> {
     const next: StoredSettings = { ...this.data, encryptedKeys: { ...this.data.encryptedKeys } };
-    if (update.provider && update.provider !== next.provider) {
-      // 仍是旧 provider 的默认值时，跟随切换到新 provider 的默认值
-      if (next.baseUrl === DEFAULT_BASE_URLS[next.provider]) next.baseUrl = DEFAULT_BASE_URLS[update.provider];
-      if (next.model === DEFAULT_MODELS[next.provider]) next.model = DEFAULT_MODELS[update.provider];
-      next.provider = update.provider;
-    }
+    // 切换提供方不回填任何地址或模型（FR-307）
+    if (update.provider) next.provider = update.provider;
     if (update.baseUrl !== undefined) next.baseUrl = update.baseUrl;
-    if (update.model !== undefined && update.model !== '') next.model = update.model;
+    if (update.model !== undefined) next.model = update.model;
     if (update.permissionMode !== undefined) next.permissionMode = update.permissionMode;
     if (update.defaultAgent !== undefined) {
       if (update.defaultAgent !== 'builtin' && !next.agentClis.some((c) => `cli:${c.id}` === update.defaultAgent)) {

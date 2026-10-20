@@ -4,7 +4,23 @@
  */
 import type { AgentCliInput } from '../../../contracts/ipc.ts';
 
+/**
+ * opencode 预设：只给类型（preset / 输出格式）与名称，字段值一律为空，由用户填写（FR-307）。
+ */
 export const OPENCODE_PRESET: Readonly<Omit<AgentCliInput, 'id'>> = Object.freeze({
+  name: 'opencode',
+  preset: 'opencode',
+  command: '',
+  args: [],
+  resumeArgs: [],
+  modelArgs: [],
+  model: '',
+  outputFormat: 'opencode-json',
+  env: [],
+});
+
+/** opencode 的示例调用（官方文档写法）：仅作说明与测试样例，不作为任何默认值。 */
+export const OPENCODE_EXAMPLE: Readonly<Omit<AgentCliInput, 'id'>> = Object.freeze({
   name: 'opencode',
   preset: 'opencode',
   command: 'opencode',

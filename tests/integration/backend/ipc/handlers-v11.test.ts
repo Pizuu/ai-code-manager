@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { AgentEvent, AgentRef, PermissionMode } from '../../../../contracts/ipc.ts';
-import { OPENCODE_PRESET } from '../../../../src/backend/agent-cli/presets.ts';
+import { OPENCODE_EXAMPLE } from '../../../../src/backend/agent-cli/presets.ts';
 import { AppState } from '../../../../src/backend/app-state.ts';
 import { createHandlers } from '../../../../src/backend/ipc/handlers.ts';
 import { SessionStore } from '../../../../src/backend/sessions/session-store.ts';
@@ -40,7 +40,7 @@ async function setup(t: { after: (fn: () => Promise<void>) => void }, mode: Perm
   });
   await handlers['project:pick']();
   const pub = await handlers['agentCli:save']({
-    ...OPENCODE_PRESET, args: [...OPENCODE_PRESET.args], resumeArgs: [...OPENCODE_PRESET.resumeArgs], modelArgs: [...OPENCODE_PRESET.modelArgs],
+    ...OPENCODE_EXAMPLE, args: [...OPENCODE_EXAMPLE.args], resumeArgs: [...OPENCODE_EXAMPLE.resumeArgs], modelArgs: [...OPENCODE_EXAMPLE.modelArgs],
     env: [{ name: 'FAKE_SECRET', secret: true, value: 'sk-SUPER-SECRET' }, { name: 'FAKE_PLAIN', secret: false, value: 'visible' }],
   });
   const cli = pub.agentClis?.[0];

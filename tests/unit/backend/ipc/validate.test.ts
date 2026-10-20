@@ -5,6 +5,7 @@ import {
   validateApprovalDecision,
   validateSendRequest,
   validateSettingsUpdate,
+  asRelPath,
 } from '../../../../src/backend/ipc/validate.ts';
 
 test('accepts a valid settings update and strips trailing slashes from baseUrl', () => {
@@ -32,4 +33,12 @@ test('send requests require non-empty text', () => {
 test('approval decisions require a boolean', () => {
   assert.deepEqual(validateApprovalDecision({ approvalId: 'a', approved: false }), { approvalId: 'a', approved: false });
   assert.throws(() => validateApprovalDecision({ approvalId: 'a', approved: 'yes' }), /E_VALIDATION/);
+});
+
+test('003: an empty baseUrl clears it; fs:read paths must be non-empty strings', () => {
+  assert.deepEqual(validateSettingsUpdate({ baseUrl: '  ', model: '' }), { baseUrl: '', model: '' });
+  assert.equal(asRelPath('src/a.ts'), 'src/a.ts');
+  assert.throws(() => asRelPath(''), /E_VALIDATION/);
+  assert.throws(() => asRelPath(null), /E_VALIDATION/);
+  assert.throws(() => asRelPath('x'.repeat(1001)), /E_VALIDATION/);
 });
