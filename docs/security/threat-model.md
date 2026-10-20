@@ -45,5 +45,12 @@
 | 会话 JSON 明文存储代码片段 | 信息泄漏 | 存于当前用户的 `%APPDATA%`，受操作系统账户隔离；不含 Key | ❌ 接受的风险（负责人：项目负责人，复审：v0.2.0） |
 | 开发依赖 `sprintf-js`（electron-builder → @electron/get → global-agent → roarr）moderate 级 DoS 告警，上游无修复版本 | 拒绝服务 | 仅打包期使用、不进入应用运行时；`.npmrc` `audit-level=high`；上游发布修复后升级 | ❌ 接受的风险（负责人：coordinator，到期：2027-01-31 复查） |
 | 安装包未签名 | 伪装 | 无 | ❌ 接受的风险（MVP 不签名，负责人：项目负责人，发布前处理） |
+| 外部 Agent CLI 参数 / 提示词被 shell 解释（注入） | 篡改 / 权限提升 | `spawn` 参数数组、`shell:false`，提示词以 `--` 分隔；Windows 不运行 `.cmd`/`.bat`（解析到真实 `.exe`）；测试断言 argv 原样到达（含引号、`$()`、`-` 开头） | ✅ |
+| 外部 CLI 未经批准修改文件或执行命令 | 篡改 | 按权限模式注入 `OPENCODE_PERMISSION`：仅规划 = 全禁止、auto-edits = 禁命令、ask = 每轮先批准完整命令行；不使用 `--auto`；集成测试断言权限与拒绝不启动 | ✅ |
+| 批准的一轮内 CLI 自行编辑 / 执行（审批粒度为「轮」而非「调用」） | 篡改 | 每次工具调用显示并持久化（含 diff）；ADR 0006 | ❌ 接受的风险（负责人：coordinator，复审：引入 `opencode serve` 逐条审批时，目标 v0.3.0） |
+| CLI 的敏感环境变量（API Key）泄漏到渲染进程 / 日志 | 信息泄漏 | safeStorage 加密落盘、不可用则拒绝；`PublicSettings` 只给 `hasValue`；只注入子进程；测试断言 IPC 返回、事件、落盘文件均无明文 | ✅ |
+| CLI stderr / 错误事件回显敏感信息 | 信息泄漏 | stderr 末尾截断 2000 字符后显示；应用不打印环境变量（CLI 自身输出的内容由 CLI 负责） | ❌ 接受的风险（负责人：coordinator，复审：v0.3.0） |
+| git 命令修改仓库或与正在工作的 agent 争锁 | 篡改 / 拒绝服务 | 只读命令、`--no-optional-locks`、参数数组、15 s 超时 | ✅ |
+| 看板 / Git 中的仓库文本（提交说明、任务卡）在界面执行 | 权限提升 | 一律 `textContent` / SVG `textContent` 渲染，无 innerHTML | ✅ |
 
 > ✅ = 已缓解且有测试，❌ = 接受的风险（必须有负责人 + 到期时间）或已建任务。任何行都不许没有状态。

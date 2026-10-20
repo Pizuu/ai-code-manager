@@ -15,3 +15,8 @@
 - [x] preload 只暴露契约白名单通道（`src/backend/preload.cts`，编译期穷举检查）
 - [x] Key 仅以 safeStorage 密文落盘，不可用时拒绝保存
 - [ ] 导航/新窗口拦截有自动化测试（T040）
+- [x] 外部 Agent CLI 以参数数组启动、不经 shell，工作目录固定为项目根（`src/backend/agent-cli/cli-runner.ts`，功能 002）
+- [x] CLI 敏感环境变量只以 safeStorage 密文落盘，不进入 IPC / 事件（`settings-store.ts`，测试 `handlers-v11.test.ts`）
+- [x] CLI 权限按模式映射，「每次询问」每轮批准命令行，不使用 `--auto`（ADR 0006）
+- [x] git 只读、`--no-optional-locks`（`src/backend/workspace/git.ts`）
+- [x] 新 IPC 通道参数校验 + preload 白名单（`validate.ts`、`preload.cts`）

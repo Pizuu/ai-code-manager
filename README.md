@@ -1,10 +1,14 @@
 # ai-code-manager
 
-类 Claude Code 的 Windows 桌面 AI 编程助手（Electron + TypeScript）。在本地项目里与大模型对话，模型通过受控工具读代码、提出修改（diff + 审批）、执行命令（审批），并支持 Spec Kit 工作流。
+类 Claude Code 的 Windows 桌面 AI 编程助手（Electron + TypeScript）。在本地项目里与大模型（内置 API agent）或外部 Agent CLI（如 opencode）对话，模型通过受控工具读代码、提出修改（diff + 审批）、执行命令（审批），并支持 Spec Kit 工作流与多 Agent 泳道协作视图。
 
 ## 功能
 
-- **三栏界面**：左侧会话列表 + 项目文件夹 + 文件树；中间流式对话（Markdown、工具调用卡片、待办）；右侧 Diff / 终端 / 任务标签页。
+- **三板块工作台**（v0.2.0）：左侧导航「泳道看板 / 任务会话 / Git 分支与集成」，布局与视觉 1:1 沿用设计原型（ADR 0005）。
+  - **泳道看板**：读取项目 `.agents/lanes.conf`、`docs/tasks/T-*.md`、`docs/tasks/BOARD.md`、最新 `specs/*/tasks.md`，以 git 合并记录推导每张任务卡的真实状态（可派工 / 进行中 / 待审查 / 已阻塞 / 已合入），并标出「看板声明 done 但 git 未合入」等冲突；支持搜索与筛选。
+  - **任务会话**：会话列表 + 流式对话（Markdown、工具调用卡片、diff 审批、待办）+ 上下文（agent、权限、文件修改、终端输出、Spec 任务；会话标题含任务号时显示该任务卡上下文）。
+  - **Git 分支与集成**：分支拓扑图、未合入分支与已合入记录（分支删除后仍可追溯）、相对集成分支的领先 / 落后、按序集成队列、worktree、「发布到 main」门禁；PR / CI / 审查者在本地仓库显示「暂无」。
+- **Agent CLI**（v0.2.0）：设置 › Agent CLI 可添加多个外部 CLI agent（名称、可执行文件、参数模板、续接参数、模型、环境变量），内置 **opencode** 预设；会话顶部可在内置 agent 与 CLI 之间切换。详见下文「使用 opencode」。
 - **两种模型接口**：OpenAI 兼容 `/chat/completions`（可改 Base URL，适配各类兼容端点）与 Anthropic Messages API，均为流式。
 - **工具**：`list_dir`、`read_file`、`search`（纯 Node 实现的类 ripgrep 搜索）、`write_file` / `edit_file`（先展示 diff，批准后写入）、`run_command`（Windows 用 PowerShell，批准后执行，输出实时显示）、`todo_write`。
 - **权限模式**：每次询问 / 自动批准编辑（命令仍需批准）/ 仅规划（只读）。
@@ -54,15 +58,23 @@ bash scripts/security-check.sh
 - 权限模式与模型的切换在**下一条消息**生效；运行中可点「停止」，待批准的请求会被视为拒绝。
 - `/specify`、`/plan`、`/tasks`、`/implement` 会让 Agent 优先读取项目中的 Spec Kit 模板与技能文件（`.specify/`、`.agents/skills/`），按其步骤执行。
 
+## 使用 opencode（Agent CLI）
+
+1. 安装 opencode（见 <https://opencode.ai/docs/>）：`npm install -g opencode-ai`，或 `scoop install opencode` / `choco install opencode`；然后执行一次 `opencode auth login` 配置模型提供方（也可以在应用里为该 CLI 添加「敏感」环境变量，如 `ANTHROPIC_API_KEY`，加密保存、只注入 opencode 子进程）。
+2. 设置 › Agent CLI › 「添加 opencode 预设」→ 可选填写模型（`provider/model`）→ 保存 →「检查」应显示版本号。Windows 上若提示找不到，填写 `opencode.exe` 的完整路径（npm 全局安装位于 `%APPDATA%\npm\node_modules\opencode-ai\bin\opencode.exe`；应用不会经 shell 运行 `opencode.cmd`）。
+3. 在「任务会话」顶部的 agent 选择器切换到 opencode，发送消息即可：应用以项目根为工作目录执行 `opencode run --format json --dir <项目根> -- <消息>`（参数数组、不经 shell），逐条显示文本、工具调用与文件改动；之后的消息自动追加 `--session <ID>` 续接同一个 opencode 会话；「停止」会结束 opencode 进程树。
+4. 权限映射（ADR 0006）：**仅规划** = 禁止编辑与命令（opencode plan agent）；**自动批准编辑** = 允许编辑、禁止命令；**每次询问** = 每轮启动前先展示完整命令行与将授予的权限，批准后本轮允许编辑与命令。opencode 内部的工具调用无法逐条拦截，但每次调用都会显示并随会话保存。
+
 ## 项目结构
 
 ```text
 ai-code-manager/
 ├── contracts/            # IPC 与工具契约（唯一权威来源）+ fixtures
-├── src/backend/          # Electron 主进程：Agent 循环、模型客户端、工具、存储
+├── src/backend/          # Electron 主进程：Agent 循环、模型客户端、工具、存储、workspace/（看板与 Git 快照）、agent-cli/（外部 CLI）
 ├── src/frontend/         # 渲染进程：纯 DOM + CSS 界面
 ├── tests/                # unit / integration / e2e，镜像 src 结构
-├── specs/001-agent-desktop/  # Spec Kit：spec / plan / tasks / checklists / analysis
+├── specs/001-agent-desktop/  # Spec Kit：桌面 Agent MVP
+├── specs/002-workspace-boards/  # Spec Kit：三板块工作台 + Agent CLI
 ├── docs/                 # 架构（含 ADR）、开发、测试、安全、任务卡
 ├── .specify/             # Spec Kit 宪法与模板
 ├── skills/               # Agent Skills
