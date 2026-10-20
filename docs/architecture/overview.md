@@ -1,6 +1,6 @@
 # 架构概览
 
-> 对应功能 `specs/001-agent-desktop/`、`specs/002-workspace-boards/`。决策细节见 `decisions/`。
+> 对应功能 `specs/001-agent-desktop/`、`specs/002-workspace-boards/`、`specs/003-code-view-web-locator/`。决策细节见 `decisions/`。
 
 ## 系统上下文
 
@@ -12,7 +12,7 @@
 
 | 组件 | 位置 | 职责 |
 |---|---|---|
-| 契约 | `contracts/ipc.ts`、`contracts/tools.ts` | IPC 通道/事件/模型类型与工具 Schema 的唯一权威来源 |
+| 契约 | `contracts/ipc.ts`、`contracts/tools.ts`、`contracts/ui.ts`、`contracts/web-dev.ts` | IPC 通道/事件/模型类型、工具 Schema、渲染层右键发送标记（003）与 Web 预览只读通道（003）的唯一权威来源 |
 | 应用入口 | `src/backend/main.ts` | 创建安全窗口（contextIsolation + sandbox + CSP）、主题、导航拦截 |
 | preload 桥 | `src/backend/preload.cts` | 只暴露白名单 `invoke` 通道与 `agent:event` 订阅 |
 | IPC 层 | `src/backend/ipc/` | 注册 handler，对每个参数做运行时校验，错误码化 |
@@ -24,7 +24,9 @@
 | Spec 解析 | `src/backend/specs/` | 解析项目 `specs/*/tasks.md` |
 | 工作区读取（002） | `src/backend/workspace/` | git CLI 运行器、lanes.conf 泳道判定、任务卡/BOARD 解析、看板快照（git 推导状态）、Git 快照 |
 | Agent CLI（002） | `src/backend/agent-cli/` | 预设、可执行文件解析、参数模板与权限映射、opencode JSONL 解析、子进程运行与停止 |
-| 渲染进程 UI | `src/frontend/` | 工作台外框（图标栏、项目栏、页头、状态栏）+ 三个板块：泳道看板、任务会话（会话列表 / 对话 / 上下文）、Git 分支与集成；设置含 Agent CLI 分区 |
+| 渲染进程 UI | `src/frontend/` | 工作台外框（图标栏、项目栏、页头、状态栏）+ 三个板块：泳道看板、任务会话（会话列表 / 对话与代码标签页 / 上下文）、Git 分支与集成；设置含 Agent CLI 分区；全局右键「发送到任务会话」（003） |
+| 只读代码查看（003） | `src/backend/fs/file-view.ts` + `src/frontend/views/code-view.ts` | `fs:read`：沙箱解析、截断 / 二进制 / 超大保护；渲染层行号 + 轻量高亮 |
+| Web 预览（003，仅开发） | `scripts/web-dev.ts` + `src/frontend/web/` | 浏览器运行同一套渲染层（类型擦除保持行号），只读通道走主进程只读函数，其余内存模拟；UI 定位模式；不进打包 |
 
 ## 关键决策
 
@@ -36,6 +38,8 @@
 | 0004 | 生成器默认约定与 Electron 应用的冲突及处理 |
 | 0005 | 三板块 UI 以 HTML 原型 1:1 移植，数据改为 IPC 实时快照 |
 | 0006 | 外部 Agent CLI 以 `opencode run --format json` 集成，按权限模式映射 CLI 权限 |
+| 0007 | 简单 UI 修改跳过测试（仅 CSS / 文案 / DOM 布局，不涉及 IPC、安全、数据逻辑；仍须 lint + typecheck + build） |
+| 0008 | 只读代码查看（`fs:read`）、渲染层自定义右键「发送到任务会话」、Web 预览（类型擦除）与 UI 定位 |
 
 ## 数据流（一次「改文件」请求）
 

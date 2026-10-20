@@ -95,7 +95,7 @@ Agent 需要运行测试或构建时，提出 run_command；用户看到命令�
 
 **Why this priority**: 面向 Spec Kit 用户的增值能力，依赖前四个故事。
 
-**Independent Test**: 打开含 specs/001-x/tasks.md 的项目，Tasks 面板列出任务；输入 `/model gpt-4o-mini` 后设置中的模型变化。
+**Independent Test**: 打开含 specs/001-x/tasks.md 的项目，Tasks 面板列出任务；输入 `/model <模型名>` 后设置中的模型变化。
 
 **Acceptance Scenarios**:
 

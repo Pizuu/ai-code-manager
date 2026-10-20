@@ -7,8 +7,8 @@
 | 字段 | 类型 | 约束 |
 |---|---|---|
 | provider | `'openai' \| 'anthropic'` | 默认 `openai` |
-| baseUrl | string | 必须是 http(s) URL；默认 openai `https://api.openai.com/v1`，anthropic `https://api.anthropic.com` |
-| model | string | 非空，≤ 200 字符 |
+| baseUrl | string | 必须是 http(s) URL 或空；默认 ''（003 起不预填任何服务商地址，由用户填写） |
+| model | string | ≤ 200 字符；默认 （003 起不预填模型名，未配置时发送返回 E_NOT_CONFIGURED） |
 | permissionMode | `'ask' \| 'auto-edits' \| 'plan'` | 默认 `ask` |
 | encryptedKeys | `Partial<Record<ProviderId, string>>` | safeStorage 密文的 base64；**永不出主进程** |
 | lastProjectPath | string \| null | 绝对路径 |
