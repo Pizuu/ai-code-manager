@@ -1,0 +1,25 @@
+name: Lane guard
+
+"on":
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  lane:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check changed files stay inside the lane
+        run: bash scripts/check-lane.sh "" "${{ github.head_ref }}"
+        env:
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+      - name: Only the owner merges into main
+        if: github.base_ref == 'main' && github.head_ref != 'dev'
+        run: |
+          echo "PRs into main must come from dev." >&2
+          exit 1

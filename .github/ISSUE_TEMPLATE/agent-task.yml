@@ -1,0 +1,59 @@
+name: "Agent 任务"
+description: "一张任务卡：一个 agent、一个泳道"
+title: "[T-xxx] "
+labels: ["status:ready"]
+body:
+  - type: dropdown
+    id: lane
+    attributes:
+      label: "泳道"
+      options:
+        - contracts
+        - frontend
+        - backend
+        - docs
+        - infra
+    validations:
+      required: true
+  - type: input
+    id: req
+    attributes:
+      label: "对应需求（docs/SPEC.md）"
+      placeholder: "REQ-01"
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: "目标"
+    validations:
+      required: true
+  - type: textarea
+    id: contracts
+    attributes:
+      label: "依赖契约"
+      placeholder: "contracts/api.yaml v1"
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "验收标准（可测试）"
+      value: "- [ ] \n- [ ] scripts/verify.sh\n- [ ] scripts/check-lane.sh"
+    validations:
+      required: true
+  - type: input
+    id: depends
+    attributes:
+      label: "前置任务（必须已合入）"
+      placeholder: "#12, #15 / none"
+  - type: textarea
+    id: nongoals
+    attributes:
+      label: "不做什么"
+  - type: dropdown
+    id: agent
+    attributes:
+      label: "执行者"
+      options:
+        - codex
+        - claude
+        - human

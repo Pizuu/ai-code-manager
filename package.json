@@ -1,0 +1,17 @@
+{
+  "name": "ai-code-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "类 Claude Code 的 Windows 桌面 AI 编程助手（Electron + TypeScript）",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/unit/ tests/integration/ tests/e2e/",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p ."
+  },
+  "workspaces": [
+    "src/frontend",
+    "src/backend"
+  ]
+}
