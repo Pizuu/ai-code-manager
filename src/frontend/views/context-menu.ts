@@ -71,7 +71,6 @@ export function installContextMenu(hooks: ContextMenuHooks): void {
     const item = (label: string, sub: string, fn: () => void) => h('button', { class: 'mi', attrs: { type: 'button', role: 'menuitem' }, on: { click: () => { close(); fn(); } } }, h('span', {}, label), sub ? h('span', { class: 'mute' }, sub) : null);
     const items: HTMLElement[] = [item(SEND_TO_SESSION_LABEL, describeSource(r.source), () => hooks.send(text))];
     if (r.selected) items.push(item('复制', '', () => void navigator.clipboard.writeText(r.selected).catch(() => undefined)));
-    items.push(h('div', { class: 'mi-hint mute' }, '插入输入框，不自动发送'));
     menu.replaceChildren(...items);
     menu.hidden = false;
     const { innerWidth: W, innerHeight: H } = window;

@@ -174,8 +174,7 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       h('span', { class: 'mute' }, activeC.length ? activeC.map((c) => `${c.assignee} ${c.id} ${STATUS_META[c.status].label}`).join(' · ') : '暂无执行中'),
       h('span', { class: 'sep' }),
       h('span', { class: 'mute' }, `${countBy(cards, 'ready')} 张可派工\u3000·\u3000${countBy(cards, 'blocked')} 张等待依赖\u3000·\u3000${countBy(cards, 'review')} 张待审查\u3000·\u3000${countBy(cards, 'merged')} 张已合入`),
-      h('span', { class: 'flex1' }),
-      h('button', { class: 'btn pri dim', attrs: { disabled: '' }, title: '派工由 coordinator 执行（docs/commands/dispatch.md）' }, '派工')));
+      h('span', { class: 'flex1' })));
     // 控件
     const q = h('input', { class: 'inp', attrs: { placeholder: '搜索任务 / FR / 分支', value: f.q } });
     q.addEventListener('input', () => {
@@ -206,7 +205,7 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       tog.classList.toggle('on', f.done);
       renderMatrix(snap);
     });
-    pad.append(h('div', { class: 'ctl' }, q, h('span', { class: 'ibtn' }, icon('filt')), selWrap(laneSel), selWrap(agentSel), h('span', { class: 'flex1' }), h('span', { class: 'mute' }, '按泳道分组'), tog));
+    pad.append(h('div', { class: 'ctl' }, q, selWrap(laneSel), selWrap(agentSel), h('span', { class: 'flex1' }), tog));
     // 不一致项默认折叠为一行摘要（v0.4 重新设计，ADR 0009），展开查看明细
     if (snap.conflicts.length) pad.append(h('details', { class: 'conflicts' }, h('summary', {}, h('b', { class: 'b600' }, `声明与 git 不一致 ${snap.conflicts.length} 项`), h('span', { class: 'mute' }, snap.conflicts[0] ?? '')), h('div', { class: 'list' }, ...snap.conflicts.map((c) => h('div', {}, `· ${c}`)))));
     matrixHost = h('div');

@@ -176,7 +176,7 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
 
     right.append(h('div', { class: 'panel cfg' },
       h('div', { class: 'h' }, h('span', {}, '共享热点文件'), h('span', { class: 'mute' }, '不属于任何泳道')),
-      h('div', { class: 'chips mt12' }, ...(b.available && b.shared.length ? b.shared.map((x) => h('span', { class: 'chip mono' }, x)) : [h('span', { class: 'mute' }, '暂无')])),
+      h('div', { class: 'sflist mt12' }, ...(b.available && b.shared.length ? b.shared.map((x) => h('div', { class: 'sfrow' }, h('span', { class: 'mute' }, icon('file')), h('span', { class: 'mono' }, x))) : [h('div', { class: 'mute' }, '暂无')])),
       h('div', { class: 'mute fs12 mt12' }, '只能由 coordinator 在 int/* 分支上修改。')));
 
     right.append(h('div', { class: 'panel cfg' },

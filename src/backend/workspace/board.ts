@@ -31,6 +31,13 @@ export async function readAgentsConfig(root: string): Promise<AgentsConfig> {
   return parseAgentsConfig(await readText(root, '.agents/config.sh'));
 }
 
+/** spec.md 的第一个一级标题（去掉 `Feature Specification:` 前缀）；parseSpec 的严格标题格式未命中时的真实标题来源。 */
+function specHeading(md: string | null): string {
+  if (!md) return '';
+  const m = /^#\s+(.+)$/m.exec(md);
+  return (m?.[1] ?? '').replace(/^Feature Specification:\s*/i, '').trim();
+}
+
 async function readFeature(root: string): Promise<BoardFeature | null> {
   const dirs = (await listDir(root, 'specs')).filter((d) => /^\d{3}-/.test(d));
   const id = dirs.at(-1);
@@ -45,7 +52,7 @@ async function readFeature(root: string): Promise<BoardFeature | null> {
     checklists.push(countChecklist((await readText(root, `${dir}/checklists/${f}`)) ?? ''));
   }
   return {
-    id, dir, title: spec?.title ?? id, status: spec?.status ?? '',
+    id, dir, title: spec?.title || specHeading(specMd) || id, status: spec?.status ?? '',
     stages: featureStages({
       constitution: await readText(root, '.specify/memory/constitution.md'),
       spec, hasPlan: (await readText(root, `${dir}/plan.md`)) !== null, checklists, hasTasks: tasksMd !== null,

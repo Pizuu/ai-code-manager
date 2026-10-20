@@ -53,7 +53,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     ...NAV.map(([id]) => railView[id]),
     h('div', { class: 'sp' }),
     h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
-    h('div', { class: 'av', title: 'Owner（人类，未署名）' }, icon('grid', 14)),
   );
 
   // ── explorer（原型 explorer()）──
@@ -191,7 +190,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     const f = b?.feature;
     crumbFeature.textContent = f ? f.id : '—';
     crumbFeature.title = f ? `${f.id}${f.title ? ` · ${f.title}` : ''}` : '';
-    crumbChip.textContent = g?.available ? (g.remotes.length ? `远端 ${g.remotes.join(',')}` : '本地仓库') : '非 Git 仓库';
+    const crumbBranch = g?.currentBranch ?? b?.integrationBranch ?? g?.integrationBranch ?? '';
+    crumbChip.textContent = crumbBranch;
+    crumbChip.hidden = crumbBranch === '';
     snapTime.textContent = b ? `快照 · ${ymdhm(b.generatedAt)}（本地时间）` : '快照 · —';
     snapTime.title = b?.generatedAt ?? '';
     readRef.textContent = g?.currentBranch ?? '';

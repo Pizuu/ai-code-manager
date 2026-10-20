@@ -28,7 +28,6 @@ button{font:inherit;color:inherit}
 .rail .ri{width:36px;height:36px;display:grid;place-items:center;border-radius:8px;color:var(--ink2);margin-bottom:0}
 .rail .ri:hover{background:var(--chip)}
 .rail .sp{flex:1}
-.rail .av{width:28px;height:28px;border-radius:50%;background:#C46686;display:grid;place-items:center;color:#fff}
 /* explorer */
 .explorer{width:220px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
 .psel{height:80px;display:flex;align-items:center;gap:10px;padding:0 18px}
@@ -346,7 +345,6 @@ input,select,textarea{font:inherit;color:inherit}
 .ctxmenu .mi{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;border:0;background:none;text-align:left;padding:7px 10px;border-radius:6px;cursor:pointer;color:var(--ink)}
 .ctxmenu .mi .mute{font:11px/1.3 var(--mono);max-width:330px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ctxmenu .mi:hover,.ctxmenu .mi:focus{background:var(--asoft);color:var(--accent);outline:none}
-.ctxmenu .mi-hint{padding:4px 10px 3px;border-top:1px solid var(--line);margin-top:3px;font-size:11px}
 
 /* ───────── 第四部分：界面重新设计 v0.4——对齐 Claude MCP Apps 设计规范（ADR 0009）─────────
  * 规范来源：claude.com/docs/connectors/building/mcp-apps/design-guidelines（Figma「MCP Apps for Claude」UI kit）。
@@ -633,17 +631,17 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .matrix .dot.st-grn{background:var(--color-text-success)}
 /* 列头：拖动调整状态列顺序 */
 .mh{gap:8px}
-.mh.drag{cursor:grab;user-select:none;-webkit-user-select:none;transition:background .12s}
+.mh.drag{cursor:grab;user-select:none;-webkit-user-select:none;transition:background .12s;justify-content:center;text-align:center}
 .mh.drag:hover{background:var(--color-background-secondary)}
 .mh.dragging{opacity:.45}
 .mh.over{box-shadow:inset 2px 0 0 var(--color-border-info);background:var(--color-background-info)}
-/* 泳道行首：纵向分行 containment——标签行（标签不收缩 + 角色可换行）/ 路径行（任意断行）/ 统计徽标行（整组换行），任何内容不越出单元 */
+/* 泳道行首：纵向分行 containment——标签行（整行居中，标签不收缩 + 角色可换行）/ 路径行（任意断行）/ 统计徽标（纵向排列，一行一个），任何内容不越出单元 */
 .lanec{padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0;overflow:hidden;color:var(--color-text-secondary)}
-.lanec .lr1{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
-.lanec .ltag{flex:none;border-radius:4px;padding:1px 6px;font-size:var(--font-body);font-weight:600;color:#fff;white-space:nowrap}
+.lanec .lr1{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px 8px;min-width:0}
+.lanec .ltag{flex:none;border-radius:4px;padding:1px 6px;font-size:var(--font-body);font-weight:600;color:#fff;white-space:nowrap;text-align:center}
 .lanec .o{flex:0 1 auto;min-width:0;font-weight:var(--font-weight-normal);color:var(--color-text-secondary);overflow-wrap:anywhere}
 .lanec .g{display:block;margin:0;color:var(--color-text-tertiary);white-space:normal;overflow-wrap:anywhere;word-break:normal}
-.lanec .s{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:0}
+.lanec .s{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:flex-start;gap:4px;margin-top:0}
 .lanec .lb{display:inline-flex;flex:none;align-items:center;height:18px;padding:0 6px;border-radius:var(--border-radius-sm);font-size:11px;line-height:18px;white-space:nowrap;background:var(--color-background-secondary);color:var(--color-text-secondary)}
 .lanec .lb.blu{background:var(--color-background-info);color:var(--color-text-info)}
 .lanec .lb.amb{background:var(--color-background-warning);color:var(--color-text-warning)}
@@ -724,6 +722,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 #wb-git .prl{flex:1 1 0;height:auto;min-height:110px}
 #wb-git .gq{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
 .gq .q{padding:6px 8px;margin:6px -8px 0;border-radius:var(--border-radius-md);transition:background .12s,opacity .12s}
+.gq .q:nth-child(even){background:var(--color-background-secondary)}
 .gq .q.linked{cursor:pointer}
 .gq .q.linked:hover{background:var(--color-background-secondary)}
 .gq .q.hl{background:var(--color-background-info);box-shadow:inset 2px 0 0 var(--color-border-info)}
@@ -731,7 +730,8 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .gq .q .br{font-size:11px;color:var(--color-text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
 /* Worktree 与 Agent 视图 */
 .agx{grid-template-columns:minmax(0,1fr) 340px}
-.agx .sec.first{margin-top:4px}
+.agx .sec.first{margin-top:16px}
+.agx .cfgcol>.panel.cfg:first-child{margin-top:16px}
 .lanes{border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);overflow:hidden}
 .lr{display:grid;grid-template-columns:88px 104px minmax(0,1.1fr) minmax(0,1fr);gap:12px;padding:9px 12px;align-items:center;font-size:var(--font-body);border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
 .lr.lh{border-top:0;background:var(--color-background-secondary);font-size:var(--font-caption);color:var(--color-text-secondary);padding:7px 12px}
@@ -745,6 +745,11 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .kv .v{color:var(--color-text-primary);word-break:break-all}
 .kv .hint{grid-column:2;font-size:var(--font-caption);color:var(--color-text-tertiary)}
 .panel.cfg .field select{height:32px}
+.sflist{display:flex;flex-direction:column}
+.sflist .sfrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary);font-size:var(--font-body)}
+.sflist .sfrow:last-child{border-bottom:0;padding-bottom:0}
+.sflist .sfrow .mute{display:flex;flex:none}
+.sflist .sfrow .mono{min-width:0;word-break:break-all}
 .cmds>div{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:3px 0;white-space:nowrap}
 .cmds>div>span{font-family:var(--sans);color:var(--color-text-tertiary);overflow:hidden;text-overflow:ellipsis}
 #wb-git .pr .fx12{flex-wrap:wrap;row-gap:2px}
