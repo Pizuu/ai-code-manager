@@ -1,0 +1,125 @@
+{
+ "available": true,
+ "generatedAt": "2026-10-20T11:00:00+08:00",
+ "integrationBranch": "hark-dev",
+ "mainBranch": "main",
+ "maxParallel": 4,
+ "lanes": [
+  {
+   "name": "contracts",
+   "globs": [
+    "contracts/*",
+    "specs/*"
+   ],
+   "ownerRole": "coordinator"
+  },
+  {
+   "name": "backend",
+   "globs": [
+    "src/backend/*",
+    "tests/*/backend/*"
+   ],
+   "ownerRole": "worker"
+  }
+ ],
+ "shared": [
+  "AGENTS.md",
+  "package.json"
+ ],
+ "feature": {
+  "id": "001-agent-desktop",
+  "dir": "specs/001-agent-desktop",
+  "title": "桌面 AI 编程 Agent（MVP）",
+  "status": "Implemented",
+  "stages": [
+   {
+    "key": "spec",
+    "label": "规格",
+    "done": true,
+    "detail": "16 FR · 7 SC"
+   },
+   {
+    "key": "checklists",
+    "label": "Checklist",
+    "done": true,
+    "detail": "29/29"
+   }
+  ],
+  "tasksDone": 39,
+  "tasksTotal": 41
+ },
+ "cards": [
+  {
+   "id": "T-001",
+   "title": "冻结 v1 契约与规格",
+   "lane": "contracts",
+   "frs": [
+    "FR-001"
+   ],
+   "frsLabel": "FR-001",
+   "specTaskIds": [
+    "T001"
+   ],
+   "branch": "feat/contracts/T-001-spec-contracts",
+   "prTarget": "hark-dev",
+   "deps": [],
+   "unmetDeps": [],
+   "assignee": "coordinator",
+   "declaredStatus": "done",
+   "status": "merged",
+   "declaredMismatch": false,
+   "goal": "冻结契约",
+   "acceptance": [
+    {
+     "text": "契约合入",
+     "done": true
+    }
+   ],
+   "file": "docs/tasks/T-001.md",
+   "merge": {
+    "sha": "34a277a0000000000000000000000000000000",
+    "short": "34a277a",
+    "time": "2026-10-20T09:00:00+08:00"
+   },
+   "ahead": null,
+   "behind": null,
+   "worktree": null,
+   "laneOk": true,
+   "changedFiles": 27,
+   "lastActivity": "2026-10-20T09:00:00+08:00"
+  },
+  {
+   "id": "T-011",
+   "title": "Electron E2E 核心路径",
+   "lane": "frontend",
+   "frs": [],
+   "frsLabel": "—",
+   "specTaskIds": [
+    "T040"
+   ],
+   "branch": "feat/frontend/T-011-e2e",
+   "prTarget": "hark-dev",
+   "deps": [
+    "T-010"
+   ],
+   "unmetDeps": [],
+   "assignee": "（待派发）",
+   "declaredStatus": "ready",
+   "status": "ready",
+   "declaredMismatch": false,
+   "goal": "E2E",
+   "acceptance": [],
+   "file": "docs/tasks/T-011.md",
+   "merge": null,
+   "ahead": null,
+   "behind": null,
+   "worktree": null,
+   "laneOk": null,
+   "changedFiles": 0,
+   "lastActivity": null
+  }
+ ],
+ "contractVersion": "v1",
+ "boardFile": "docs/tasks/BOARD.md",
+ "conflicts": []
+}
