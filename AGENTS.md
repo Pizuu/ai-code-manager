@@ -73,7 +73,7 @@
 ## 多 Agent 并行规则
 
 - 完整流程：`docs/development/multi-agent.md`；角色：`docs/agents/coordinator.md`、`docs/agents/worker.md`。
-- 泳道：`contracts`、`frontend`、`backend`、`docs`、`infra`（`.agents/lanes.conf`）。一张任务卡 = 一个泳道 = 一个分支 `feat/<泳道>/<任务>` = 一个指向 `dev` 的 PR。
+- 泳道：`contracts`、`frontend`、`backend`、`docs`、`infra`（`.agents/lanes.conf`）。一张任务卡 = 一个泳道 = 一个分支 `feat/<泳道>/<任务>` = 一个指向 `hark-dev` 的 PR。
 - Spec Kit：宪法 `.specify/memory/constitution.md`，规格在 `specs/<NNN-功能>/`（spec / plan / tasks）；命令用 `$speckit-specify` 等 `speckit` 技能。
 - 契约先行：写代码前先读宪法、spec.md 与 `contracts/`；worker 分支不得修改 `specs/`、`contracts/`。
 - 不得修改泳道外文件或共享热点文件；CI 中由 `scripts/check-lane.sh` 强制检查。

@@ -2,7 +2,7 @@ name: CI
 
 "on":
   push:
-    branches: [main, dev]
+    branches: [main, hark-dev]
   pull_request: {}
 
 permissions:
