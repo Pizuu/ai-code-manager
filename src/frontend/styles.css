@@ -144,6 +144,7 @@ select.chip{border:0;outline:none;cursor:pointer;font-family:var(--sans);appeara
 .ctxp .h{display:flex;justify-content:space-between}
 .ctxp .k{color:var(--mute);margin-top:16px}
 .ctxp .v{margin-top:4px;color:var(--ink);word-break:break-word}
+.ctxp .v.tbox{border:1px solid var(--line);border-radius:8px;max-height:220px;overflow-y:auto;padding:6px 8px}
 .ctxp .v.mono{font-size:11px}
 .ctxp hr{border:0;border-top:1px solid var(--line);margin:18px 0 0}
 .ctxp ul{list-style:none;margin:4px 0 0;padding:0}.ctxp li{margin:2px 0}
