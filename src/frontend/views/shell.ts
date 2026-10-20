@@ -12,8 +12,10 @@ import { store, type ViewId } from '../store.ts';
 
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成' };
 const NAV: ReadonlyArray<[ViewId, string, IconName]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git 与集成', 'git']];
-/** 原型 treeHtml 中展开显示子项的目录。 */
-const EXPAND: ReadonlySet<string> = new Set(['.agents', '.specify', 'src', 'specs', 'contracts']);
+/** 默认展开的顶层目录（原型 treeHtml）；之后由用户点击目录折叠 / 展开。 */
+const EXPAND: readonly string[] = ['.agents', '.specify', 'src', 'specs', 'contracts'];
+/** 整棵目录树折叠状态（仅本机界面偏好）。 */
+const TREE_COLLAPSED_KEY = 'acm.explorer.treeCollapsed';
 
 export interface ShellHooks {
   onNewSession(): void;
@@ -68,12 +70,36 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   }
   const readRef = h('span', { class: 'mono' });
   const tree = h('div', { class: 'tree' });
-  const policyFiles = h('div', { class: 'mono files' });
-  const policy = h('div', { class: 'policy' },
-    h('div', { class: 'h' }, icon('lock'), h('span', {}, '共享热点仅 Coordinator 修改')),
-    policyFiles,
-    h('div', { class: 'mt4' }, '只能由 coordinator 在 int/* 分支上修改（lanes.conf @shared）'));
-  const explorer = h('aside', { class: 'explorer' }, psel, navloc, nav, h('div', { class: 'exh' }, h('span', {}, '项目结构'), readRef), tree, policy);
+  tree.hidden = localStorage.getItem(TREE_COLLAPSED_KEY) === '1';
+  const exToggle = h('button', { class: `exh-t${tree.hidden ? '' : ' open'}`, title: '折叠 / 展开项目结构', attrs: { type: 'button', 'aria-expanded': String(!tree.hidden) } }, icon('caret', 12), h('span', {}, '项目结构'));
+  exToggle.addEventListener('click', () => {
+    tree.hidden = !tree.hidden;
+    exToggle.classList.toggle('open', !tree.hidden);
+    exToggle.setAttribute('aria-expanded', String(!tree.hidden));
+    localStorage.setItem(TREE_COLLAPSED_KEY, tree.hidden ? '1' : '0');
+  });
+  const moreBtn = h('button', { class: 'exh-more', title: '更多操作', attrs: { type: 'button', 'aria-haspopup': 'menu' } }, icon('more', 14));
+  const explorer = h('aside', { class: 'explorer' }, psel, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, moreBtn), tree);
+
+  // 「⋯」菜单：当前只支持单项目根（无多文件夹工作区），「打开文件夹」= 切换项目（project:pick）
+  const exMenu = h('div', { class: 'ctxmenu exmenu', attrs: { role: 'menu' } });
+  exMenu.hidden = true;
+  document.body.append(exMenu);
+  const menuItem = (label: string, run: () => void) => h('button', { class: 'mi', attrs: { type: 'button', role: 'menuitem' }, on: { click: () => { exMenu.hidden = true; run(); } } }, h('span', {}, label));
+  moreBtn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (!exMenu.hidden) { exMenu.hidden = true; return; }
+    exMenu.replaceChildren(
+      menuItem('打开文件夹…（切换项目）', () => void pickProject()),
+      menuItem('刷新目录', () => { kidsCache.clear(); void renderTree(); }),
+      menuItem('全部折叠', () => { expanded.clear(); void renderTree(); }));
+    const r = moreBtn.getBoundingClientRect();
+    exMenu.hidden = false;
+    exMenu.style.left = `${Math.max(8, r.right - exMenu.offsetWidth)}px`;
+    exMenu.style.top = `${r.bottom + 4}px`;
+  });
+  document.addEventListener('click', (ev) => { if (!exMenu.hidden && !exMenu.contains(ev.target as Node)) exMenu.hidden = true; });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') exMenu.hidden = true; });
 
   // ── workspace header（原型 header()）──
   const crumbProject = h('span');
@@ -92,8 +118,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     git: h('div', { class: 'ws-view wb', attrs: { id: 'wb-git' } }),
   };
   const statusL = h('span');
-  const statusR = h('span');
-  const status = h('footer', { class: 'status' }, statusL, statusR);
+  const status = h('footer', { class: 'status' }, statusL);
   const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, status);
   app.append(rail, explorer, ws);
 
@@ -113,45 +138,52 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     const b = store.state.board;
     const g = store.state.git;
     const f = b?.feature;
-    crumbFeature.textContent = f ? `${f.id}${f.title ? ` · ${f.title}` : ''}` : '—';
+    crumbFeature.textContent = f ? f.id : '—';
+    crumbFeature.title = f ? `${f.id}${f.title ? ` · ${f.title}` : ''}` : '';
     crumbChip.textContent = g?.available ? (g.remotes.length ? `远端 ${g.remotes.join(',')}` : '本地仓库') : '非 Git 仓库';
     snapTime.textContent = b ? `快照 · ${ymdhm(b.generatedAt)}（本地时间）` : '快照 · —';
     snapTime.title = b?.generatedAt ?? '';
     readRef.textContent = b?.integrationBranch ?? g?.integrationBranch ?? '';
-    clear(policyFiles);
-    policyFiles.textContent = b?.shared.length ? b.shared.join('、') : '未配置 .agents/lanes.conf';
     if (g?.available) {
       statusL.replaceChildren(h('span', { class: 'dot grn' }), `本地工作区 ${g.currentBranch ?? ''}（${g.worktrees.length} 个 worktree · ${g.dirtyCount} 个未提交文件）`);
-      statusR.textContent = `${g.remotes.length ? `远端 ${g.remotes.join(',')}` : '无 Git 远端'}\u3000·\u3000所有状态由 git 历史推导`;
     } else {
-      statusL.replaceChildren(h('span', { class: 'dot' }), store.state.project ? (g?.reason ?? '读取中…') : '未打开项目');
-      statusR.textContent = store.state.workspaceError ?? '';
+      statusL.replaceChildren(h('span', { class: 'dot' }), store.state.project ? (store.state.workspaceError ?? g?.reason ?? '读取中…') : '未打开项目');
     }
     renderProject();
   };
 
   const nodeAttrs = (n: FileNode) => sendAttrs({ kind: 'file', path: n.relPath, dir: n.kind === 'dir' });
-  const fileNodeEl = (n: FileNode) => {
-    const auth = n.name === 'contracts';
+  /** 展开的目录（relPath）；目录单击折叠 / 展开，子项按需读取并缓存。 */
+  const expanded = new Set<string>(EXPAND);
+  const kidsCache = new Map<string, FileNode[]>();
+  const fileNodeEl = (n: FileNode, depth: number) => {
+    const dir = n.kind === 'dir';
+    const auth = depth === 0 && n.name === 'contracts';
     const tag = auth && store.state.board?.contractVersion ? h('span', { class: 'tag' }, ` ↗ 契约 ${store.state.board.contractVersion}`) : null;
-    const el = h('div', { class: `te${auth ? ' auth' : ''}${n.kind === 'file' ? ' click' : ''}`, title: n.relPath, attrs: nodeAttrs(n) },
-      icon(n.kind === 'dir' ? 'dir' : 'file', 14), h('span', { class: 'nm' }, `${n.name}${n.kind === 'dir' ? '/' : ''}`), tag);
-    if (n.kind === 'file') el.addEventListener('click', () => hooks.onFileClick(n.relPath));
+    const open = dir && expanded.has(n.relPath);
+    const el = h('div', { class: `te click${auth ? ' auth' : ''}${dir ? ' dir' : ''}${open ? ' open' : ''}`, title: n.relPath, attrs: { ...nodeAttrs(n), ...(dir ? { 'aria-expanded': String(open) } : {}) } },
+      dir ? h('span', { class: 'tw' }, icon('caret', 12)) : h('span', { class: 'tw' }),
+      icon(dir ? 'dir' : 'file', 14), h('span', { class: 'nm' }, `${n.name}${dir ? '/' : ''}`), tag);
+    el.style.paddingLeft = `${4 + depth * 14}px`;
+    el.addEventListener('click', () => {
+      if (!dir) return hooks.onFileClick(n.relPath);
+      if (open) expanded.delete(n.relPath);
+      else expanded.add(n.relPath);
+      void renderTree();
+    });
     return el;
   };
-  /** 原型：子项两两一行，以「 · 」连接；003 起每个名字单独可点击 / 右键。 */
-  const kidRowEl = (pair: FileNode[]) => {
-    const first = pair[0] as FileNode;
-    const nm = h('span', { class: 'nm' });
-    pair.forEach((k, i) => {
-      if (i) nm.append(' · ');
-      const part = h('span', { class: `part${k.kind === 'file' ? ' click' : ''}`, title: k.relPath, attrs: nodeAttrs(k) }, `${k.name}${k.kind === 'dir' ? '/' : ''}`);
-      if (k.kind === 'file') part.addEventListener('click', () => hooks.onFileClick(k.relPath));
-      nm.append(part);
-    });
-    return h('div', { class: 'te kid' }, icon(first.kind === 'dir' ? 'dir' : 'file', 14), nm);
-  };
 
+  // 按名称顺序（目录与文件混排，同 git ls-tree）
+  const byName = (a: FileNode, b: FileNode) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  const kidsOf = async (rel: string): Promise<FileNode[]> => {
+    let k = kidsCache.get(rel);
+    if (!k) {
+      k = (await api.invoke('fs:tree', rel)).sort(byName);
+      kidsCache.set(rel, k);
+    }
+    return k;
+  };
   let treeToken = 0;
   const renderTree = async () => {
     const token = ++treeToken;
@@ -160,17 +192,14 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       return;
     }
     try {
-      // 原型按 git ls-tree 的名称顺序（目录与文件混排）
-      const byName = (a: FileNode, b: FileNode) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-      const top = (await api.invoke('fs:tree', '')).sort(byName);
       const rows: HTMLElement[] = [];
-      for (const n of top) {
-        rows.push(fileNodeEl(n));
-        if (n.kind === 'dir' && EXPAND.has(n.name)) {
-          const kids = (await api.invoke('fs:tree', n.relPath)).sort(byName);
-          for (let i = 0; i < kids.length; i += 2) rows.push(kidRowEl(kids.slice(i, i + 2)));
+      const walk = async (rel: string, depth: number): Promise<void> => {
+        for (const n of await kidsOf(rel)) {
+          rows.push(fileNodeEl(n, depth));
+          if (n.kind === 'dir' && expanded.has(n.relPath)) await walk(n.relPath, depth + 1);
         }
-      }
+      };
+      await walk('', 0);
       if (token === treeToken) tree.replaceChildren(...rows);
     } catch (e) {
       if (token === treeToken) tree.replaceChildren(h('div', { class: 'mute pad8' }, errorText(e)));
@@ -225,6 +254,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
 
   store.on('workspace', renderChrome);
   store.on('project', () => {
+    kidsCache.clear();
+    expanded.clear();
+    for (const d of EXPAND) expanded.add(d);
     renderChrome();
     void renderTree();
     void refreshWorkspace();

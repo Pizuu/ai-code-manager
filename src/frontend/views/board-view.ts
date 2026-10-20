@@ -89,8 +89,7 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     // 功能概览
     pad.append(h('div', { class: 'fo' },
       h('div', {},
-        h('div', { class: 't' }, h('span', {}, F ? `${F.id} · ${F.title}` : '未找到 specs/NNN-*'), h('span', { class: `chip ${allMerged ? 'grn' : 'acc'}` }, allMerged ? '已全部合入' : '实施中'), F?.status ? h('span', { class: 'chip', title: 'spec.md Status 字段原文' }, `spec.md：${F.status}`) : null),
-        h('div', { class: 'd' }, `${cards.length} 张任务卡 · ${snap.lanes.length} 条路径泳道 + @shared · 规格与契约${frozen ? `已冻结（合入 ${integ}）` : '未冻结'}，${countBy(cards, 'merged')} 张已合入`)),
+        h('div', { class: 't' }, h('span', {}, F ? `${F.id} · ${F.title}` : '未找到 specs/NNN-*'), h('span', { class: `chip ${allMerged ? 'grn' : 'acc'}` }, allMerged ? '已全部合入' : '实施中'))),
       h('button', { class: 'btn', on: { click: hooks.openGit } }, '查看集成队列')));
     // 进度条
     const stg = h('div', { class: 'stg' });
@@ -117,13 +116,19 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       f.q = q.value;
       renderMatrix(snap);
     });
-    const laneSel = h('select', { class: 'chip acc' }, h('option', { attrs: { value: '' } }, '全部泳道'), ...laneRows(snap).map((l) => h('option', { attrs: { value: l } }, l)));
+    /** 下拉框外包一层放 chevron（ADR 0009 控件样式）；选中非「全部」时高亮。 */
+    const selWrap = (sel: HTMLSelectElement) => {
+      const sync = () => sel.parentElement?.classList.toggle('on', sel.value !== '');
+      sel.addEventListener('change', sync);
+      return h('span', { class: `selw${sel.value ? ' on' : ''}` }, sel, icon('caret', 14));
+    };
+    const laneSel = h('select', { class: 'chip', attrs: { 'aria-label': '按泳道筛选' } }, h('option', { attrs: { value: '' } }, '全部泳道'), ...laneRows(snap).map((l) => h('option', { attrs: { value: l } }, l)));
     laneSel.value = f.lane;
     laneSel.addEventListener('change', () => {
       f.lane = laneSel.value;
       renderMatrix(snap);
     });
-    const agentSel = h('select', { class: 'chip' }, h('option', { attrs: { value: '' } }, '全部 Agent'), ...uniqueAssignees(cards).map((a) => h('option', { attrs: { value: a } }, a)));
+    const agentSel = h('select', { class: 'chip', attrs: { 'aria-label': '按 Agent 筛选' } }, h('option', { attrs: { value: '' } }, '全部 Agent'), ...uniqueAssignees(cards).map((a) => h('option', { attrs: { value: a } }, a)));
     agentSel.value = f.agent;
     agentSel.addEventListener('change', () => {
       f.agent = agentSel.value;
@@ -135,7 +140,7 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       tog.classList.toggle('on', f.done);
       renderMatrix(snap);
     });
-    pad.append(h('div', { class: 'ctl' }, q, h('span', { class: 'ibtn' }, icon('filt')), laneSel, agentSel, h('span', { class: 'flex1' }), h('span', { class: 'mute' }, '按泳道分组'), tog));
+    pad.append(h('div', { class: 'ctl' }, q, h('span', { class: 'ibtn' }, icon('filt')), selWrap(laneSel), selWrap(agentSel), h('span', { class: 'flex1' }), h('span', { class: 'mute' }, '按泳道分组'), tog));
     // 不一致项默认折叠为一行摘要（v0.4 重新设计，ADR 0009），展开查看明细
     if (snap.conflicts.length) pad.append(h('details', { class: 'conflicts' }, h('summary', {}, h('b', { class: 'b600' }, `声明与 git 不一致 ${snap.conflicts.length} 项`), h('span', { class: 'mute' }, snap.conflicts[0] ?? '')), h('div', { class: 'list' }, ...snap.conflicts.map((c) => h('div', {}, `· ${c}`)))));
     matrixHost = h('div');

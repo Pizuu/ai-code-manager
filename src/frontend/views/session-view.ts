@@ -2,7 +2,8 @@
  * 任务会话板块（FR-109、FR-111，ADR 0005）：原型 renderSession() 的三列 .sx——
  * 左列 .slist = 本机会话列表；中列 section.chat = 对话（chat.ts）；右列 .ctxp = 会话 / 任务上下文。
  * 会话标题含任务号（如 T-015）且看板中有该卡时，右列显示原型的「任务上下文」，否则显示「会话上下文」。
- * 003：中列顶部标签页条 =「对话」+ 已打开的只读文件（code-view.ts）；未打开文件时隐藏标签条。
+ * 003：中列 = 对话 + 文件窗格并列（T-037）；文件窗格含已打开只读文件的标签条（code-view.ts），未打开文件时隐藏。
+ * 会话置顶只是本机界面偏好，存 localStorage（不经 IPC）。
  */
 import type { BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
@@ -37,6 +38,16 @@ export interface SessionView {
 
 /** 同时保留的文件标签上限，超出关闭最早打开的。 */
 const MAX_FILE_TABS = 8;
+const PINNED_KEY = 'acm.pinnedSessions';
+
+function loadPinned(): Set<string> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(PINNED_KEY) ?? '[]');
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
 
 /** 会话标题中的任务号 → 看板任务卡。 */
 export function linkedCardFor(title: string | undefined, cards: readonly BoardCard[]): BoardCard | null {
@@ -52,33 +63,41 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   // ── 左列 ──
   const count = h('span', { class: 'mute' });
   const search = h('input', { class: 'inp', attrs: { placeholder: '搜索会话' } });
+  const pinned = loadPinned();
+  const togglePin = (id: string) => {
+    if (pinned.has(id)) pinned.delete(id);
+    else pinned.add(id);
+    localStorage.setItem(PINNED_KEY, JSON.stringify([...pinned]));
+    renderList();
+  };
   const feat = h('div', { class: 'mute feat' });
   const list = h('div');
   const slist = h('div', { class: 'slist' },
-    h('div', { class: 'hd' }, h('span', {}, '项目会话'), count), search, feat, list,
-    h('div', { class: 'mute foot' }, icon('pr'), h('div', { class: 'mt6' }, '一个会话 · 一个 agent', h('br'), '工具调用随会话本机持久化')));
+    h('div', { class: 'hd' }, h('span', {}, '项目会话'), count), search, feat, list);
 
   const chatCol = h('section', { class: 'chat' });
   const codePane = h('section', { class: 'codev' });
-  codePane.hidden = true;
   const ftabs = h('div', { class: 'ftabs', attrs: { role: 'tablist' } });
-  const mid = h('div', { class: 'mid' }, ftabs, chatCol, codePane);
+  const filePane = h('div', { class: 'fpane' }, ftabs, codePane);
+  filePane.hidden = true;
+  const mid = h('div', { class: 'mid split' }, chatCol, filePane);
   const ctxp = h('aside', { class: 'ctxp' });
-  container.append(h('div', { class: 'sx' }, slist, mid, ctxp));
+  const sx = h('div', { class: 'sx' }, slist, mid, ctxp);
+  container.append(sx);
   const code = mountCodeView(codePane, { sendFile: hooks.sendFile });
 
-  // ── 中列标签页（对话 + 文件）──
+  // ── 文件窗格标签页（与对话并列）──
   const files: string[] = [];
-  let active: string | null = null; // null = 对话
+  let active: string | null = null; // null = 未打开文件
   const renderTabs = () => {
-    ftabs.hidden = files.length === 0;
+    filePane.hidden = files.length === 0;
+    sx.classList.toggle('has-file', files.length > 0);
     const tab = (label: string, on: boolean, onClick: () => void, title: string, onClose?: () => void) => {
       const el = h('div', { class: `ft${on ? ' on' : ''}`, title, attrs: { role: 'tab' }, on: { click: onClick } }, h('span', { class: 'nm' }, label));
       if (onClose) el.append(h('button', { class: 'x', title: '关闭', attrs: { type: 'button' }, on: { click: (ev) => { ev.stopPropagation(); onClose(); } } }, '✕'));
       return el;
     };
     ftabs.replaceChildren(
-      tab('对话', active === null, () => setActive(null), '任务会话对话'),
       ...files.map((f) => {
         const el = tab(f.split('/').pop() ?? f, active === f, () => setActive(f), f, () => closeFile(f));
         for (const [k, v] of Object.entries(sendAttrs({ kind: 'file', path: f, dir: false }))) el.setAttribute(k, v);
@@ -88,8 +107,6 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const setActive = (f: string | null) => {
     const changed = active !== f;
     active = f;
-    chatCol.hidden = f !== null;
-    codePane.hidden = f === null;
     renderTabs();
     if (f && changed) void code.show(f);
   };
@@ -127,14 +144,22 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     const cur = store.state.current?.id;
     const q = query.trim().toLowerCase();
     const items = store.state.sessions.filter((s) => !q || s.title.toLowerCase().includes(q));
+    // 置顶的排在前面，其余保持原顺序（sort 稳定）
+    items.sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
     count.textContent = String(store.state.sessions.length);
     feat.textContent = store.state.board?.feature ? `当前 Feature · ${store.state.board.feature.id}` : store.state.project ? `项目 · ${store.state.project.name}` : '未打开项目';
     clear(list);
     if (!items.length) list.append(h('div', { class: 'mute pad8' }, q ? '无匹配会话' : '暂无会话'));
     for (const s of items) {
       const del = h('button', { class: 'del', title: '删除会话' }, '✕');
-      const el = h('a', { class: `si${s.id === cur ? ' on' : ''}` },
-        h('div', { class: 'a' }, h('span', { class: 'who' }, agentWho(s.agent, st)), h('span', { class: 'st' }, statusOf(s)), h('span', { class: 'tm' }, hm(s.updatedAt) || '—'), del),
+      const isPinned = pinned.has(s.id);
+      const pin = h('button', { class: `pin${isPinned ? ' on' : ''}`, title: isPinned ? '取消置顶' : '置顶', attrs: { type: 'button', 'aria-pressed': String(isPinned) } }, icon('pin', 12));
+      pin.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        togglePin(s.id);
+      });
+      const el = h('a', { class: `si${s.id === cur ? ' on' : ''}${isPinned ? ' pinned' : ''}` },
+        h('div', { class: 'a' }, h('span', { class: 'who' }, agentWho(s.agent, st)), h('span', { class: 'st' }, statusOf(s)), h('span', { class: 'tm' }, hm(s.updatedAt) || '—'), pin, del),
         h('div', { class: 'b' }, s.title),
         h('div', { class: 'c' }, `${s.messageCount} 条消息 · ${isCli(s.agent, st) ? '外部 CLI' : '内置 agent'}`));
       el.addEventListener('click', () => void hooks.selectSession(s.id).catch((e: unknown) => chat.notify(errorText(e))));
@@ -269,5 +294,6 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   renderList();
   renderCtx();
   void refreshTasks().catch(() => undefined);
-  return { chat, openFile, showChat: () => setActive(null) };
+  // 对话与文件窗格并列，对话始终可见，showChat 无需切换
+  return { chat, openFile, showChat: () => undefined };
 }

@@ -546,3 +546,61 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 /* 审批卡片：项目根以外的目录（T128）用 danger 语义色 */
 .verify.tool .appr.danger{margin:10px -12px -10px;padding:10px 12px;background:var(--color-background-danger);border-top-color:var(--color-border-danger);border-radius:0 0 var(--border-radius-lg) var(--border-radius-lg)}
 .verify.tool .appr.danger .q{color:var(--color-text-danger)}
+/* ── T-037：UI 定位记录批量调整（只用 ADR 0009 token） ── */
+/* 项目栏：标题可折叠、引用分支提亮、⋯ 菜单 */
+.exh{align-items:center;gap:6px;padding-right:10px}
+.exh .mono{margin-left:auto;color:var(--color-text-secondary)}
+.exh-t{display:flex;align-items:center;gap:4px;border:0;background:none;padding:0;color:inherit;font:inherit;cursor:pointer}
+.exh-t:hover{color:var(--color-text-primary)}
+.exh-t svg{transform:rotate(-90deg);transition:transform .12s}
+.exh-t.open svg{transform:none}
+.exh-more{width:24px;height:24px;display:grid;place-items:center;border:0;background:none;border-radius:var(--border-radius-sm);color:var(--color-text-tertiary);cursor:pointer}
+.exh-more:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.exmenu{min-width:180px}
+.exmenu .mi{font-size:var(--font-caption)}
+/* 目录树：目录单击折叠 / 展开 */
+.te .tw{flex:none;width:12px;display:grid;place-items:center;color:var(--color-text-tertiary)}
+.te.dir .tw svg{transform:rotate(-90deg);transition:transform .12s}
+.te.dir.open .tw svg{transform:none}
+.te.click:hover{background:var(--color-background-secondary)}
+/* 状态栏只剩左侧一项 */
+.status{justify-content:flex-start}
+/* 会话列表：搜索框收小；置顶 */
+.slist .inp{height:28px;padding:0 8px;font-size:var(--font-caption);margin:8px 0}
+.si .pin{visibility:hidden;display:grid;place-items:center;border:0;background:transparent;color:var(--color-text-tertiary);padding:0 2px;cursor:pointer}
+.si:hover .pin,.si .pin.on{visibility:visible}
+.si .pin.on{color:var(--accent)}
+.si .pin:hover{color:var(--color-text-primary)}
+/* 看板下拉：appearance:none + chevron，token 配色，选中筛选时高亮 */
+.selw{position:relative;display:inline-flex;align-items:center;flex:none}
+.selw select.chip{appearance:none;-webkit-appearance:none;height:var(--h-ctl);min-width:96px;max-width:200px;padding:0 28px 0 10px;border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);font-size:var(--font-caption);line-height:var(--h-ctl);text-overflow:ellipsis}
+.selw select.chip:hover{border-color:var(--color-border-primary)}
+.selw select.chip:focus-visible{outline:2px solid var(--color-ring-primary);outline-offset:1px}
+.selw>svg{position:absolute;right:8px;pointer-events:none;color:var(--color-text-tertiary)}
+.selw.on select.chip{background:var(--color-background-secondary);border-color:var(--color-border-primary);font-weight:var(--font-weight-semibold)}
+.selw select.chip option{background:var(--color-background-primary);color:var(--color-text-primary);font-weight:var(--font-weight-normal)}
+/* 任务会话中列：对话 + 文件窗格并列 */
+.mid.split{flex-direction:row}
+.mid.split>.chat{flex:1 1 0;min-width:320px}
+.fpane{flex:1 1 0;min-width:0;display:flex;flex-direction:column;border-left:var(--border-width-regular) solid var(--color-border-tertiary);background:var(--color-background-primary)}
+.fpane .ftabs{padding:0 8px}
+@media (max-width:1199px){
+  .mid.split{flex-direction:column}
+  .mid.split>.chat{min-width:0;min-height:0}
+  .fpane{border-left:0;border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
+}
+/* Git 提交图悬停提示：浮层面（primary + 发丝线 + shadow-lg），亮暗都可读 */
+.tip{background:var(--color-background-primary);color:var(--color-text-primary);border:var(--border-width-regular) solid var(--color-border-secondary);box-shadow:var(--shadow-lg);border-radius:var(--border-radius-md);font-size:var(--font-caption)}
+.tip .mono{color:var(--color-text-secondary)}
+.tip .mute{color:var(--color-text-tertiary)}
+/* 打开文件时对话列变窄：次要说明省略，右侧上下文在窄屏让位 */
+.sx.has-file .thd .r>.mute{display:none}
+.sx.has-file .thd .fx8{min-width:0;overflow:hidden}
+.sx.has-file .thd .fx8>.mute{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.sx.has-file .comp .ft{flex-wrap:wrap;gap:4px 12px}
+.sx.has-file .comp .ft>*{white-space:nowrap}
+.fpane .cvh{gap:8px;padding:0 12px}
+.fpane .cvh>.mute{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+.fpane .cvh .p{flex:0 1 auto;min-width:40px}
+.fpane .cvh .btn{flex:none}
+@media (max-width:1599px){.sx.has-file .ctxp{display:none}}
