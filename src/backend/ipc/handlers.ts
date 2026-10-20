@@ -134,6 +134,7 @@ function requireProject(state: AppState): ProjectInfo {
 function noProjectBoard(now: string): BoardSnapshot {
   return {
     available: false, reason: '请先打开项目文件夹。', generatedAt: now, integrationBranch: 'dev', mainBranch: 'main',
+    integrationRef: 'dev', integrationRefRemote: false, integrationMissing: null,
     maxParallel: null, lanes: [], shared: [], feature: null, features: [], cards: [], contractVersion: null, boardFile: null, conflicts: [],
   };
 }
