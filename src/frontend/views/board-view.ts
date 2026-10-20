@@ -1,7 +1,7 @@
 /**
  * 泳道看板板块（FR-104–FR-106，US2）：DOM 与类名对应 HTML 原型 boardBody()/cardHtml()，数据来自 board:get。
  */
-import type { BoardCard, BoardSnapshot } from '../../../contracts/ipc.ts';
+import type { BoardCard, BoardCardStatus, BoardSnapshot } from '../../../contracts/ipc.ts';
 import { cardLines, COLUMNS, countBy, filterCards, frShort, hm, laneRows, STATUS_META, uniqueAssignees, type BoardFilter } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
@@ -15,6 +15,28 @@ export interface BoardHooks {
   openCard(card: BoardCard): void;
 }
 
+/** 矩阵状态列顺序：仅本机界面偏好，存 localStorage（不经 IPC）。 */
+const COL_ORDER_KEY = 'acm.board.colOrder';
+
+function loadColOrder(): BoardCardStatus[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(COL_ORDER_KEY) ?? '[]');
+    const saved = Array.isArray(v) ? v.filter((x): x is BoardCardStatus => (COLUMNS as readonly unknown[]).includes(x)) : [];
+    const uniq = [...new Set(saved)];
+    return [...uniq, ...COLUMNS.filter((c) => !uniq.includes(c))];
+  } catch {
+    return [...COLUMNS];
+  }
+}
+
+/** 泳道整体状态（看板矩阵行首的语义色圆点）。 */
+function laneState(cards: readonly BoardCard[]): { label: string; cls: string } {
+  if (cards.some((c) => c.status === 'active' || c.status === 'review')) return { label: '执行中', cls: 'blu' };
+  if (cards.some((c) => c.status === 'blocked')) return { label: '等待依赖', cls: 'amb' };
+  if (cards.length && cards.every((c) => c.status === 'merged')) return { label: '已完成', cls: 'grn' };
+  return { label: cards.length ? '可派工' : '空', cls: '' };
+}
+
 function emptyState(title: string, text: string, action?: HTMLElement): HTMLElement {
   return h('div', { class: 'empty-state' }, h('b', {}, title), text, action ? h('div', {}, action) : null);
 }
@@ -22,6 +44,7 @@ function emptyState(title: string, text: string, action?: HTMLElement): HTMLElem
 export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
   const f: BoardFilter = { q: '', lane: '', agent: '', done: true };
   let matrixHost: HTMLElement | null = null;
+  let cols = loadColOrder();
 
   const cardEl = (c: BoardCard, snap: BoardSnapshot) => {
     const l = cardLines(c, snap);
@@ -37,8 +60,42 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     if (!matrixHost) return;
     const vis = filterCards(snap.cards, f);
     const matrix = h('div', { class: 'matrix' });
-    const head = h('div', { class: 'mrow' }, h('div', { class: 'mh mute' }, '泳道 / 所有权'));
-    for (const s of COLUMNS) head.append(h('div', { class: 'mh' }, STATUS_META[s].label, h('span', { class: 'n' }, String(vis.filter((c) => c.status === s && (!f.lane || c.lane === f.lane)).length))));
+    const head = h('div', { class: 'mrow mhead' }, h('div', { class: 'mh mute' }, '泳道 / 所有权'));
+    let dragFrom: BoardCardStatus | null = null;
+    for (const s of cols) {
+      const hc = h('div', { class: 'mh drag', title: '拖动调整列顺序', attrs: { draggable: 'true', 'data-col': s } },
+        h('span', { class: `dot st-${STATUS_META[s].cls || 'none'}` }), STATUS_META[s].label,
+        h('span', { class: 'n' }, String(vis.filter((c) => c.status === s && (!f.lane || c.lane === f.lane)).length)));
+      hc.addEventListener('dragstart', (ev) => {
+        dragFrom = s;
+        hc.classList.add('dragging');
+        ev.dataTransfer?.setData('text/plain', s);
+        if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+      });
+      hc.addEventListener('dragend', () => {
+        dragFrom = null;
+        head.querySelectorAll('.dragging,.over').forEach((x) => x.classList.remove('dragging', 'over'));
+      });
+      hc.addEventListener('dragover', (ev) => {
+        if (!dragFrom || dragFrom === s) return;
+        ev.preventDefault();
+        hc.classList.add('over');
+      });
+      hc.addEventListener('dragleave', () => hc.classList.remove('over'));
+      hc.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        const from = dragFrom;
+        if (!from || from === s) return;
+        const next = cols.filter((c) => c !== from);
+        // 向右拖放到目标之后，向左拖放到目标之前
+        const at = next.indexOf(s) + (cols.indexOf(from) < cols.indexOf(s) ? 1 : 0);
+        next.splice(at, 0, from);
+        cols = next;
+        localStorage.setItem(COL_ORDER_KEY, JSON.stringify(cols));
+        renderMatrix(snap);
+      });
+      head.append(hc);
+    }
     matrix.append(head);
     for (const lane of laneRows(snap).filter((l) => !f.lane || l === f.lane)) {
       const all = snap.cards.filter((c) => c.lane === lane);
@@ -47,14 +104,22 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       const globs = (lane === '@shared' ? snap.shared : (meta?.globs ?? [])).filter((g) => !g.startsWith('!'));
       const owners = [...new Set(all.map((c) => c.assignee).filter(Boolean))];
       const act = all.filter((c) => c.status === 'active' || c.status === 'review').length;
-      const row = h('div', { class: 'mrow' }, h('div', { class: 'lanec' },
-        h('div', {}, lane),
-        h('div', { class: 'g' }, globs.slice(0, 2).join(' · ') + (globs.length > 2 ? ' …' : '')),
+      const blk = all.filter((c) => c.status === 'blocked').length;
+      const mrg = all.filter((c) => c.status === 'merged').length;
+      const st = lane === '@shared' ? { label: '共享热点 · 受保护', cls: 'amb' } : laneState(all);
+      const badge = (text: string, cls = '', title = '') => h('span', { class: `lb${cls ? ` ${cls}` : ''}`, title }, text);
+      const row = h('div', { class: `mrow${lc.length ? '' : ' empty'}` }, h('div', { class: 'lanec' },
+        h('div', { class: 'nm', title: st.label }, h('span', { class: `dot st-${st.cls || 'none'}` }), h('span', { class: 't' }, lane)),
         h('div', { class: 'o' }, lane === '@shared' ? 'coordinator · int/*' : `${meta?.ownerRole ?? ''}${owners.length ? ` · ${owners.join('/')}` : ''}`),
-        h('div', { class: 's' }, lane === '@shared' ? '共享热点 · 受保护' : `${all.length} 张卡 · 执行中 ${act}`)));
-      for (const s of COLUMNS) {
+        globs.length ? h('div', { class: 'g', title: globs.join('\n') }, globs.slice(0, 2).join(' · ') + (globs.length > 2 ? ' …' : '')) : null,
+        h('div', { class: 's' },
+          lane === '@shared' ? badge('受保护', 'amb', '共享热点，仅 coordinator 修改') : badge(`${all.length} 张`, '', '任务卡总数'),
+          act ? badge(`执行中 ${act}`, 'blu') : null,
+          blk ? badge(`阻塞 ${blk}`, 'amb') : null,
+          mrg ? badge(`已合入 ${mrg}`, 'grn') : null)));
+      for (const s of cols) {
         const cs = lc.filter((c) => c.status === s);
-        row.append(h('div', { class: 'cell' }, ...(cs.length ? cs.map((c) => cardEl(c, snap)) : [h('span', { class: 'empty' }, '—')])));
+        row.append(h('div', { class: `cell${cs.length ? '' : ' none'}` }, ...(cs.length ? cs.map((c) => cardEl(c, snap)) : [h('span', { class: 'empty' }, '—')])));
       }
       matrix.append(row);
     }
@@ -108,7 +173,6 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       h('span', { class: 'sep' }),
       h('span', { class: 'mute' }, `${countBy(cards, 'ready')} 张可派工\u3000·\u3000${countBy(cards, 'blocked')} 张等待依赖\u3000·\u3000${countBy(cards, 'review')} 张待审查\u3000·\u3000${countBy(cards, 'merged')} 张已合入`),
       h('span', { class: 'flex1' }),
-      h('span', { class: 'mute' }, '一个任务 = 一个泳道 = 一个 PR'),
       h('button', { class: 'btn pri dim', attrs: { disabled: '' }, title: '派工由 coordinator 执行（docs/commands/dispatch.md）' }, '派工')));
     // 控件
     const q = h('input', { class: 'inp', attrs: { placeholder: '搜索任务 / FR / 分支', value: f.q } });

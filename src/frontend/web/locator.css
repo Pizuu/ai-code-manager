@@ -1,6 +1,6 @@
 /* Web 预览「UI 定位」与修改记录器样式（仅 npm run web 加载，不进打包）。
- * 层级：定位卡片 / 操作条 > 修改记录卡片 > 工具条 > 悬停框 > 临时标记层；原生 modal 弹窗打开时节点挂入弹窗进入 Top Layer。 */
-.loc-panel,.loc-action-bar{z-index:2147483647}
+ * 层级：操作条 > 修改记录卡片 > 工具条 > 悬停框 > 临时标记层；原生 modal 弹窗打开时节点挂入弹窗进入 Top Layer。 */
+.loc-action-bar{z-index:2147483647}
 .loc-record-panel{z-index:2147483646}
 .loc-bar{z-index:2147483645}
 .loc-box{z-index:2147483644}
@@ -21,18 +21,19 @@
 .loc-tip{position:absolute;left:-2px;top:-24px;white-space:nowrap;background:#1B67B2;color:#fff;font:11px/22px var(--mono);padding:0 8px;border-radius:var(--border-radius-xs)}
 .loc-tip.below{top:auto;bottom:-24px}
 
-/* 卡片（元素定位 / 修改记录共用） */
+/* 卡片（修改记录） */
 .loc-panel{position:fixed;right:16px;bottom:96px;width:520px;max-width:calc(100vw - 32px);max-height:calc(100vh - 140px);overflow:auto;background:var(--color-background-primary);border:var(--border-width-regular) solid var(--color-border-tertiary);border-radius:var(--border-radius-xl);box-shadow:var(--shadow-lg);padding:12px 14px;font:var(--font-caption)/1.5 var(--sans);color:var(--color-text-primary);text-align:left}
 .loc-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
 .loc-head-r{display:flex;align-items:center;gap:8px}
-.loc-x{border:0;background:none;cursor:pointer;color:var(--color-text-tertiary)}
-.loc-row{display:grid;grid-template-columns:64px 1fr;gap:8px;padding:4px 0;border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
-.loc-row .k{color:var(--color-text-tertiary)}
-.loc-row .v{font:11px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all;user-select:all}
+.loc-x{flex:none;width:24px;height:24px;margin-left:auto;display:grid;place-items:center;padding:0;border:0;border-radius:var(--border-radius-sm);background:none;cursor:pointer;color:var(--color-text-tertiary)}
+.loc-x:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
 .loc-status{color:var(--color-text-success);font-size:var(--font-caption);white-space:nowrap}
 
-/* 修改记录卡片：右上角 */
+/* 修改记录卡片：默认右上角，标题栏可拖动 */
 .loc-record-panel{top:16px;right:16px;bottom:auto;width:420px;max-height:calc(100vh - 200px)}
+.loc-drag{cursor:move;user-select:none;-webkit-user-select:none;touch-action:none;margin:-12px -14px 8px;padding:10px 14px 6px}
+.loc-active .loc-drag{cursor:move !important}
+.loc-record-panel.dragging{box-shadow:var(--shadow-lg),0 0 0 1px var(--color-border-info)}
 .loc-copy-all{border:var(--border-width-regular) solid var(--color-background-inverse);background:var(--color-background-inverse);color:var(--color-text-inverse);border-radius:var(--border-radius-md);height:26px;padding:0 10px;cursor:pointer;font-weight:var(--font-weight-semibold)}
 .loc-record-list{display:flex;flex-direction:column}
 .loc-record{display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
@@ -48,6 +49,7 @@
 .loc-act:hover{background:var(--color-background-secondary)}
 .loc-act.on{background:var(--color-background-secondary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:var(--font-weight-semibold)}
 .loc-action-row .loc-status{margin-left:6px}
+.loc-action-row .loc-x{margin-left:6px}
 .loc-editor{display:flex;gap:6px;min-width:220px}
 .loc-note{flex:1;width:0;min-width:0;height:28px;padding:0 8px;border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);font:inherit;outline:none}
 .loc-note:focus{border-color:var(--color-border-info)}
