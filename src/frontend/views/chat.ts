@@ -5,17 +5,14 @@ import type { ChatMessage } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
+import { parseSlashCommand, suggestCommands } from '../lib/slash-commands.ts';
 import { store } from '../store.ts';
 import { renderToolCard, type DiffRenderer } from './tool-card.ts';
 
 export interface ChatHooks {
-  /** 处理输入；返回 true 表示已处理（例如斜杠命令），不再作为普通消息发送。 */
-  interceptInput?(text: string): Promise<boolean>;
   renderDiff?: DiffRenderer;
   /** 头部额外控件（例如权限模式选择器）。 */
   headerExtras?: HTMLElement[];
-  /** 输入框上方的辅助元素（例如斜杠命令提示）。 */
-  composerExtras?(textarea: HTMLTextAreaElement): HTMLElement | null;
 }
 
 export interface ChatView {
@@ -45,8 +42,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks = {}): ChatVi
   const sendBtn = h('button', { class: 'primary' }, '发送');
   const stopBtn = h('button', { class: 'danger' }, '停止');
   const hint = h('span', { class: 'hint' });
-  const extras = hooks.composerExtras?.(textarea) ?? null;
-  const composer = h('div', { class: 'composer' }, h('div', { class: 'composer-inner' }, extras, textarea, h('div', { class: 'composer-row' }, hint, stopBtn, sendBtn)));
+  const slashMenu = h('div', { class: 'slash-menu' });
+  slashMenu.hidden = true;
+  const composer = h('div', { class: 'composer' }, h('div', { class: 'composer-inner' }, slashMenu, textarea, h('div', { class: 'composer-row' }, hint, stopBtn, sendBtn)));
   container.append(header, list, todos, composer);
 
   const pendingDeltas = new Set<string>();
@@ -138,13 +136,57 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks = {}): ChatVi
     renderAll();
   };
 
-  const send = async () => {
-    const text = textarea.value.trim();
+  const renderSlashMenu = () => {
+    const items = suggestCommands(textarea.value);
+    clear(slashMenu);
+    slashMenu.hidden = items.length === 0;
+    for (const c of items) slashMenu.append(h('div', {}, h('b', {}, c.usage), c.description));
+  };
+
+  /** 斜杠命令（FR-013）：本地动作在此执行；返回要发送给 Agent 的文本，或 null 表示已处理。 */
+  const runSlash = async (text: string): Promise<string | null> => {
+    const r = parseSlashCommand(text);
     const s = store.state.current;
-    if (!text || !s) return;
+    switch (r.kind) {
+      case 'none': return text;
+      case 'prompt': return r.prompt;
+      case 'help': notify(r.text, 'info'); return null;
+      case 'error': notify(r.text); return null;
+      case 'clear':
+        if (s) {
+          store.state.current = await api.invoke('sessions:clear', s.id);
+          store.state.notices = [];
+          store.emit('current', 'todos');
+        }
+        return null;
+      case 'model': {
+        const settings = store.state.settings;
+        if (r.model === null) {
+          notify(`当前模型：${settings?.model ?? '未知'}（${settings?.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}）`, 'info');
+          return null;
+        }
+        store.state.settings = await api.invoke('settings:set', { model: r.model });
+        store.emit('settings');
+        notify(`已切换模型为 ${r.model}，下一条消息生效。`, 'info');
+        return null;
+      }
+    }
+  };
+
+  const send = async () => {
+    const raw = textarea.value.trim();
+    const s = store.state.current;
+    if (!raw || !s) return;
     textarea.value = '';
-    textarea.dispatchEvent(new Event('input'));
-    if (hooks.interceptInput && (await hooks.interceptInput(text))) return;
+    renderSlashMenu();
+    let text: string | null;
+    try {
+      text = await runSlash(raw);
+    } catch (e) {
+      notify(errorText(e));
+      return;
+    }
+    if (text === null) return;
     // 乐观追加用户消息（主进程会写入同样内容；切换会话时以持久化版本为准）
     const local: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: text, createdAt: new Date().toISOString() };
     s.messages.push(local);
@@ -153,7 +195,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks = {}): ChatVi
       await api.invoke('agent:send', { sessionId: s.id, text });
     } catch (e) {
       s.messages.splice(s.messages.indexOf(local), 1);
-      textarea.value = text;
+      textarea.value = raw;
       notify(errorText(e));
     }
   };
@@ -164,6 +206,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks = {}): ChatVi
       void send();
     }
   });
+  textarea.addEventListener('input', renderSlashMenu);
   sendBtn.addEventListener('click', () => void send());
   stopBtn.addEventListener('click', () => {
     const s = store.state.current;

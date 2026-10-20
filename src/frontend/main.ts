@@ -5,6 +5,8 @@ import type { AgentEvent, ChatMessage, Session } from '../../contracts/ipc.ts';
 import { api, errorText } from './api.ts';
 import { store } from './store.ts';
 import { mountChat, type ChatView } from './views/chat.ts';
+import { renderDiff } from './views/diff-view.ts';
+import { createModeSelector, mountRightPanel } from './views/right-panel.ts';
 import { openSettings } from './views/settings-dialog.ts';
 import { mountSidebar } from './views/sidebar.ts';
 
@@ -105,11 +107,14 @@ async function bootstrap(): Promise<void> {
   ]);
   Object.assign(store.state, { settings, project, sessions });
 
-  chat = mountChat(document.getElementById('chat') as HTMLElement);
+  const modeSelector = createModeSelector((t) => chat.notify(t));
+  chat = mountChat(document.getElementById('chat') as HTMLElement, { renderDiff, headerExtras: [modeSelector] });
   mountSidebar(document.getElementById('sidebar') as HTMLElement, {
     insertText: (t) => chat.insertText(t),
     notify: (t) => chat.notify(t),
+    selectSession,
   });
+  mountRightPanel(document.getElementById('right') as HTMLElement);
   api.onEvent(handleEvent);
 
   const first = sessions[0];
