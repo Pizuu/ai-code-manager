@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-20
 
-**Status**: Draft
+**Status**: Implemented（converge 追加 3 项待办 T123–T125，见 tasks.md Phase 8）
 
 **Input**: User description: "做进应用；增加 agent cli 配置，以 opencode 为例，能够完整在对话框中使用；再次对比设计文件，复刻复制 UI，三个 title 对应三个板块。"（设计稿：Figma 文件 `zoKZUtZnIFpZXA6vpmf9s4` 节点 `2002:4070` 下三个 frame——`2004:30564`「栖岸 · 泳道看板」、`2004:31047`「栖岸 · 任务会话」、`2004:31674`「栖岸 · Git 分支与集成」。）
 
