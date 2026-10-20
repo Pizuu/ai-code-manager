@@ -420,7 +420,6 @@ b,strong,.b600{font-weight:var(--font-weight-semibold)}
 .crumb b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--color-text-secondary);font-weight:var(--font-weight-normal)}
 .crumb>svg{display:none}
 .wact{gap:10px;font-size:var(--font-caption);flex:none}
-.wact>.chip{display:none}
 .btn{height:var(--h-ctl);padding:0 12px;font-size:var(--font-body);font-weight:var(--font-weight-semibold);border-radius:var(--border-radius-md);border:var(--border-width-regular) solid var(--color-border-secondary);background:var(--color-background-primary)}
 .btn:hover{background:var(--color-background-secondary)}
 .btn.pri{background:var(--color-background-inverse);border-color:var(--color-background-inverse);color:var(--color-text-inverse)}
@@ -441,9 +440,11 @@ b,strong,.b600{font-weight:var(--font-weight-semibold)}
 .fo .d{font-size:var(--font-caption);margin-top:6px}
 .prog{height:auto;min-height:40px;margin-top:16px;padding:8px 14px;gap:12px;flex-wrap:wrap;border-radius:var(--border-radius-lg);background:var(--color-background-tertiary);border:var(--border-width-regular) solid var(--color-border-tertiary)}
 .prog .stg{gap:12px;font-size:var(--font-caption)}
-.cap{height:auto;margin-top:16px;gap:10px;flex-wrap:wrap;font-size:var(--font-caption)}
-.cap>b{font-size:var(--font-body)}
-.cap .sep{height:14px;margin:0 4px;background:var(--color-border-tertiary)}
+.cap{height:auto;margin-top:16px;gap:12px;flex-wrap:wrap;font-size:var(--font-body);padding:10px 14px;border-radius:var(--border-radius-lg);background:var(--color-background-tertiary);border:var(--border-width-regular) solid var(--color-border-tertiary)}
+.cap>span:first-child{font-size:var(--font-heading-md);font-weight:var(--font-weight-semibold)}
+.cap>b{font-size:var(--font-heading-md)}
+.cap .mute{font-size:var(--font-caption)}
+.cap .sep{height:16px;margin:0 6px;background:var(--color-border-tertiary)}
 .ctl{height:auto;margin-top:12px;gap:8px}
 select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius-md)}
 .conflicts{margin-top:12px;padding:0;background:var(--color-background-warning);color:var(--color-text-warning);border-radius:var(--border-radius-md);font-size:var(--font-caption);line-height:1.6}

@@ -12,7 +12,7 @@ import { store, type ViewId } from '../store.ts';
 
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
 /** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
-const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git 与集成', 'git'], ['agents', 'Agents', 'wt']];
+const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git', 'git'], ['agents', 'Agents', 'wt']];
 /** 默认展开的顶层目录（原型 treeHtml）；之后由用户点击目录折叠 / 展开。 */
 const EXPAND: readonly string[] = ['.agents', '.specify', 'src', 'specs', 'contracts'];
 /** 整棵目录树折叠状态（仅本机界面偏好）。 */
@@ -149,15 +149,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const crumbFeature = h('b');
   const crumbChip = h('span', { class: 'chip' });
   const snapTime = h('span');
-  const refreshBtn = h('button', { class: 'btn', on: { click: () => void refreshWorkspace() } }, '刷新快照');
-  const copySnapBtn: HTMLButtonElement = h('button', { class: 'btn', title: '复制看板与 Git 快照 JSON', on: { click: () => {
-    const flash = (t: string) => { copySnapBtn.textContent = t; setTimeout(() => { copySnapBtn.textContent = '复制快照 JSON'; }, 1500); };
-    if (!store.state.board && !store.state.git) return flash('暂无快照');
-    navigator.clipboard.writeText(JSON.stringify({ git: store.state.git, board: store.state.board }, null, 1)).then(() => flash('已复制'), () => flash('复制失败'));
-  } } }, '复制快照 JSON');
   const header = h('header', { class: 'wh' },
     h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, '/', crumbFeature, crumbChip)),
-    h('div', { class: 'wact' }, snapTime, h('span', { class: 'chip', title: 'multi-agent.md：负责人 Owner = 人类；仓库未登记姓名' }, 'Owner · 人类（未署名）'), copySnapBtn, refreshBtn));
+    h('div', { class: 'wact' }, snapTime));
 
   const views: Record<ViewId, HTMLElement> = {
     board: h('div', { class: 'ws-view wb', attrs: { id: 'wb-board' } }),
@@ -291,7 +285,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const refreshWorkspace = async (): Promise<void> => {
     if (loading) return loading;
     loading = (async () => {
-      refreshBtn.disabled = true;
       try {
         const [board, git] = await Promise.all([api.invoke('board:get'), api.invoke('git:get')]);
         store.state.board = board;
@@ -301,7 +294,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
         store.state.workspaceError = errorText(e);
         hooks.onError(errorText(e));
       } finally {
-        refreshBtn.disabled = false;
         loading = null;
       }
       store.emit('workspace');

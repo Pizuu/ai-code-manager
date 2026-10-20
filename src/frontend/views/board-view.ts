@@ -158,16 +158,16 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       h('div', {},
         h('div', { class: 't' }, h('span', {}, F ? F.title : '未找到 specs/NNN-*'), h('span', { class: `chip ${allMerged ? 'grn' : 'acc'}` }, allMerged ? '已全部合入' : '实施中'))),
       h('button', { class: 'btn', on: { click: hooks.openGit } }, '查看集成队列')));
-    // 进度条
+    // 进度条（先构建暂存，最终位置在矩阵正上方，append 见下方矩阵宿主处）
     const stg = h('div', { class: 'stg' });
     for (const s of F?.stages ?? []) stg.append(h('span', { class: s.done ? 'ok' : '', title: s.detail }, `${s.label}${s.key === 'checklists' ? ` ${s.detail}` : ''} ${s.done ? '✓' : '○'}`));
-    pad.append(h('div', { class: 'prog' },
+    const prog = h('div', { class: 'prog' },
       icon('check'),
       h('span', {}, `契约 IPC ${snap.contractVersion ?? '?'}${frozen ? ' 已冻结' : ' 未冻结'}`),
       h('span', { class: 'mute' }, contractCard ? `${contractCard.id} · ${contractCard.merge ? `merge ${contractCard.merge.short} 已合入 ${integ}` : '未合入'}` : ''),
       stg,
       h('span', { class: 'chip acc', title: 'specs tasks.md 勾选数' }, `当前：Implement · tasks.md ${F?.tasksDone ?? 0}/${F?.tasksTotal ?? 0}`),
-      h('span', { class: 'mute' }, '按序合入 → Converge')));
+      h('span', { class: 'mute' }, '按序合入 → Converge'));
     // 容量
     pad.append(h('div', { class: 'cap' },
       h('span', {}, 'Worker 容量'), h('b', { class: 'b600' }, `${workers.length} / ${snap.maxParallel ?? '?'}`),
@@ -208,6 +208,8 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     pad.append(h('div', { class: 'ctl' }, q, selWrap(laneSel), selWrap(agentSel), h('span', { class: 'flex1' }), tog));
     // 不一致项默认折叠为一行摘要（v0.4 重新设计，ADR 0009），展开查看明细
     if (snap.conflicts.length) pad.append(h('details', { class: 'conflicts' }, h('summary', {}, h('b', { class: 'b600' }, `声明与 git 不一致 ${snap.conflicts.length} 项`), h('span', { class: 'mute' }, snap.conflicts[0] ?? '')), h('div', { class: 'list' }, ...snap.conflicts.map((c) => h('div', {}, `· ${c}`)))));
+    // 进度行放在矩阵正上方（紧邻矩阵宿主之前 append）
+    pad.append(prog);
     matrixHost = h('div');
     pad.append(matrixHost);
     pad.append(h('div', { class: 'legend' },
