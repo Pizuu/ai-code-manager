@@ -23,6 +23,7 @@ import { buildSystemPrompt } from '../agent/system-prompt.ts';
 import type { AppState } from '../app-state.ts';
 import { listTree } from '../fs/file-tree.ts';
 import { readFileForView } from '../fs/file-view.ts';
+import { reaskCutIndex } from '../sessions/reask.ts';
 import { summarizeSession, type SessionStore } from '../sessions/session-store.ts';
 import { builtinConfigProblem, findCliRebindCandidate, type SettingsStore } from '../settings/settings-store.ts';
 import { loadSpecTasks } from '../specs/tasks-parser.ts';
@@ -177,13 +178,29 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     return { runtime, executable: r.path, meta };
   };
 
-  const startCliTurn = async (session: Session, cliId: string, text: string): Promise<void> => {
+  /**
+   * v1.11「重新提问不重复」：reaskLatest 且会话最后一条 user 消息与本次文本完全一致时，
+   * 把消息从那条 user 起整体截断并落盘（运行器随后重新追加该问题，最终只保留最新一轮）。
+   * 调用点必须在「本回合确认能启动」的全部守卫之后、运行器追加之前。CLI 会话的
+   * cliSessions 续接映射保留不动：外部 CLI 侧仍记得旧问答，分歧只限被截掉的这一轮，
+   * 是可接受的重试形态（与 sessions:clear 的整表清空不同，这里不删映射）。
+   */
+  const applyReaskTruncation = async (session: Session, text: string): Promise<void> => {
+    const cut = reaskCutIndex(session.messages, text);
+    if (cut < 0) return;
+    session.messages = session.messages.slice(0, cut);
+    await sessions.save(session);
+  };
+
+  const startCliTurn = async (session: Session, cliId: string, text: string, opts?: { reaskLatest?: boolean }): Promise<void> => {
     const root = state.project?.root;
     if (!root) throw ipcError('E_NO_PROJECT', '外部 Agent CLI 只能在打开的项目中运行（工作目录 = 项目根），请先打开项目文件夹。');
     const { runtime: baseRuntime, executable } = await resolveCli(cliId);
     // v1.5：会话级模型覆盖在此一处叠加，turnDeps.config 供 ACP / serve / run 三路共用
     const runtime = effectiveCliRuntime(baseRuntime, session);
     if (state.running.has(session.id)) throw ipcError('E_BUSY', '该会话正在运行，请等待完成或先停止。');
+    // 守卫（项目根 / CLI 可用 / 未运行）已全部通过，本回合确认能启动，此刻截断安全。
+    if (opts?.reaskLatest) await applyReaskTruncation(session, text);
     const controller = new AbortController();
     state.running.set(session.id, controller);
     emit({ type: 'status', sessionId: session.id, running: true });
@@ -243,7 +260,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       });
   };
 
-  const startTurn = async (sessionId: string, text: string): Promise<void> => {
+  const startTurn = async (sessionId: string, text: string, opts?: { reaskLatest?: boolean }): Promise<void> => {
     if (state.running.has(sessionId)) throw ipcError('E_BUSY', '该会话正在运行，请等待完成或先停止。');
     {
       const s = await sessions.get(sessionId);
@@ -262,7 +279,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
             cliId = cand;
           }
         }
-        return startCliTurn(sess, cliId, text);
+        return startCliTurn(sess, cliId, text, opts);
       }
     }
     const active = settings.getActive();
@@ -281,6 +298,8 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       agentsMd: await readAgentsMd(root),
     });
     if (state.running.has(sessionId)) throw ipcError('E_BUSY', '该会话正在运行，请等待完成或先停止。');
+    // 守卫（未运行 / 已配置 / 有 Key）已全部通过，本回合确认能启动，此刻截断安全。
+    if (opts?.reaskLatest) await applyReaskTruncation(session, text);
     const controller = new AbortController();
     state.running.set(sessionId, controller);
     emit({ type: 'status', sessionId, running: true });
@@ -379,8 +398,8 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       return sessions.clear(sid);
     },
     'agent:send': async (req) => {
-      const { sessionId, text } = validateSendRequest(req);
-      await startTurn(sessionId, text);
+      const { sessionId, text, reaskLatest } = validateSendRequest(req);
+      await startTurn(sessionId, text, { reaskLatest });
     },
     'agent:stop': async (id) => {
       const sid = asSessionId(id);

@@ -12,7 +12,7 @@ export const IPC_CONTRACT_VERSION = 'v1' as const;
  * 契约修订号：v1.1 = 功能 002（三板块 + Agent CLI）的纯增量扩展——只新增通道、类型与可选字段，
  * 未修改或删除任何 v1 字段，因此主版本保持 v1（宪法 II）。
  */
-export const IPC_CONTRACT_REVISION = 'v1.10' as const;
+export const IPC_CONTRACT_REVISION = 'v1.11' as const;
 // v1.2 = 功能 003（只读代码查看、配置空白）的纯增量：新增 `fs:read` 通道、`FileContent` 类型、`FILE_VIEW_LIMITS`
 // 常量与错误码 `E_NOT_CONFIGURED`；未修改或删除任何既有字段。
 // v1.3 = 任务卡 T-033（为接入 opencode serve 逐条审批做准备，ADR 0006 修订）的纯增量：`ApprovalKind` 新增
@@ -38,6 +38,8 @@ export const IPC_CONTRACT_REVISION = 'v1.10' as const;
 // v1.10 = 会话 token 用量实时推送的纯增量：`SessionSummary` 新增可选字段 `usage`（类型 `SessionUsage`，
 // 与 `Session.usage` 同口径），使 `session-updated` 事件能把回合进行中的累计用量带到渲染进程；
 // 未修改或删除任何既有字段。
+// v1.11 = 「重新提问不重复」的纯增量：`AgentSendRequest` 新增可选字段 `reaskLatest`（重提最近一次
+// 提问时为 true，后端据此截断旧问答只保留最新一轮）；未修改或删除任何既有字段。
 
 // ───────────────────────── 基础模型 ─────────────────────────
 
@@ -325,6 +327,12 @@ export type IpcInvokeChannel = keyof IpcInvokeMap;
 export interface AgentSendRequest {
   sessionId: string;
   text: string;
+  /**
+   * v1.11：重提最近一次提问（重新发送 / 重新回答）时为 true。后端在开跑前若发现会话最后一条
+   * user 消息文本与 `text` 完全一致，先把该条 user 消息及其后的消息整体截断落盘，再照常启动
+   * 回合——最终对话里该问题只出现一次、保留最新一轮的回答。普通发送缺省（不截断）。
+   */
+  reaskLatest?: boolean;
 }
 
 export interface ApprovalDecision {

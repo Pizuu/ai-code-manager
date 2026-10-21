@@ -151,10 +151,13 @@ export function validateSettingsUpdate(value: unknown): SettingsUpdate {
 
 export function validateSendRequest(value: unknown): AgentSendRequest {
   const v = asRecord(value, 'request');
-  return {
+  const out: AgentSendRequest = {
     sessionId: asSessionId(v.sessionId),
     text: asString(v.text, 'text', { max: MAX_MESSAGE_CHARS }),
   };
+  // v1.11：可选布尔，透传给 startTurn 做「重提不重复」截断；非布尔值按未设置处理，不报错。
+  if (typeof v.reaskLatest === 'boolean') out.reaskLatest = v.reaskLatest;
+  return out;
 }
 
 export function validateApprovalDecision(value: unknown): ApprovalDecision {
