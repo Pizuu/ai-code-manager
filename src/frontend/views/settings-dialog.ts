@@ -36,16 +36,42 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   const s = store.state.settings;
   if (!s) return;
   clear(dialog);
-  // 「使用中」= 当前默认 agent（defaultAgent，缺省 'builtin'）：种类与标签匹配的 chip 在文案后追加「使用中」标记。
+  // 「使用中」= 当前默认 agent（defaultAgent，缺省 'builtin'）：种类与标签匹配的 chip 在文案后追加「使用中」标记，
+  // 且使用中的标签排到最左。acc 只表示当前打开的页，与 inUse（默认 agent 所属类）相互独立。
   const da = s.defaultAgent ?? 'builtin';
   const tabBtn = (id: SettingsTab, label: string, inUse: boolean) => h('button', { class: `chip${id === tab ? ' acc' : ''}`, attrs: { type: 'button' }, on: { click: () => openSettings(id) } }, label, inUse ? h('span', { class: 'chip grn' }, '使用中') : null);
-  const tabs = h('div', { class: 'dtabs' }, tabBtn('model', '内置 agent（API）', da === 'builtin'), tabBtn('cli', 'Agent CLI', da.startsWith('cli:')));
+  const modelTabBtn = tabBtn('model', 'API', da === 'builtin');
+  const cliTabBtn = tabBtn('cli', 'Agent CLI', da.startsWith('cli:'));
+  const tabs = h('div', { class: 'dtabs' }, ...(da === 'builtin' ? [modelTabBtn, cliTabBtn] : [cliTabBtn, modelTabBtn]));
   if (tab === 'cli') {
     const body = h('div', { class: 'field' });
     // 标题行：左 h3「设置」+ 右 headerSlot 空位，Agent CLI 分区把「自动检测」按钮填进去（同行两端对齐）。
     const headerSlot = h('span', {});
-    const form = h('form', { attrs: { method: 'dialog' } }, h('div', { class: 'dhead' }, h('h3', {}, '设置'), headerSlot), tabs, body,
-      h('div', { class: 'actions' }, h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => dialog.close() } }, '关闭')));
+    const err = h('div', { class: 'error-text' });
+    // 「确认使用 CLI」：目标 CLI 在点击时按最新 settings 确定——当前默认已是某个仍存在的 CLI 则沿用它，否则取列表第一条。
+    const confirmCli = h('button', { class: 'btn', attrs: { type: 'button' } }, '确认使用 CLI');
+    if (!(s.agentClis ?? []).length) {
+      confirmCli.disabled = true;
+      confirmCli.title = '先添加一个 Agent CLI';
+    }
+    confirmCli.addEventListener('click', async () => {
+      const st = store.state.settings;
+      const clis = st?.agentClis ?? [];
+      const cur = st?.defaultAgent ?? 'builtin';
+      const curId = cur.startsWith('cli:') ? cur.slice('cli:'.length) : null;
+      const target = (curId && clis.find((c) => c.id === curId)) || clis[0];
+      if (!target) return;
+      err.textContent = '';
+      try {
+        store.state.settings = await api.invoke('settings:set', { defaultAgent: `cli:${target.id}` });
+        store.emit('settings');
+        dialog.close();
+      } catch (e) {
+        err.textContent = errorText(e);
+      }
+    });
+    const form = h('form', { attrs: { method: 'dialog' } }, h('div', { class: 'dhead' }, h('h3', {}, '设置'), headerSlot), tabs, body, err,
+      h('div', { class: 'actions' }, confirmCli));
     form.addEventListener('submit', (ev) => ev.preventDefault());
     dialog.append(form);
     mountAgentCliSettings(body, headerSlot);
@@ -101,14 +127,15 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     err,
     h('div', { class: 'actions' },
       h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => dialog.close() } }, '取消'),
-      h('button', { class: 'btn pri', attrs: { type: 'submit' } }, '保存')),
+      h('button', { class: 'btn pri', attrs: { type: 'submit' } }, '确认')),
   );
 
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     err.textContent = '';
     const p = provider.value as ProviderId;
-    const update: SettingsUpdate = { provider: p, permissionMode: mode.value as PermissionMode };
+    // 「确认」= 保存设置并确认使用 API：同一次 settings:set 带上 defaultAgent: 'builtin'。
+    const update: SettingsUpdate = { provider: p, permissionMode: mode.value as PermissionMode, defaultAgent: 'builtin' };
     // 「空不修改」（同下方 Key）：Base URL / 模型留空时不提交该字段，保留已保存值，绝不用空串覆盖；填了才提交新值。
     if (baseUrl.value.trim() !== '') update.baseUrl = baseUrl.value.trim();
     if (model.value.trim() !== '') update.model = model.value.trim();
