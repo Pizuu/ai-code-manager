@@ -40,7 +40,7 @@ description: "Task list for 005-approval-notifier"
 ## Phase 6: Polish（设置与文档）
 
 - [x] T508 [lane:frontend] 设置页提醒分区：按级别开关系统通知与声音（只存不响，分区明示）、稍后时长可编辑，读写 Settings 提醒偏好（T502 字段）；P0 计数不可关的口径在文案中明示；能力不可用（Web 预览）时整分区禁用
-- [ ] T509 [lane:docs] 用户与测试文档：提醒分级说明、设置口径、Web 预览降级写入用户文档；docs/testing/test-matrix.md 补 005 覆盖行（SC-001…SC-006 的验证落点）
+- [x] T509 [lane:docs] 用户与测试文档：提醒分级说明、设置口径、Web 预览降级写入用户文档；docs/testing/test-matrix.md 补 005 覆盖行（SC-001…SC-006 的验证落点）
 
 ## Dependencies
 
