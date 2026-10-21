@@ -10,8 +10,10 @@ import type {
   AgentSendRequest,
   ApprovalDecision,
   IpcErrorCode,
+  NotifySettings,
   PermissionMode,
   ProviderId,
+  ReminderLevel,
   SettingsUpdate,
   TerminalCloseRequest,
   TerminalInputRequest,
@@ -155,7 +157,32 @@ export function validateSettingsUpdate(value: unknown): SettingsUpdate {
       value: asString(k.value, 'apiKey.value', { max: 1_000, allowEmpty: true }).trim(),
     };
   }
+  if (v.notify !== undefined) out.notify = validateNotifySettings(v.notify);
   return out;
+}
+
+const REMINDER_LEVELS: readonly ReminderLevel[] = ['P0', 'P1', 'P2', 'P3'];
+
+/** v1.13（功能 005）：提醒偏好是全量提交，四个级别的开关必须齐全且为布尔，snooze 为正数分钟。 */
+export function validateNotifySettings(value: unknown): NotifySettings {
+  const v = asRecord(value, 'notify');
+  const boolRecord = (rec: unknown, name: string): Record<ReminderLevel, boolean> => {
+    const r = asRecord(rec, name);
+    const out = {} as Record<ReminderLevel, boolean>;
+    for (const lv of REMINDER_LEVELS) {
+      if (typeof r[lv] !== 'boolean') fail(`${name}.${lv} 必须是布尔值`);
+      out[lv] = r[lv] as boolean;
+    }
+    return out;
+  };
+  if (typeof v.snoozeMinutes !== 'number' || !Number.isFinite(v.snoozeMinutes) || v.snoozeMinutes < 1 || v.snoozeMinutes > 120) {
+    fail('notify.snoozeMinutes 必须是 1–120 的分钟数');
+  }
+  return {
+    systemNotify: boolRecord(v.systemNotify, 'notify.systemNotify'),
+    sound: boolRecord(v.sound, 'notify.sound'),
+    snoozeMinutes: v.snoozeMinutes,
+  };
 }
 
 export function validateSendRequest(value: unknown): AgentSendRequest {

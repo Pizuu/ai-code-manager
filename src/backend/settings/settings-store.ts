@@ -5,7 +5,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { AgentCliConfig, AgentCliInput, AgentRef, PermissionMode, ProviderId, PublicSettings, SettingsUpdate } from '../../../contracts/ipc.ts';
+import type { AgentCliConfig, AgentCliInput, AgentRef, NotifySettings, PermissionMode, ProviderId, PublicSettings, ReminderLevel, SettingsUpdate } from '../../../contracts/ipc.ts';
+import { DEFAULT_NOTIFY_SETTINGS } from '../../../contracts/ipc.ts';
 import type { CliRuntimeConfig } from '../agent-cli/cli-runner.ts';
 import { normalizeCliRuntimeFields } from '../agent-cli/normalize.ts';
 import { resolveOpencodeMode, type OpencodeMode } from '../agent-cli/serve-runner.ts';
@@ -43,6 +44,8 @@ interface StoredSettings {
   lastProjectPath: string | null;
   agentClis: StoredAgentCli[];
   defaultAgent: AgentRef;
+  /** v1.13（功能 005）：提醒偏好；缺省 = DEFAULT_NOTIFY_SETTINGS，不落默认值进文件。 */
+  notify?: NotifySettings;
   /**
    * 实验：opencode 接入方式（T127）。仅后端内部使用，不经 IPC、不进 PublicSettings
    * （需要 contracts v1.4：PublicSettings.agentCli.opencodeMode）。缺省 = acp。
@@ -78,6 +81,30 @@ export function findCliRebindCandidate(missingId: string, clis: ReadonlyArray<{ 
   const hits = clis.filter((c) => cliIdSlug(c.id) === slug || cliNameSlug(c.name) === slug);
   const [only] = hits;
   return hits.length === 1 && only ? only.id : null;
+}
+
+const REMINDER_LEVELS: readonly ReminderLevel[] = ['P0', 'P1', 'P2', 'P3'];
+
+/**
+ * 提醒偏好的清洗（v1.13）：形状不对的字段逐个回落 DEFAULT_NOTIFY_SETTINGS，
+ * 保证 getNotifySettings 永远返回完整可用的 NotifySettings（存盘数据可能来自旧版本或手改）。
+ */
+export function sanitizeNotifySettings(value: unknown): NotifySettings {
+  const v = (typeof value === 'object' && value !== null ? value : {}) as Partial<NotifySettings>;
+  const boolRecord = (rec: unknown, fallback: Record<ReminderLevel, boolean>): Record<ReminderLevel, boolean> => {
+    const r = (typeof rec === 'object' && rec !== null ? rec : {}) as Partial<Record<ReminderLevel, unknown>>;
+    const out = {} as Record<ReminderLevel, boolean>;
+    for (const lv of REMINDER_LEVELS) out[lv] = typeof r[lv] === 'boolean' ? r[lv] : fallback[lv];
+    return out;
+  };
+  const snooze = typeof v.snoozeMinutes === 'number' && Number.isFinite(v.snoozeMinutes)
+    ? Math.min(120, Math.max(1, Math.round(v.snoozeMinutes)))
+    : DEFAULT_NOTIFY_SETTINGS.snoozeMinutes;
+  return {
+    systemNotify: boolRecord(v.systemNotify, DEFAULT_NOTIFY_SETTINGS.systemNotify),
+    sound: boolRecord(v.sound, DEFAULT_NOTIFY_SETTINGS.sound),
+    snoozeMinutes: snooze,
+  };
 }
 
 function defaults(): StoredSettings {
@@ -123,11 +150,21 @@ export class SettingsStore {
     }
   }
 
+  /** 当前提醒偏好（v1.13）：未存过时返回 DEFAULT_NOTIFY_SETTINGS 口径的完整形状。 */
+  getNotifySettings(): NotifySettings {
+    return sanitizeNotifySettings(this.data.notify);
+  }
+
   getPublic(): PublicSettings {
-    const { encryptedKeys, agentClis, opencodeMode: _internal, ...rest } = this.data;
+    const { encryptedKeys, agentClis, opencodeMode: _internal, notify: _notifyRaw, ...rest } = this.data;
     void _internal;
+    void _notifyRaw;
     return {
       ...rest,
+      // v1.13（T-047）：提醒偏好走清洗后的完整形状回传；桌面主进程具备原生通知能力，恒 true。
+      // Web 预览侧不经本 store（其 mock 自行给 false），这里不假装别处的能力。
+      notify: this.getNotifySettings(),
+      notifyNativeAvailable: true,
       hasApiKey: { openai: Boolean(encryptedKeys.openai), anthropic: Boolean(encryptedKeys.anthropic) },
       encryptionAvailable: this.cipher.isAvailable(),
       agentClis: agentClis.map((c) => ({
@@ -235,6 +272,7 @@ export class SettingsStore {
     if (update.baseUrl !== undefined) next.baseUrl = update.baseUrl;
     if (update.model !== undefined) next.model = update.model;
     if (update.permissionMode !== undefined) next.permissionMode = update.permissionMode;
+    if (update.notify !== undefined) next.notify = sanitizeNotifySettings(update.notify);
     if (update.defaultAgent !== undefined) {
       if (update.defaultAgent !== 'builtin' && !next.agentClis.some((c) => `cli:${c.id}` === update.defaultAgent)) {
         throw ipcError('E_VALIDATION', `未知的 agent：${update.defaultAgent}`);

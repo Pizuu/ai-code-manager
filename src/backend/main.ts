@@ -9,6 +9,8 @@ import type { AgentEvent, IpcInvokeChannel } from '../../contracts/ipc.ts';
 import { AGENT_EVENT_CHANNEL } from '../../contracts/ipc.ts';
 import { AppState } from './app-state.ts';
 import { createHandlers } from './ipc/handlers.ts';
+import { createElectronNotifier } from './notify/electron-notifier.ts';
+import { NotifyService } from './notify/notify-service.ts';
 import { AcpProcessManager } from './agent-cli/acp-runner.ts';
 import { OpencodeServeManager } from './agent-cli/serve-runner.ts';
 import { SessionStore } from './sessions/session-store.ts';
@@ -139,7 +141,23 @@ async function bootstrap(): Promise<void> {
     onExit: (sessionId, terminalId, code) => emit({ type: 'terminal-exit', sessionId, terminalId, code }),
   });
   app.on('will-quit', () => terminalManager.closeAll());
+  // 功能 005（T-047）：主进程通知服务。窗口聚焦判定 / 聚焦走既有 mainWindow 管理（闭包懒读，
+  // handlers 在窗口创建前注册也不受影响）；点击通知只聚焦 + 回传 notify-activate，不带审批动作。
+  const notifyService = new NotifyService({
+    notifier: createElectronNotifier(),
+    isWindowFocused: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
+    focusWindow: () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    },
+    emit,
+    getSettings: () => settings.getNotifySettings(),
+  });
+  app.on('will-quit', () => notifyService.dispose());
   const handlers = createHandlers({
+    notifyService,
     serveManager,
     acpManager,
     terminalManager,

@@ -26,6 +26,7 @@ import { listTree } from '../fs/file-tree.ts';
 import { readFileForView } from '../fs/file-view.ts';
 import { reaskCutIndex } from '../sessions/reask.ts';
 import { summarizeSession, type SessionStore } from '../sessions/session-store.ts';
+import type { NotifyService } from '../notify/notify-service.ts';
 import { builtinConfigProblem, findCliRebindCandidate, type SettingsStore } from '../settings/settings-store.ts';
 import { loadSpecTasks } from '../specs/tasks-parser.ts';
 import { interactiveArgs, shellCommand, TerminalManager, type TerminalHandle } from '../terminal/terminal-manager.ts';
@@ -89,6 +90,11 @@ export interface HandlerDeps {
   terminalManager?: TerminalManager;
   /** 读取 AICM_OPENCODE_MODE 的环境（默认 process.env；测试注入）。 */
   modeEnv?: NodeJS.ProcessEnv;
+  /**
+   * 功能 005（T-047）：主进程通知服务；main.ts 注入（桌面端）。缺省（测试 / Web 预览）
+   * 为 undefined，全部通知接线点按 no-op 处理——Web 预览不假装能发系统通知（FR-513）。
+   */
+  notifyService?: NotifyService;
 }
 
 /** 解析会话实际使用的 agent。 */
@@ -153,6 +159,7 @@ function publicErrorMessage(err: unknown): string {
 
 export function createHandlers(deps: HandlerDeps): HandlerMap {
   const { settings, sessions, state, emit } = deps;
+  const notify = deps.notifyService;
   const makeProvider = deps.providerFactory ?? defaultProviderFactory;
 
   const serveManager = deps.serveManager ?? new OpencodeServeManager({ platform: deps.platform });
@@ -208,6 +215,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     const controller = new AbortController();
     state.running.set(session.id, controller);
     emit({ type: 'status', sessionId: session.id, running: true });
+    notify?.onSessionRecovered(session.id);
     const turnDeps = {
       config: runtime,
       executable,
@@ -218,6 +226,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       emit,
       requestApproval: (req: ApprovalRequest) => {
         emit({ type: 'approval-request', sessionId: session.id, approval: req });
+        notify?.onApprovalRequest(session.id, req, session.title);
         return state.approvals.request(req);
       },
       persist: (s: Session) => sessions.save(s),
@@ -256,6 +265,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     void run()
       .catch(async (err: unknown) => {
         emit({ type: 'error', sessionId: session.id, message: publicErrorMessage(err) });
+        notify?.onSessionError(session.id, publicErrorMessage(err), session.title);
         await sessions.save(session);
       })
       .finally(() => {
@@ -307,6 +317,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     const controller = new AbortController();
     state.running.set(sessionId, controller);
     emit({ type: 'status', sessionId, running: true });
+    notify?.onSessionRecovered(sessionId);
 
     // 不 await：增量通过 agent:event 推送，invoke 立即返回
     void runAgentTurn(session, text, {
@@ -320,6 +331,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       emit,
       requestApproval: (req) => {
         emit({ type: 'approval-request', sessionId, approval: req });
+        notify?.onApprovalRequest(sessionId, req, session.title);
         return state.approvals.request(req);
       },
       persist: (s) => sessions.save(s),
@@ -329,6 +341,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       .catch(async (err: unknown) => {
         if (controller.signal.aborted) return;
         emit({ type: 'error', sessionId, message: publicErrorMessage(err) });
+        notify?.onSessionError(sessionId, publicErrorMessage(err), session.title);
         await sessions.save(session);
       })
       .finally(() => {
@@ -395,6 +408,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     'sessions:delete': async (id) => {
       const sid = asSessionId(id);
       state.stop(sid);
+      notify?.onSessionDeleted(sid); // T-047：清该会话的通知去重状态与升级定时器
       terminalManager.close(sid); // v1.6：会话删除时一并结束其终端
       await sessions.delete(sid);
     },
@@ -409,12 +423,18 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     },
     'agent:stop': async (id) => {
       const sid = asSessionId(id);
-      for (const approvalId of state.stop(sid)) emit({ type: 'approval-resolved', sessionId: sid, approvalId, approved: false });
+      for (const approvalId of state.stop(sid)) {
+        emit({ type: 'approval-resolved', sessionId: sid, approvalId, approved: false });
+        notify?.onApprovalResolved(sid, approvalId);
+      }
     },
     'agent:approve': async (decision) => {
       const { approvalId, approved } = validateApprovalDecision(decision);
       const sessionId = state.approvals.resolve(approvalId, approved);
-      if (sessionId) emit({ type: 'approval-resolved', sessionId, approvalId, approved });
+      if (sessionId) {
+        emit({ type: 'approval-resolved', sessionId, approvalId, approved });
+        notify?.onApprovalResolved(sessionId, approvalId);
+      }
     },
     'tasks:list': async () => (state.project ? loadSpecTasks(state.project.root) : []),
     'agentCli:save': async (input) => settings.saveAgentCli(validateAgentCliInput(input)),
