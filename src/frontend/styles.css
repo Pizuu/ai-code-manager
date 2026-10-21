@@ -986,3 +986,28 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .tour-mi:hover{background:var(--asoft)}
 .tour-mi-name{font-size:12px;font-weight:600;color:var(--ink)}
 .tour-mi-desc{font-size:11px;color:var(--mute);line-height:1.5}
+
+/* ── SPEC KIT 视图（speckit-view）：总览条 + 三流程面板，前缀 sk- ── */
+.sk-wrap{display:flex;flex-direction:column;gap:16px;padding:16px 24px 24px;height:100%;overflow-y:auto;box-sizing:border-box}
+.sk-overview{display:flex;align-items:center;gap:14px;padding:12px 16px;flex-wrap:wrap}
+.sk-panel{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.sk-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.sk-title{font-weight:600;font-size:14px;color:var(--ink)}
+.sk-sum{color:var(--ink2);font-size:12px}
+.sk-cur{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sk-fname{font-weight:600;color:var(--ink)}
+.sk-steps{display:flex;gap:12px;flex-wrap:wrap;align-items:center;color:var(--mute);font-size:12px;row-gap:6px}
+.sk-step.ok{color:var(--green);font-weight:600}
+.sk-step.cur{color:var(--accent);font-weight:600}
+.sk-actions{display:flex;gap:8px;flex-wrap:wrap}
+.sk-sub{font-size:12px;color:var(--mute);font-weight:600}
+.sk-rows{display:flex;flex-direction:column}
+.sk-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;cursor:pointer;color:inherit}
+a.sk-row:hover{background:var(--chip)}
+.sk-row.on{background:var(--asoft)}
+.sk-row.static{cursor:default}
+.sk-row .sk-steps{gap:8px;flex:1}
+.sk-rid{font-weight:600;white-space:nowrap;color:var(--ink)}
+.sk-rname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sk-empty{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.chip.bad{background:color-mix(in srgb,var(--err) 12%,transparent);color:var(--err)}

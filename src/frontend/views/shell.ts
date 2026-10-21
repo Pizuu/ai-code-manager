@@ -12,9 +12,9 @@ import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from
 import { mountTourButton } from '../lib/tour.ts';
 import { store, type ViewId } from '../store.ts';
 
-export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
+export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents', speckit: 'SPEC KIT' };
 /** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
-const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git', 'git'], ['agents', 'Agents', 'wt']];
+const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git', 'git'], ['agents', 'Agents', 'wt'], ['speckit', 'SPEC KIT', 'box']];
 /** 文件树默认全部折叠（用户要求）：只显示第一层，目录由用户点击逐个展开 / 折叠。 */
 /** 整棵目录树折叠状态（仅本机界面偏好）。 */
 const TREE_COLLAPSED_KEY = 'acm.explorer.treeCollapsed';
@@ -63,7 +63,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   // 板块图标与项目栏导航同序（泳道看板 → 任务会话 → Git 与集成，T-039）；切换项目入口在项目选择器与 ⋯ 菜单
   const railView = {} as Record<ViewId, HTMLAnchorElement>;
   const railBtn = (name: IconName, title: string, onClick: () => void) => h('a', { class: 'ri', title, on: { click: onClick } }, icon(name));
-  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code', agents: 'wt' };
+  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code', agents: 'wt', speckit: 'box' };
   for (const [id, label] of NAV) railView[id] = railBtn(RAIL_ICON[id], label, () => setView(id));
   // P0-3：任务会话图标上的活动徽标（运行中 / 待批准 / 出错）
   const railBadge = h('span', { class: 'ri-badge', attrs: { hidden: '' } });
@@ -280,6 +280,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     session: h('div', { class: 'ws-view sess', attrs: { id: 'wb-session' } }),
     git: h('div', { class: 'ws-view wb', attrs: { id: 'wb-git' } }),
     agents: h('div', { class: 'ws-view wb', attrs: { id: 'wb-agents' } }),
+    speckit: h('div', { class: 'ws-view wb', attrs: { id: 'wb-speckit' } }),
   };
   const statusL = h('span');
   /** P0-3：活动计数（运行中 / 待批准 / 错误），可点击跳转到对应会话。 */
@@ -287,7 +288,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   /** 规格进度行（原看板 .prog 移入）：状态栏最右端常驻，类名沿用 .prog，布局覆盖在 styles.css 的 .status .prog。 */
   const statusProg = h('span', { class: 'prog' });
   const status = h('footer', { class: 'status' }, statusL, statusAct, statusProg);
-  const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, status);
+  const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, views.speckit, status);
   app.append(rail, explorer, ws);
 
   // ── 渲染 ──

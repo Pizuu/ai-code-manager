@@ -9,6 +9,7 @@ import { store } from './store.ts';
 import { focusBoardCard, mountBoard } from './views/board-view.ts';
 import type { ChatView } from './views/chat.ts';
 import { mountAgents } from './views/agents-view.ts';
+import { mountSpeckit } from './views/speckit-view.ts';
 import { mountGit } from './views/git-view.ts';
 import { formatSendText } from './lib/context-send.ts';
 import { installContextMenu } from './views/context-menu.ts';
@@ -242,6 +243,15 @@ async function bootstrap(): Promise<void> {
     },
     openSettings: (tab) => openSettings(tab),
     notify: (t) => chat.notify(t, 'info'),
+  });
+  mountSpeckit(shell.views.speckit, {
+    send: sendToSession,
+    openProject: () => void pickProject(),
+    // 与顶栏规格下拉同款口径：setFeature 已返回完整快照，不再叠加 refreshWorkspace。
+    setFeature: async (featureId) => {
+      store.state.board = await api.invoke('board:setFeature', { featureId });
+      store.emit('workspace');
+    },
   });
   api.onEvent(handleEvent);
 
