@@ -71,7 +71,7 @@ export interface NotifyFeed {
   snooze(id: string): void;
   /** P2 / P3 标记已读（落盘）；P1 不接受已读（未消解前一直计数）。 */
   markRead(id: string): void;
-  /** 「进度」页签行（FR-516）：在途卡 + 状态时间戳；不产生事项、不计入角标。 */
+  /** 「进度」页签行（FR-516）：全部任务卡的全量开发进度（含已合入）+ 状态时间戳；不产生事项、不计入角标。 */
   progressRows(): readonly CardProgressRow[];
   /** 订阅事项集合变化（新增 / 消解 / 稍后 / 已读），返回退订函数。 */
   onChanged(cb: () => void): () => void;
@@ -230,7 +230,19 @@ export function createNotifyFeed(): NotifyFeed {
         ahead: c.ahead,
         merge: c.merge ? { time: c.merge.time } : null,
       }));
-      return buildCardProgress(inputs, statusTimes).filter((r) => r.status !== 'merged');
+      // 全量开发进度（负责人定版）：已合入不再过滤，汇总与全部行共同呈现「开发进度」。
+      // 呈现排序在此重排（新数组，不改 lib 的原序语义）：受阻 → 进行中 → 待审查 → 待派发
+      // → 已合入；已合入组内按合入时间（statusSince）倒序、无时间排后，其余组按卡号升序。
+      const GROUP: Readonly<Record<CardProgressRow['status'], number>> = { blocked: 0, active: 1, review: 2, ready: 3, merged: 4 };
+      return [...buildCardProgress(inputs, statusTimes)].sort((a, b) => {
+        const g = GROUP[a.status] - GROUP[b.status];
+        if (g !== 0) return g;
+        if (a.status === 'merged') {
+          const t = (b.statusSince ?? '').localeCompare(a.statusSince ?? '');
+          if (t !== 0) return t;
+        }
+        return a.cardId.localeCompare(b.cardId);
+      });
     },
     onChanged(cb: () => void): () => void {
       listeners.add(cb);

@@ -1095,7 +1095,12 @@ a.sk-row:hover{background:var(--chip)}
 .notify-toasts{position:absolute;top:64px;right:16px;display:flex;flex-direction:column;gap:8px;width:min(360px,calc(100vw - 76px))}
 .notify-toast{pointer-events:auto;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:var(--border-radius-md);box-shadow:var(--shadow-md);padding:8px 12px;color:var(--ink);cursor:pointer;font-size:var(--font-caption)}
 .notify-toast-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 「进度」页签（FR-516 / T-049）：在途卡五段进度指示；受阻整轨异常态（红） */
+/* 「进度」页签（FR-516 / T-049）：全量开发进度；分段进度指示，受阻整轨异常态（红） */
+.notify-prog-sum{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:var(--border-radius-md);background:var(--panel);padding:10px 12px}
+.notify-prog-sum-text{font-weight:var(--font-weight-semibold)}
+.notify-prog-bar{height:6px;border-radius:99px;background:var(--chip);overflow:hidden}
+.notify-prog-bar-fill{display:block;height:100%;border-radius:99px;background:var(--accent)}
+.notify-prog-bar-fill.full{background:var(--green)}
 .notify-prog-row{cursor:pointer}
 .notify-prog-row:hover{border-color:var(--accent)}
 .notify-prog-track{display:flex;gap:4px;margin-top:8px}

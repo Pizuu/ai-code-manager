@@ -230,7 +230,7 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
     setTimeout(() => el.remove(), 6000);
   };
 
-  /* ── FR-516「进度」页签行：在途卡 + 五段进度指示 + 状态时间戳；点击走 viewItem 的 card 路由 ── */
+  /* ── FR-516「进度」页签行：全部任务卡 + 分段进度指示 + 状态时间戳；点击走 viewItem 的 card 路由 ── */
   const progressRow = (row: CardProgressRow): HTMLElement => {
     const segs = PROGRESS_STAGES.map((s, i) => h('span', {
       class: `notify-prog-seg${row.blocked ? ' blocked' : i <= row.stageIndex ? ' on' : ''}`,
@@ -293,8 +293,18 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
     }, label);
     const body = h('div', { class: 'notify-list' });
     if (activeTab === 'progress') {
-      if (!progress.length) body.append(h('div', { class: 'notify-empty' }, '暂无在途任务卡。'));
-      for (const row of progress) body.append(progressRow(row));
+      if (!progress.length) {
+        body.append(h('div', { class: 'notify-empty' }, '暂无任务卡。'));
+      } else {
+        // 全量进度汇总头：就地从本次渲染的 rows 计算（已完成 = 已合入行数），不另取数。
+        const done = progress.filter((r) => r.status === 'merged').length;
+        const pct = Math.round((done / progress.length) * 100);
+        body.append(h('div', { class: 'notify-prog-sum' },
+          h('span', { class: 'notify-prog-sum-text' }, `已完成 ${done} / 共 ${progress.length} 张 · ${pct}%`),
+          h('div', { class: 'notify-prog-bar', attrs: { role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' } },
+            h('span', { class: `notify-prog-bar-fill${pct === 100 ? ' full' : ''}`, attrs: { style: `width:${pct}%` } }))));
+        for (const row of progress) body.append(progressRow(row));
+      }
     } else if (activeTab === 'pending') {
       if (!approvals.length && !extras.length) body.append(h('div', { class: 'notify-empty' }, '暂无待处理事项。'));
       for (const req of approvals) body.append(approvalCard(req, 'inbox'));
@@ -378,7 +388,12 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
 
   function toggleInbox(): void {
     inboxOpen = !inboxOpen;
-    if (inboxOpen) activeTab = 'pending';
+    if (inboxOpen) {
+      // 默认页签只在打开瞬间定一次（本次打开内 render 不碰 activeTab，手动切换不被覆盖）：
+      // 待处理为空且进度有数据时直接落到「进度」，否则维持待处理。
+      const pendingCount = store.state.approvals.size + feed.items().length + (hooks.extraPendingItems?.().length ?? 0);
+      activeTab = pendingCount === 0 && feed.progressRows().length > 0 ? 'progress' : 'pending';
+    }
     render();
   }
 
