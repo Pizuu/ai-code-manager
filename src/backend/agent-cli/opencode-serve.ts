@@ -53,6 +53,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import type { ApprovalRequest, PermissionMode } from '../../../contracts/ipc.ts';
 import { parseOpencodeLine, type OpencodeEvent } from './opencode-events.ts';
+import { opencodeLaunchEnv } from './platform-env.ts';
 
 // ───────────────────────── 类型（只描述原型用到的 v1 字段） ─────────────────────────
 
@@ -105,13 +106,15 @@ export function serveRules(mode: PermissionMode): ServePermissionRule[] {
   const tail: ServePermissionRule[] = [
     { permission: 'doom_loop', pattern: '*', action: 'ask' },
     { permission: 'external_directory', pattern: '*', action: 'deny' },
+    // 本客户端没有承接 question 的界面：直接禁用，避免模型调用后失败（另有 OPENCODE_ENABLE_QUESTION_TOOL=false 双保险）。
+    { permission: 'question', pattern: '*', action: 'deny' },
   ];
   if (mode === 'plan') {
     return [...base, { permission: 'edit', pattern: '*', action: 'deny' }, { permission: 'bash', pattern: '*', action: 'deny' }, ...tail];
   }
   if (mode === 'allow-all') {
     // 全部允许（v1.6）：不再弹审批；但项目根沙箱不可协商，越界目录照旧拒绝。
-    return [...base, { permission: 'edit', pattern: '*', action: 'allow' }, { permission: 'bash', pattern: '*', action: 'allow' }, { permission: 'external_directory', pattern: '*', action: 'deny' }];
+    return [...base, { permission: 'edit', pattern: '*', action: 'allow' }, { permission: 'bash', pattern: '*', action: 'allow' }, { permission: 'external_directory', pattern: '*', action: 'deny' }, { permission: 'question', pattern: '*', action: 'deny' }];
   }
   const edit: ServePermissionAction = mode === 'auto-edits' ? 'allow' : 'ask';
   // 宪法 九：命令永远需要批准（自动批准编辑也不例外）。
@@ -562,8 +565,10 @@ export function startOpencodeServe(opts: StartServeOptions): Promise<ServeProces
   const spawnFn = opts.spawnFn ?? spawn;
   const setT = opts.setTimeoutFn ?? ((fn, ms) => setTimeout(fn, ms));
   const clearT = opts.clearTimeoutFn ?? ((h) => clearTimeout(h as NodeJS.Timeout));
+  const baseEnv = opts.env ?? process.env;
   const child = spawnFn(opts.executable, ['serve', '--port', '0', '--hostname', '127.0.0.1'], {
-    cwd: opts.cwd, env: { ...(opts.env ?? process.env), OPENCODE_SERVER_PASSWORD: opts.password }, shell: false, windowsHide: true,
+    // opencodeLaunchEnv：禁用 question 工具 + win32 shell 适配（Git Bash 探测 / PowerShell 回退），见 platform-env.ts。
+    cwd: opts.cwd, env: { ...baseEnv, OPENCODE_SERVER_PASSWORD: opts.password, ...opencodeLaunchEnv(platform, baseEnv) }, shell: false, windowsHide: true,
     detached: platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'],
   });
   const close = () => {

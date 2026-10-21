@@ -29,6 +29,7 @@ test('permission mapping keeps constitution IX semantics', () => {
   assert.equal(needsTurnApproval('ask'), true);
   assert.equal(needsTurnApproval('auto-edits'), false);
   assert.deepEqual(JSON.parse(permissionEnv(cfg, 'plan').OPENCODE_PERMISSION ?? '{}'), { edit: 'deny', bash: 'deny' });
+  assert.equal(permissionEnv(cfg, 'plan').OPENCODE_ENABLE_QUESTION_TOOL, 'false');
   assert.deepEqual(permissionEnv({ ...cfg, outputFormat: 'text' }, 'plan'), {});
   assert.match(describePermission(cfg, 'auto-edits'), /编辑文件 允许，执行命令 禁止/);
 });

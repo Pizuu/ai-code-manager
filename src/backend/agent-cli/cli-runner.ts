@@ -10,6 +10,7 @@ import { DEFAULT_SESSION_TITLE } from '../agent/agent-loop.ts';
 import { summarizeSession } from '../sessions/session-store.ts';
 import { createUnifiedDiff } from '../tools/diff.ts';
 import { buildArgs, describePermission, formatCommandLine, needsTurnApproval, permissionEnv, type InvocationConfig } from './invocation.ts';
+import { opencodePlatformEnv } from './platform-env.ts';
 import { mapTodoStatus, parseOpencodeLine, toolStatus, type OpencodeEvent } from './opencode-events.ts';
 
 /** 主进程内部的 CLI 配置（env 已解密，绝不进入 IPC）。 */
@@ -232,7 +233,10 @@ export async function runCliTurn(session: Session, userText: string, deps: CliTu
   }
   upsert({ ...invoke, status: 'running' });
 
-  const env: NodeJS.ProcessEnv = { ...(deps.baseEnv ?? process.env), ...deps.config.env, ...permissionEnv(deps.config, deps.mode) };
+  const mergedEnv: NodeJS.ProcessEnv = { ...(deps.baseEnv ?? process.env), ...deps.config.env };
+  // opencode（run 模式）：按平台做 shell 适配（win32 探测 Git Bash / PowerShell 回退，见 platform-env.ts）；通用 CLI 不注入。
+  const platformEnv = deps.config.outputFormat === 'opencode-json' ? opencodePlatformEnv(deps.platform ?? process.platform, mergedEnv) : {};
+  const env: NodeJS.ProcessEnv = { ...mergedEnv, ...permissionEnv(deps.config, deps.mode), ...platformEnv };
   const child = spawn(deps.executable, args, {
     cwd: deps.projectRoot, env, shell: false, windowsHide: true, detached: deps.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'],
   });

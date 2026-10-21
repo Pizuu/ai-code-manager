@@ -247,6 +247,7 @@ test('serveRules: every mode sends an explicit ruleset; commands always ask unle
   assert.equal(action('plan', 'edit'), 'deny');
   assert.equal(action('plan', 'bash'), 'deny');
   for (const m of ['ask', 'auto-edits', 'plan'] as const) assert.equal(action(m, 'external_directory'), 'deny');
+  for (const m of ['ask', 'auto-edits', 'plan'] as const) assert.equal(action(m, 'question'), 'deny');
   assert.equal(action('ask', 'read'), 'allow');
 });
 
@@ -256,6 +257,7 @@ test('serveRules: allow-all (v1.6) allows edits and commands but still denies ex
   assert.equal(action('allow-all', 'edit'), 'allow');
   assert.equal(action('allow-all', 'bash'), 'allow');
   assert.equal(action('allow-all', 'external_directory'), 'deny');
+  assert.equal(action('allow-all', 'question'), 'deny');
 });
 
 test('toApprovalRequest maps real bash / edit permission events to v1.3 kinds, always carrying permission + patterns', () => {
@@ -522,6 +524,17 @@ test('startOpencodeServe: random port on loopback, no shell, password via env, r
   assert.equal((call.opts.env as Record<string, string>).OPENCODE_SERVER_PASSWORD, 'pw');
   srv.close();
   assert.deepEqual(sp.calls[1]?.args, ['/pid', '4242', '/T', '/F']);
+});
+
+test('startOpencodeServe: launch env disables the question tool (client has no UI for it)', async () => {
+  const sp = fakeSpawn();
+  const p = startOpencodeServe({ executable: '/bin/opencode', cwd: ROOT, password: 'pw', env: { PATH: '/bin' }, platform: 'linux', spawnFn: sp.fn, setTimeoutFn: () => 1, clearTimeoutFn: () => undefined });
+  sp.child.stdout.write(REAL_LISTENING_LINE);
+  const srv = await p;
+  const env = sp.calls[0]?.opts.env as Record<string, string>;
+  assert.equal(env.OPENCODE_ENABLE_QUESTION_TOOL, 'false');
+  assert.equal(env.OPENCODE_CONFIG_CONTENT, undefined);
+  srv.close();
 });
 
 test('startOpencodeServe rejects on early exit and on timeout (timer injected)', async () => {

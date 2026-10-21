@@ -3,6 +3,7 @@
  * 占位符：{prompt} {model} {session} {cwd}。结果是参数数组，永不拼成 shell 字符串执行。
  */
 import type { AgentCliOutputFormat, AgentCliPreset, PermissionMode } from '../../../contracts/ipc.ts';
+import { OPENCODE_QUESTION_ENV } from './platform-env.ts';
 
 export interface InvocationConfig {
   preset: AgentCliPreset;
@@ -61,10 +62,10 @@ export function buildArgs(input: InvocationInput): string[] {
   return out;
 }
 
-/** 注入子进程的额外环境变量（不含用户配置的 env）。 */
+/** 注入子进程的额外环境变量（不含用户配置的 env）。run 模式同样禁用 question 工具：本客户端没有承接它的界面（见 platform-env.ts）。 */
 export function permissionEnv(config: InvocationConfig, mode: PermissionMode): Record<string, string> {
   if (config.outputFormat !== 'opencode-json') return {};
-  return { OPENCODE_PERMISSION: JSON.stringify(opencodePermission(mode)) };
+  return { OPENCODE_PERMISSION: JSON.stringify(opencodePermission(mode)), ...OPENCODE_QUESTION_ENV };
 }
 
 /** 展示给用户的命令行（仅显示用途；实际以参数数组执行）。 */

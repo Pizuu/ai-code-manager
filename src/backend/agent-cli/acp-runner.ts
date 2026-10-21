@@ -21,6 +21,7 @@ import {
 } from './acp-client.ts';
 import { beginCliTurn, type CliRuntimeConfig } from './cli-runner.ts';
 import { probeCliVersion } from './detect.ts';
+import { opencodeLaunchEnv } from './platform-env.ts';
 import type { OpencodeEvent } from './opencode-events.ts';
 
 export const ACP_INVOKE_TOOL = 'agent_cli';
@@ -390,7 +391,8 @@ export class AcpProcessManager {
     const { peer } = startPeer(
       {
         executable: opts.executable, cwd: opts.projectRoot,
-        env: { ...env, OPENCODE_CLIENT: 'acp', OPENCODE_ENABLE_QUESTION_TOOL: 'false' },
+        // opencodeLaunchEnv：禁用 question 工具（本客户端无承接界面）+ win32 shell 适配，见 platform-env.ts。
+        env: { ...env, OPENCODE_CLIENT: 'acp', ...opencodeLaunchEnv(this.deps.platform ?? process.platform, env) },
         ...(this.deps.platform ? { platform: this.deps.platform } : {}),
       },
       {
