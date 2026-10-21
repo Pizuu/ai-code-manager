@@ -121,7 +121,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const thinkOpen = new Map<string, boolean>();
   /** 因待批准而自动展开过的消息：用户手动收起前保持展开（否则批准后卡片会突然消失）。 */
   const thinkSticky = new Set<string>();
-  /** 回合折叠状态（被折叠的 assistant 消息 ID；仅前端内存，不落盘，切换会话时清掉）。 */
+  /** 回合折叠状态（被折叠的回合消息 ID，用户 / 助手回合共用；仅前端内存，不落盘，切换会话时清掉）。 */
   const turnFolded = new Set<string>();
   /** 当前会话 ID（切换会话时清掉展开状态）。 */
   let lastSessionId: string | null = null;
@@ -157,10 +157,32 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       m.content && fid ? h('button', { class: `act act-fav${isFavorite(fid) ? ' on' : ''}`, title: '收藏', attrs: { type: 'button', 'data-fav': fid }, on: { click: () => toggleFav(m, fid) } }, icon('star')) : null);
   };
 
-  /** 用户回合：右侧气泡 + 时间戳。 */
-  const userTurn = (m: ChatMessage): HTMLElement => h('article', { class: 'turn user' },
+  /** 用户回合「重新发送」：把本条用户消息经现行发送路径（与发送按钮同一入口 send）再发一次。会话运行中不并发发送，只给提示（与助手侧「重新回答」一致）。 */
+  const resendUser = (m: ChatMessage) => {
+    if (store.isRunning()) {
+      notify('正在回答中，稍后再试', 'info');
+      return;
+    }
+    textarea.value = m.content;
+    void send();
+  };
+
+  /** 用户回合的操作按钮（复制 / 折叠 / 重新发送 / 收藏），与助手回合 turnActions 同款同序；悬停回合时显示，位于气泡下方 .turn-ft 行、时间戳左侧。 */
+  const userTurnActions = (m: ChatMessage): HTMLElement => {
+    const s = store.state.current;
+    const fid = s ? favoriteId(s.id, m.id) : null;
+    const folded = turnFolded.has(m.id);
+    return h('span', { class: 'acts' },
+      m.content ? h('button', { class: 'act', title: '复制', attrs: { type: 'button' }, on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')) : null,
+      h('button', { class: 'act act-fold', title: folded ? '展开' : '折叠', attrs: { type: 'button' }, on: { click: (ev) => toggleFold(m.id, ev) } }, icon('caret')),
+      h('button', { class: 'act', title: '重新发送', attrs: { type: 'button' }, on: { click: () => resendUser(m) } }, icon('retry')),
+      m.content && fid ? h('button', { class: `act act-fav${isFavorite(fid) ? ' on' : ''}`, title: '收藏', attrs: { type: 'button', 'data-fav': fid }, on: { click: () => toggleFav(m, fid) } }, icon('star')) : null);
+  };
+
+  /** 用户回合：右侧气泡 + 操作行（按钮 + 时间戳）。 */
+  const userTurn = (m: ChatMessage): HTMLElement => h('article', { class: `turn user${turnFolded.has(m.id) ? ' folded' : ''}` },
     h('div', { class: 'ubub-row' }, h('div', { class: 'ubub' }, m.content)),
-    h('div', { class: 'turn-ft' }, h('span', { class: 'turn-tm' }, hm(m.createdAt))));
+    h('div', { class: 'turn-ft' }, userTurnActions(m), h('span', { class: 'turn-tm' }, hm(m.createdAt))));
 
   /**
    * 「思考」区：工具调用的可折叠容器。

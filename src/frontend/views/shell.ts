@@ -7,7 +7,7 @@ import { api, errorText } from '../api.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
-import { activityLabels, activityTarget, activityTotal, sessionActivity } from '../lib/session-activity.ts';
+import { activityTarget } from '../lib/session-activity.ts';
 import { hm } from '../lib/board-format.ts';
 import { errorSectionTitle } from '../lib/error-log.ts';
 import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
@@ -153,7 +153,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     const favs = listFavorites();
     favList.replaceChildren(...(favs.length
       ? favs.map(favItemEl)
-      : [h('div', { class: 'fav-empty' }, '暂无收藏。在回答上点 ☆ 可收藏到这里。')]));
+      : [h('div', { class: 'fav-empty' }, '暂无收藏。在消息上点 ☆ 可收藏到这里。')]));
   };
   renderFavorites();
   onFavoritesChanged(renderFavorites); // shell 常驻，无需退订
@@ -372,10 +372,30 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeErrPop(); });
 
   /**
-   * P0-3：活动指示——图标栏徽标（总数，口径不变）+ 状态栏三色圆形计数，点击跳到该状态的会话。
-   * 三态口径与会话列表 statusOf（第十四批）一致、计数单位为会话数：回答中（含待批准，运行集 ∪ 审批集）
-   * 优先，其次有错误条目为出错，其余（含新会话）为回答完成。跳转目标沿用 activityTarget（取第一个，
-   * 现行无轮换）；红圆特殊：有其它出错会话时优先跳转，无处可跳且当前会话有错误条目时改为开关错误日志层。
+   * 会话三态分类计数（图标栏徽标与状态栏三色圆共用同一套，保证两处口径永不漂移）：
+   * 回答中（含待批准，运行集 ∪ 审批集）优先，其次有错误条目为出错，其余（含新会话）为回答完成；
+   * 判定序与会话列表 statusOf（第十四批）一致，计数单位恒为会话数。
+   */
+  const sessionStateCounts = () => {
+    const approvalIds = new Set([...store.state.approvals.values()].map((a) => a.sessionId));
+    const isAnswering = (id: string) => store.state.running.has(id) || approvalIds.has(id);
+    const isErrored = (id: string) => store.errorsOf(id).length > 0;
+    let nErr = 0;
+    let nRun = 0;
+    let nDone = 0;
+    for (const s of store.state.sessions) {
+      if (isAnswering(s.id)) nRun++;
+      else if (isErrored(s.id)) nErr++;
+      else nDone++;
+    }
+    return { nErr, nRun, nDone, isAnswering, isErrored };
+  };
+
+  /**
+   * P0-3：活动指示——图标栏徽标（需要关注的会话数 = 出错 + 回答中）+ 状态栏三色圆形计数，
+   * 点击跳到该状态的会话。两处数字同出 sessionStateCounts、同批计算一起写，不存在一处已变
+   * 另一处未变的中间态。跳转目标沿用 activityTarget（取第一个，现行无轮换）；红圆特殊：
+   * 有其它出错会话时优先跳转，无处可跳且当前会话有错误条目时改为开关错误日志层。
    */
   const renderActivity = () => {
     const cur = store.state.current;
@@ -388,27 +408,16 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       currentSessionId: cur?.id ?? null,
       approvalSessionIds: approvals.map((a) => a.sessionId),
     };
-    const act = sessionActivity(input);
-    // 图标栏徽标：总数
-    const total = activityTotal(act);
+    // 图标栏徽标：需要关注的会话数 = 出错（红）+ 回答中（黄）；回答完成不计入，为 0 时隐藏
+    const { nErr, nRun, nDone, isAnswering, isErrored } = sessionStateCounts();
+    const total = nErr + nRun;
     railBadge.hidden = total === 0;
     railBadge.textContent = total > 99 ? '99+' : String(total);
-    railBadge.className = `ri-badge${act.errors ? ' err' : act.pending ? ' pend' : ''}`;
+    railBadge.className = `ri-badge${nErr ? ' err' : nRun ? ' pend' : ''}`;
     railView.session.title = total
-      ? `${VIEW_TITLES.session}：${activityLabels(act).join(' · ')}（点击查看）`
+      ? `${VIEW_TITLES.session}：${total} 个会话需要关注（出错 ${nErr} · 回答中 ${nRun}）（点击查看）`
       : VIEW_TITLES.session;
-    // 状态栏：三色圆形计数（红出错 / 黄回答中 / 绿回答完成），按会话三态计数（口径见上方注释）
-    const approvalIds = new Set(input.approvalSessionIds);
-    const answering = (id: string) => store.state.running.has(id) || approvalIds.has(id);
-    const errored = (id: string) => store.errorsOf(id).length > 0;
-    let nErr = 0;
-    let nRun = 0;
-    let nDone = 0;
-    for (const s of store.state.sessions) {
-      if (answering(s.id)) nRun++;
-      else if (errored(s.id)) nErr++;
-      else nDone++;
-    }
+    // 状态栏：三色圆形计数（红出错 / 黄回答中 / 绿回答完成），与徽标同一批计数（口径见上方注释）
     clear(statusAct);
     const dot = (cls: string, n: number, label: string, onClick: (() => void) | null) => {
       const el = h('button', { class: `st-dot ${cls}${n ? '' : ' zero'}`, title: `${label}会话 ${n}`, attrs: { type: 'button' } }, String(n));
@@ -418,11 +427,11 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     };
     redDotEl = dot('r', nErr, '出错', () => {
       // 优先跳到其它出错会话；无处可跳且当前会话有错误条目时开关错误日志层
-      const other = store.state.sessions.find((s) => s.id !== input.currentSessionId && !answering(s.id) && errored(s.id));
+      const other = store.state.sessions.find((s) => s.id !== input.currentSessionId && !isAnswering(s.id) && isErrored(s.id));
       if (other) {
         closeErrPop();
         hooks.onJumpToSession(other.id);
-      } else if (input.currentSessionId && errored(input.currentSessionId)) {
+      } else if (input.currentSessionId && isErrored(input.currentSessionId)) {
         toggleErrPop();
       }
     });
@@ -434,7 +443,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       }
     });
     dot('g', nDone, '回答完成', () => {
-      const target = store.state.sessions.find((s) => !answering(s.id) && !errored(s.id));
+      const target = store.state.sessions.find((s) => !isAnswering(s.id) && !isErrored(s.id));
       if (target) {
         closeErrPop();
         hooks.onJumpToSession(target.id);
@@ -461,10 +470,14 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     for (const s of F?.stages ?? []) stg.append(h('span', { class: s.done ? 'ok' : '', title: s.detail }, `${s.label}${s.key === 'checklists' ? ` ${s.detail}` : ''} ${s.done ? '✓' : '○'}`));
     // 当前阶段由真实 stages 推导：第一个未完成的阶段；七步全完成 = 规格准备结束、已进入实施（Implement）；无 stages 回退 '—'
     const currentStage = (F?.stages ?? []).find((s) => !s.done)?.label ?? ((F?.stages ?? []).length ? 'Implement' : '—');
+    // 契约段按状态着色（已合入绿 var(--green) / 未合入琥珀 var(--amber)，与 .st-dot 同源）；无契约卡时兜底显示全板真实合入统计，不留空白
+    const contractSeg = contractCard
+      ? h('span', { class: contractCard.merge ? 'grn' : 'amb' }, `${contractCard.id} · ${contractCard.merge ? `merge ${contractCard.merge.short} 已合入 ${integ}` : '未合入'}`)
+      : h('span', { class: 'ink2' }, `已合入 ${cards.filter((c) => c.status === 'merged').length}/${cards.length} 卡`);
     statusProg.replaceChildren(
       icon('check'),
       h('span', {}, `契约 IPC ${b.contractVersion ?? '?'}${frozen ? ' 已冻结' : ' 未冻结'}`),
-      h('span', { class: 'mute' }, contractCard ? `${contractCard.id} · ${contractCard.merge ? `merge ${contractCard.merge.short} 已合入 ${integ}` : '未合入'}` : ''),
+      contractSeg,
       stg,
       h('span', { class: 'chip acc', title: 'specs tasks.md 勾选数' }, `当前：${currentStage} · tasks.md ${F?.tasksDone ?? 0}/${F?.tasksTotal ?? 0}`),
       h('span', { class: 'mute' }, '按序合入 → Converge'));
