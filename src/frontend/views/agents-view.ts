@@ -1,17 +1,15 @@
 /**
  * 「Worktree 与 Agent」视图（T-040）：从 Git 分支与集成页拆出的 Worktree 小节（含「发布到 main」门禁），
  * 加上泳道 → Agent 分工与相关配置。数据全部来自既有通道：git:get / board:get（快照）、fs:read（只读
- * .agents/config.sh）、settings:get / settings:set（新会话默认 agent）；不新增契约，配置文件只读展示。
+ * .agents/config.sh）；不新增契约，配置文件只读展示。
  */
 import type { BoardCard } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
-import { agentName, agentOptions } from '../lib/agent-label.ts';
 import { STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
-import { MODE_LABELS } from './chat.ts';
 import type { SettingsTab } from './settings-dialog.ts';
 
 export interface AgentsHooks {
@@ -71,7 +69,6 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
     clear(container);
     const g = store.state.git;
     const b = store.state.board;
-    const st = store.state.settings;
     if (!store.state.project) {
       container.append(emptyState('请先打开项目', 'Worktree 与 Agent 视图读取本机 git worktree、泳道与多 Agent 配置。', h('button', { class: 'btn', on: { click: hooks.openProject } }, '打开项目文件夹')));
       return;
@@ -150,29 +147,6 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
       cfgErr ? h('div', { class: 'error-text mt8' }, `${CONFIG_FILE}：${cfgErr}`) : null,
       h('div', { class: 'mute fs12 mt12' }, '配置文件由 coordinator 维护，此处只读；需修改请在任务分支中编辑文件。'),
       h('div', { class: 'fx8 mt12 wrap' }, fileBtn('查看 config.sh', CONFIG_FILE), fileBtn('查看 lanes.conf', LANES_FILE), fileBtn('协作流程', MULTI_AGENT_DOC))));
-
-    // Agent：新会话默认 agent 走既有 settings:set；其余在设置对话框中修改
-    const def = h('select', { attrs: { 'aria-label': '新会话默认 agent' } });
-    for (const o of agentOptions(st)) def.append(h('option', { attrs: { value: o.ref } }, o.label));
-    def.value = st?.defaultAgent ?? 'builtin';
-    const err = h('div', { class: 'error-text' });
-    def.addEventListener('change', async () => {
-      try {
-        store.state.settings = await api.invoke('settings:set', { defaultAgent: def.value as 'builtin' });
-        store.emit('settings');
-        hooks.notify(`新会话默认 agent 已设为「${agentName(store.state.settings.defaultAgent, store.state.settings)}」。`);
-      } catch (e) {
-        err.textContent = errorText(e);
-      }
-    });
-    right.append(h('div', { class: 'panel cfg' },
-      h('div', { class: 'h' }, h('span', {}, 'Agent')),
-      h('div', { class: 'field mt12' }, h('label', {}, '新会话默认 agent'), def, h('div', { class: 'help' }, '每个会话也可在任务会话顶部单独切换。'), err),
-      kv('权限模式', st ? MODE_LABELS[st.permissionMode] : '—', '内置 agent'),
-      kv('外部 Agent CLI', `${st?.agentClis?.length ?? 0} 个`),
-      h('div', { class: 'fx8 mt12' },
-        h('button', { class: 'btn sm', on: { click: () => hooks.openSettings('cli') } }, 'Agent CLI 设置'),
-        h('button', { class: 'btn sm', on: { click: () => hooks.openSettings('model') } }, '内置 agent 设置'))));
 
     right.append(h('div', { class: 'panel cfg' },
       h('div', { class: 'h' }, h('span', {}, '共享热点文件'), h('span', { class: 'mute' }, '不属于任何泳道')),

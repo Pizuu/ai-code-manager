@@ -13,8 +13,7 @@ import { store, type ViewId } from '../store.ts';
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
 /** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
 const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git', 'git'], ['agents', 'Agents', 'wt']];
-/** 默认展开的顶层目录（原型 treeHtml）；之后由用户点击目录折叠 / 展开。 */
-const EXPAND: readonly string[] = ['.agents', '.specify', 'src', 'specs', 'contracts'];
+/** 文件树默认全部折叠（用户要求）：只显示第一层，目录由用户点击逐个展开 / 折叠。 */
 /** 整棵目录树折叠状态（仅本机界面偏好）。 */
 const TREE_COLLAPSED_KEY = 'acm.explorer.treeCollapsed';
 
@@ -344,8 +343,8 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   };
 
   const nodeAttrs = (n: FileNode) => sendAttrs({ kind: 'file', path: n.relPath, dir: n.kind === 'dir' });
-  /** 展开的目录（relPath）；目录单击折叠 / 展开，子项按需读取并缓存。 */
-  const expanded = new Set<string>(EXPAND);
+  /** 展开的目录（relPath），初始为空 = 全部折叠；目录单击折叠 / 展开，子项按需读取并缓存。 */
+  const expanded = new Set<string>();
   const kidsCache = new Map<string, FileNode[]>();
   const fileNodeEl = (n: FileNode, depth: number) => {
     const dir = n.kind === 'dir';
@@ -451,8 +450,8 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   window.addEventListener('focus', () => void refreshWorkspace());
   store.on('project', () => {
     kidsCache.clear();
+    // 打开 / 切换项目回到默认：全部折叠（展开状态不跨项目保留）
     expanded.clear();
-    for (const d of EXPAND) expanded.add(d);
     renderChrome();
     void renderTree();
     void refreshWorkspace();
