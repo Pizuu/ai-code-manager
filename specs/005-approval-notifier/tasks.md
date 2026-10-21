@@ -22,7 +22,7 @@ description: "Task list for 005-approval-notifier"
 
 ## Phase 2: Foundational（主进程通知能力）
 
-- [ ] T503 [US1] [lane:backend] 主进程通知服务 src/backend/notify/：订阅审批请求产生 / 解决与会话状态，P0 / P1 发系统通知（Electron Notification 可注入替身以便测试），以 approvalId 去重，P0 等待 3 分钟升级一次，点击通知聚焦窗口并回传激活事件；按 Settings 提醒偏好门控；单元 + 集成测试（假通知器 + 假时钟）
+- [x] T503 [US1] [lane:backend] 主进程通知服务 src/backend/notify/：订阅审批请求产生 / 解决与会话状态，P0 / P1 发系统通知（Electron Notification 可注入替身以便测试），以 approvalId 去重，P0 等待 3 分钟升级一次，点击通知聚焦窗口并回传激活事件；按 Settings 提醒偏好门控；单元 + 集成测试（假通知器 + 假时钟）；连带补通 settings-store 的 notify 落盘与投影（此前未存）
 
 ## Phase 3: User Story 1 — 审批请求不漏看（P1）
 
