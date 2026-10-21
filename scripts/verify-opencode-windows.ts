@@ -18,8 +18,11 @@
  *     shell=powershell.exe（外加 question 工具禁用），断言注入结果逐字正确。
  *  5. platform-env 探测分支：Git 安装目录下存在 bash.exe 时注入 OPENCODE_GIT_BASH_PATH；
  *     用户已自设该变量时不覆盖（返回空）。
- *  6. 错误路径（无模型 Key）：剥离提供方密钥类环境变量并指向空 HOME 后，
- *     `opencode run` 必须以非 0 退出且输出指向 provider / auth / model 类错误，不得挂死或假成功。
+ *  6. 错误路径（无模型 Key）：剥离提供方密钥类环境变量并指向空 HOME 后，两个用例各自
+ *     独立记账（一例失败不吞另一例）：两例都必须非 0 退出、不得挂死或假成功，且输出须有
+ *     明确错误载体——(a) 不存在的 provider/model 以结构化错误或 provider/auth/model 字样
+ *     为判据（1.19.3 实测走通用服务器错误面，见 STRUCTURED_ERROR_RE 处注释）；(b) 无凭据
+ *     默认运行以 provider / auth / credential 类关键词为判据。
  *
  * 非 Windows 平台打印 SKIP 并退出 0（同 smoke-exe.ts 的口径：平台不符不假装通过）；
  * 本脚本的断言只能在 windows-latest / Windows 实机上见分晓。
@@ -291,6 +294,18 @@ function checkPlatformEnvDetect(): string {
   return `命中 ${fakeBash} → 注入 OPENCODE_GIT_BASH_PATH；用户自设时不覆盖`;
 }
 
+/**
+ * (a) 例「报错明确」的判据：opencode 的结构化错误载体。1.19.3 实测（CI windows-opencode
+ * 首跑，run 39605367698）：指定不存在的 provider/model 时输出为
+ * `Error: {"name":"UnknownError","message":"Unexpected server error. Check server logs for details."}`
+ * 并非 0 退出——走的是通用服务器错误面，不含 provider/auth/model 字样，旧的关键词断言因此
+ * 失配（行为本身正确：不挂死、报错明确、非假成功）。故 (a) 例接受结构化错误载体或原
+ * provider/auth/model 关键词任一命中；退出码与超时断言不放宽，静默成功与无输出挂死仍抓得住。
+ */
+const STRUCTURED_ERROR_RE = /Error:\s*\{|"name"\s*:\s*"[A-Za-z]*Error"|UnknownError|Unexpected server error/i;
+/** (b) 例「报错明确」的判据：无凭据默认运行时应指向提供方 / 凭据类错误（沿用原关键词集）。 */
+const CREDENTIAL_ERROR_RE = /provider|auth|api[- ]?key|credential|model/i;
+
 async function checkNoKeyErrorPath(): Promise<string> {
   const exe = needExe();
   const home = mkTmp('acm-oc-home-');
@@ -304,22 +319,38 @@ async function checkNoKeyErrorPath(): Promise<string> {
   scrubbed.USERPROFILE = home;
   scrubbed.XDG_DATA_HOME = path.join(home, '.local', 'share');
 
-  const details: string[] = [];
-  const cases: Array<{ label: string; args: string[] }> = [
-    { label: '不存在的提供方/模型', args: ['run', '-m', 'acm-nonexistent-provider/model-zzz', 'ping'] },
-    { label: '无任何凭据的默认运行', args: ['run', 'ping'] },
+  // 两例各自独立记账：一例断言失败不中断另一例；本项成败与每例的实际输出都写进结果行，
+  // 便于按 CI 日志逐例定案（首跑时 (a) 例抛错中断、(b) 例根本没跑到，就是这个教训）。
+  const cases: Array<{ label: string; args: string[]; explicitError: (out: string) => boolean; missingHint: string }> = [
+    {
+      label: '不存在的提供方/模型',
+      args: ['run', '-m', 'acm-nonexistent-provider/model-zzz', 'ping'],
+      explicitError: (out) => STRUCTURED_ERROR_RE.test(out) || CREDENTIAL_ERROR_RE.test(out),
+      missingHint: '未见结构化错误载体或 provider/auth/model 字样',
+    },
+    {
+      label: '无任何凭据的默认运行',
+      args: ['run', 'ping'],
+      explicitError: (out) => CREDENTIAL_ERROR_RE.test(out),
+      missingHint: '未指向 provider/auth/credential 类错误',
+    },
   ];
+  const outcomes: string[] = [];
+  let failed = 0;
   for (const c of cases) {
-    const r = await runCapture(exe, c.args, { cwd: home, env: scrubbed, timeoutMs: 90_000 });
-    assert(!r.timedOut, `${c.label}：90s 未退出（疑似挂死或等待交互输入）`);
-    assert(r.code !== 0 && r.code !== null, `${c.label}：无 Key 却以退出码 ${String(r.code)} 结束（假成功？）输出尾：${r.out.trim().slice(-300)}`);
-    assert(
-      /provider|auth|api[- ]?key|credential|model/i.test(r.out),
-      `${c.label}：输出未指向 provider/auth/model 类错误：${r.out.trim().slice(-300)}`,
-    );
-    details.push(`${c.label} 退出码 ${String(r.code)}`);
+    try {
+      const r = await runCapture(exe, c.args, { cwd: home, env: scrubbed, timeoutMs: 90_000 });
+      assert(!r.timedOut, `90s 未退出（疑似挂死或等待交互输入）`);
+      assert(r.code !== 0 && r.code !== null, `无 Key 却以退出码 ${String(r.code)} 结束（假成功？）输出尾：${r.out.trim().slice(-300)}`);
+      assert(c.explicitError(r.out), `输出${c.missingHint}：${r.out.trim().slice(-300)}`);
+      outcomes.push(`${c.label} ✓（退出码 ${String(r.code)}）`);
+    } catch (err) {
+      failed++;
+      outcomes.push(`${c.label} ✗（${err instanceof Error ? err.message : String(err)}）`);
+    }
   }
-  return details.join('；');
+  if (failed > 0) throw new Error(`${failed}/2 例失败 —— ${outcomes.join('；')}`);
+  return outcomes.join('；');
 }
 
 async function main(): Promise<number> {
