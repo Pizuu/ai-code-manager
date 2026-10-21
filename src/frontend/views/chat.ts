@@ -79,6 +79,11 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const slashMenu = h('div', { class: 'slash-menu' });
   slashMenu.hidden = true;
   const textarea = h('textarea', { attrs: { placeholder: '回复…（Enter 发送，Shift+Enter 换行，/ 查看命令）' } });
+  // 输入框不限高：高度全量跟随内容生长（scrollHeight），下限由 CSS min-height 兜住；内部不滚动、无滚动条。
+  const autoGrow = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  };
   const stopBtn = h('button', { class: 'stop' }, '停止');
   const sendBtn = h('button', { class: 'send', title: '发送' }, icon('up'));
   const modeSel = h('select', { class: 'mode', title: '权限模式' });
@@ -590,6 +595,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (!raw || !s) return;
     textarea.value = '';
     renderSlashMenu();
+    autoGrow();
     let text: string | null;
     try {
       text = await runSlash(raw);
@@ -601,6 +607,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const setup = agentSetupHint(s.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
     if (setup) {
       textarea.value = raw;
+      autoGrow();
       notify(setup);
       return;
     }
@@ -613,6 +620,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     } catch (e) {
       s.messages.splice(s.messages.indexOf(local), 1);
       textarea.value = raw;
+      autoGrow();
       notify(errorText(e));
     }
   };
@@ -624,6 +632,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
   });
   textarea.addEventListener('input', renderSlashMenu);
+  textarea.addEventListener('input', autoGrow);
   sendBtn.addEventListener('click', () => void send());
   stopBtn.addEventListener('click', () => {
     const s = store.state.current;
@@ -668,11 +677,13 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     notify,
     insertText: (text) => {
       textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, 'end');
+      autoGrow();
       textarea.focus();
     },
     insertBlock: (text) => {
       const r = insertBlock(textarea.value, textarea.selectionStart, textarea.selectionEnd, text);
       textarea.value = r.text;
+      autoGrow();
       textarea.focus();
       textarea.setSelectionRange(r.caret, r.caret);
       textarea.scrollTop = textarea.scrollHeight;

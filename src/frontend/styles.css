@@ -569,7 +569,8 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .comp{padding:8px 24px 12px}
 .box{border-radius:var(--border-radius-xl);padding:12px 16px 10px;border:var(--border-width-regular) solid var(--color-border-secondary);box-shadow:var(--shadow-sm);background:var(--color-background-primary)}
 .box:focus-within{border-color:var(--color-border-primary)}
-.box textarea{font-size:var(--font-body);height:44px}
+.box textarea{font-size:var(--font-body);height:44px;min-height:44px;overflow-y:hidden;scrollbar-width:none}
+.box textarea::-webkit-scrollbar{display:none}
 .send{width:32px;height:32px;border-radius:var(--border-radius-md)}
 .comp .ft{gap:16px;margin-top:8px;font-size:var(--font-caption)}
 .ctxp{width:304px;padding:16px 18px;background:var(--color-background-primary)}
