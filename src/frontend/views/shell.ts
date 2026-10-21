@@ -2,7 +2,7 @@
  * 工作台外框（FR-101–FR-103，ADR 0005）：图标栏 .rail、项目栏 .explorer、页头 .wh、状态栏 .status，
  * DOM 结构与类名逐一对应 HTML 原型的 rail() / explorer() / header() / statusbar()。三个导航项 = 三个板块。
  */
-import type { FileNode, ReminderItem } from '../../../contracts/ipc.ts';
+import type { FileNode } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
@@ -11,11 +11,10 @@ import { sessionStateCounts } from '../lib/session-activity.ts';
 import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
 import { mountTourButton } from '../lib/tour.ts';
 import { store, type ViewId } from '../store.ts';
-import { mountNotifyView } from './notify-view.ts';
 
-export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents', speckit: 'Spec Kit' };
+export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
 /** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
-const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git', 'git'], ['agents', 'Agents', 'wt'], ['speckit', 'Spec Kit', 'box']];
+const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git', 'git'], ['agents', 'Agents', 'wt']];
 /** 文件树默认全部折叠（用户要求）：只显示第一层，目录由用户点击逐个展开 / 折叠。 */
 /** 整棵目录树折叠状态（仅本机界面偏好）。 */
 const TREE_COLLAPSED_KEY = 'acm.explorer.treeCollapsed';
@@ -28,14 +27,6 @@ export interface ShellHooks {
   onError(text: string): void;
   /** P0-3：点击活动徽标 / 状态栏计数时跳转到指定会话。 */
   onJumpToSession(sessionId: string): void;
-  /** T-048：收件箱 / 弹窗内直批（main 组合 chat.ts 的 decideApproval）。 */
-  notifyDecide(approvalId: string, approved: boolean): Promise<void>;
-  /** T-048：查看审批（main 组合切会话 + 定位审批卡）。 */
-  notifyView(approvalId: string): void;
-  /** T-048：FR-507 抑制判定（chat.ts 的审批卡可见性查询）。 */
-  isApprovalCardVisible(approvalId: string): boolean;
-  /** T-049：收件箱非审批事项（P1–P3）的查看跳转（main 组合看板定位 / 切会话）。 */
-  notifyViewItem?: (item: ReminderItem) => void;
 }
 
 export interface ShellView {
@@ -72,7 +63,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   // 板块图标与项目栏导航同序（泳道看板 → 任务会话 → Git 与集成，T-039）；切换项目入口在项目选择器与 ⋯ 菜单
   const railView = {} as Record<ViewId, HTMLAnchorElement>;
   const railBtn = (name: IconName, title: string, onClick: () => void) => h('a', { class: 'ri', title, on: { click: onClick } }, icon(name));
-  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code', agents: 'wt', speckit: 'box' };
+  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code', agents: 'wt' };
   for (const [id, label] of NAV) railView[id] = railBtn(RAIL_ICON[id], label, () => setView(id));
   // P0-3：任务会话图标上的活动徽标（运行中 / 待批准 / 出错）
   const railBadge = h('span', { class: 'ri-badge', attrs: { hidden: '' } });
@@ -91,19 +82,11 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     themeBtn.title = `切换主题（当前：${dark ? '深色' : '浅色'}）`;
   };
   syncThemeBtn();
-  // T-048：审批提醒（弹窗栈 + 收件箱）。入口定版在 rail 底部组、主题按钮上方；根节点在 app 组装后追加（fixed 定位，不占布局）。
-  const notifyView = mountNotifyView({
-    decide: hooks.notifyDecide,
-    view: hooks.notifyView,
-    isApprovalCardVisible: hooks.isApprovalCardVisible,
-    ...(hooks.notifyViewItem ? { viewItem: hooks.notifyViewItem } : {}),
-  });
   const rail = h('nav', { class: 'rail' },
     railBtn('side', '侧栏', () => explorer.toggleAttribute('hidden')),
     h('div', { class: 'gap26' }),
     ...NAV.map(([id]) => railView[id]),
     h('div', { class: 'sp' }),
-    notifyView.button,
     themeBtn,
     h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
   );
@@ -297,14 +280,13 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     session: h('div', { class: 'ws-view sess', attrs: { id: 'wb-session' } }),
     git: h('div', { class: 'ws-view wb', attrs: { id: 'wb-git' } }),
     agents: h('div', { class: 'ws-view wb', attrs: { id: 'wb-agents' } }),
-    speckit: h('div', { class: 'ws-view wb', attrs: { id: 'wb-speckit' } }),
   };
   const statusL = h('span');
   /** 规格进度行（原看板 .prog 移入）：状态栏最右端常驻，类名沿用 .prog，布局覆盖在 styles.css 的 .status .prog。 */
   const statusProg = h('span', { class: 'prog' });
   const status = h('footer', { class: 'status' }, statusL, statusProg);
-  const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, views.speckit, status);
-  app.append(rail, explorer, ws, notifyView.root);
+  const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, status);
+  app.append(rail, explorer, ws);
 
   // ── 渲染 ──
   const renderProject = () => {

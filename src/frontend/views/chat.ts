@@ -18,7 +18,8 @@ import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../l
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
 import { activityTarget, sessionStateCounts } from '../lib/session-activity.ts';
-import { parseSlashCommand, suggestCommands } from '../lib/slash-commands.ts';
+import { parseSlashCommand, suggestCommands, type SlashCommandInfo } from '../lib/slash-commands.ts';
+import { filledTextFor, isPrimedText, wrapIndex } from '../lib/slash-menu.ts';
 import { store } from '../store.ts';
 import { renderToolCard, type DiffRenderer } from './tool-card.ts';
 
@@ -37,16 +38,10 @@ export interface ChatHooks {
 export interface ChatView {
   renderAll(): void;
   appendDelta(messageId: string): void;
-  /** 程序化发送（如 Spec Kit 向导）：与输入框发送同一路径（斜杠展开 → 配置校验 → 乐观追加 → agent:send，失败回滚）；无当前会话 / 配置未就绪 / 发送失败时抛错。不操作输入框 DOM。 */
-  sendText(text: string): Promise<void>;
   insertText(text: string): void;
   /** 003：在光标处插入一段带来源标注的内容（前后补换行），不发送。 */
   insertBlock(text: string): void;
   notify(text: string, kind?: 'notice' | 'info'): void;
-  /** T-048：对应审批卡是否正显示在当前会话的可视区（FR-507 的弹窗抑制判定）；找不到卡片按不可见处理。 */
-  isApprovalCardVisible(approvalId: string): boolean;
-  /** T-048：滚动定位并高亮对应审批卡；找到并定位成功返回 true。 */
-  focusApproval(approvalId: string): boolean;
 }
 
 export async function decideApproval(approvalId: string, approved: boolean): Promise<void> {
@@ -93,6 +88,15 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const stDots = h('span', { class: 'st-dots' }, errDot, runDot, doneDot);
   const slashMenu = h('div', { class: 'slash-menu' });
   slashMenu.hidden = true;
+  // 规格 004 两段式预置条：与附件托盘同处 .box 内（托盘之上）；选择命令后显示，真正发送前一直保留。
+  const primeName = h('span', { class: 'prime-name' });
+  const primeCancel = h('button', { class: 'prime-x', attrs: { type: 'button', 'aria-label': '取消预置' } }, '×');
+  const primebar = h('div', { class: 'primebar' },
+    h('span', { class: 'prime-label' }, '已预置'),
+    primeName,
+    h('span', { class: 'prime-hint' }, '再按 Enter 执行；修改命令或清空将取消'),
+    primeCancel);
+  primebar.hidden = true;
   const textarea = h('textarea', { attrs: { placeholder: '回复…（Enter 发送，Shift+Enter 换行，/ 查看命令）' } });
   // 输入框不限高：高度全量跟随内容生长（scrollHeight），下限由 CSS min-height 兜住；内部不滚动、无滚动条。
   const autoGrow = () => {
@@ -134,7 +138,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const comp = h('div', { class: 'comp' },
     h('div', { class: 'ctx' }, ctxUsage, stDots),
     slashMenu,
-    h('div', { class: 'box' }, attray, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
+    h('div', { class: 'box' }, primebar, attray, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
     h('div', { class: 'ft' }, modelPick, modeSel));
   container.append(thd, log, comp);
 
@@ -193,7 +197,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (!msgId) { log.scrollTop = log.scrollHeight; return true; } // 无锚点消息：退化为滚到底部
     const el = log.querySelector(`.msg[data-id="${CSS.escape(msgId)}"]`);
     if (!el) return false;
-    // 目标在折叠回合内先展开（状态与 DOM 同步，免得重渲染又折回去）；祖先 details 一并打开（与 focusApproval 同口径）
+    // 目标在折叠回合内先展开（状态与 DOM 同步，免得重渲染又折回去）；祖先 details 一并打开
     const art = el.closest('article.turn');
     if (art?.classList.contains('folded')) {
       art.classList.remove('folded');
@@ -404,7 +408,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
 
   /**
    * 一次性「重提最近提问」武装标记：重提按钮（重新发送 / 重新回答）在触发前按目标 user 消息
-   * 是否为会话最后一条 user 消息置位，输入框 send() 入口读取后立即清零并透传给 sendText →
+   * 是否为会话最后一条 user 消息置位，输入框 send() 入口读取后立即清零并透传给
    * agent:send（契约 v1.11 reaskLatest，后端据此截断旧问答只保留最新一轮）。
    */
   let pendingReask = false;
@@ -619,6 +623,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       thinkOpen.clear();
       thinkSticky.clear();
       turnFolded.clear();
+      // 规格 004：菜单与预置都是输入框状态，不跨会话残留（清预置、关菜单、清 Esc 抑制）。
+      clearSlashState();
     }
     const sysb = sysbEl();
     if (sysb) logIn.append(sysb);
@@ -828,12 +834,104 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   window.addEventListener('blur', closeModelMenu);
   window.addEventListener('resize', closeModelMenu);
 
-  const renderSlashMenu = () => {
-    const items = suggestCommands(textarea.value);
+  // ── 规格 004：斜杠菜单键盘 / 鼠标选择 + 两段式预置 ──
+  // 候选签名 = 候选命令名拼接；签名变化（继续输入 / 删除使集合变窄或恢复）时选中项重置到第一条（FR-004）。
+  // slashMenuOpen 是实际可见状态：有候选、未被 Esc 抑制、且不在预置态（预置条接棒呈现）时才为真。
+  let slashIndex = 0;
+  let slashSignature = '';
+  let slashItems: SlashCommandInfo[] = [];
+  let slashMenuOpen = false;
+  let slashSuppressed = false;
+  let slashSuppressedValue: string | null = null;
+  let primedName: string | null = null;
+
+  function renderPrimebar(): void {
+    primebar.hidden = primedName === null;
+    primeName.textContent = primedName ?? '';
+  }
+
+  function clearPrime(): void {
+    if (primedName === null) return;
+    primedName = null;
+    renderPrimebar();
+  }
+
+  /** 同步候选与选中项：签名变化时 slashIndex 归 0；返回当前候选（被抑制时为空）。 */
+  function currentSlashItems(): SlashCommandInfo[] {
+    const items = slashSuppressed ? [] : suggestCommands(textarea.value);
+    const signature = items.map((c) => c.name).join('\n');
+    if (signature !== slashSignature) {
+      slashSignature = signature;
+      slashIndex = 0;
+    }
+    if (items.length === 0) slashIndex = 0;
+    else if (slashIndex < 0 || slashIndex >= items.length) slashIndex = 0;
+    slashItems = items;
+    return items;
+  }
+
+  function renderSlashMenu(): void {
+    const items = currentSlashItems();
+    slashMenuOpen = primedName === null && items.length > 0;
     clear(slashMenu);
-    slashMenu.hidden = items.length === 0;
-    for (const c of items) slashMenu.append(h('div', {}, h('b', {}, c.usage), c.description));
-  };
+    slashMenu.hidden = !slashMenuOpen;
+    if (!slashMenuOpen) return;
+    items.forEach((c, idx) => {
+      const item = h('div', { class: idx === slashIndex ? 'on' : '', attrs: { 'data-idx': String(idx) } },
+        h('b', {}, c.usage), c.description);
+      item.addEventListener('mouseenter', () => {
+        if (slashIndex === idx) return;
+        slashIndex = idx;
+        renderSlashMenu();
+      });
+      item.addEventListener('click', () => pickSlashCommand(c));
+      slashMenu.append(item);
+    });
+  }
+
+  /** 键盘 Enter 与鼠标 click 共用的选择动作（FR-006）：只填入 + 进入预置，绝不在此执行（FR-009）。 */
+  function pickSlashCommand(cmd: SlashCommandInfo): void {
+    const filled = filledTextFor(cmd);
+    textarea.value = filled;
+    primedName = cmd.name;
+    renderPrimebar();
+    renderSlashMenu();
+    autoGrow();
+    textarea.focus();
+    textarea.setSelectionRange(filled.length, filled.length);
+  }
+
+  /** 切换会话时的残留清理：预置、菜单与 Esc 抑制一并清掉。 */
+  function clearSlashState(): void {
+    primedName = null;
+    renderPrimebar();
+    slashSuppressed = false;
+    slashSuppressedValue = null;
+    slashSignature = '';
+    slashIndex = 0;
+    slashItems = [];
+    slashMenuOpen = false;
+    clear(slashMenu);
+    slashMenu.hidden = true;
+  }
+
+  /**
+   * 输入变化时的状态复核：Esc 抑制在「值与抑制时不同」时解除；预置用 isPrimedText 复核，
+   * 命令名被改动 / 文本被清空即取消（在参数区补字不取消）。最后按新内容重渲菜单。
+   */
+  function handleTextareaInput(): void {
+    if (slashSuppressed && textarea.value !== slashSuppressedValue) {
+      slashSuppressed = false;
+      slashSuppressedValue = null;
+    }
+    if (primedName !== null && !isPrimedText(primedName, textarea.value)) clearPrime();
+    renderSlashMenu();
+  }
+
+  primeCancel.addEventListener('click', () => {
+    clearPrime();
+    textarea.focus();
+  });
 
   /** 斜杠命令（FR-013）：本地动作在此执行；返回要发送给 Agent 的文本，或 null 表示已处理。 */
   const runSlash = async (text: string): Promise<string | null> => {
@@ -865,38 +963,11 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
   };
 
-  /** 发送失败中应把原文恢复进输入框的一类（配置未就绪、agent:send 失败），message 即应展示的文案；runSlash 本地命令的失败不属此类（旧行为：不恢复原文）。 */
-  class RestoreInputError extends Error {}
-
   /**
-   * 发送核心（输入框发送与 ChatView.sendText 共用）：斜杠展开 → 配置校验 → 乐观追加 → agent:send。
-   * 本地斜杠命令（/help、/clear、/model）在 runSlash 内消化（返回 null），不产生发送。
-   * 内容为空 / 无当前会话 / 配置未就绪 / 发送失败均抛错；不操作输入框 DOM，原文恢复与提示由调用方处理。
+   * 输入框发送（自包含）：斜杠展开 → 配置校验 → 乐观追加 → agent:send。
+   * 本地斜杠命令（/help、/clear、/model）在 runSlash 内消化（返回 null），不产生发送；
+   * 配置未就绪 / 发送失败时把原文恢复进输入框并提示，runSlash 本地命令的失败只提示、不恢复原文。
    */
-  /** 返回 true = 真的发给了 agent；false = 被本地斜杠命令消化（未发送）。 */
-  const sendText = async (rawText: string, opts?: { reaskLatest?: boolean }): Promise<boolean> => {
-    const raw = rawText.trim();
-    const s = store.state.current;
-    if (!raw) throw new Error('发送内容为空');
-    if (!s) throw new Error('当前没有打开的会话');
-    const text = await runSlash(raw);
-    if (text === null) return false;
-    const setup = agentSetupHint(s.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
-    if (setup) throw new RestoreInputError(setup);
-    // 乐观追加用户消息（主进程会写入同样内容；切换会话时以持久化版本为准）
-    const local: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: text, createdAt: new Date().toISOString() };
-    s.messages.push(local);
-    renderAll();
-    try {
-      await api.invoke('agent:send', opts?.reaskLatest ? { sessionId: s.id, text, reaskLatest: true } : { sessionId: s.id, text });
-    } catch (e) {
-      s.messages.splice(s.messages.indexOf(local), 1);
-      renderAll();
-      throw new RestoreInputError(errorText(e));
-    }
-    return true;
-  };
-
   const send = async () => {
     // 消费一次性重提标记：入口处读取并立即清零，发送失败回填 / 早退等路径都不残留。
     const reaskLatest = pendingReask;
@@ -906,35 +977,92 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const withTray = !reaskLatest && pendingAttachments.length > 0;
     // 准入：正文与待发送附件至少有一项（只有附件也能发）。
     if ((!raw && !withTray) || !store.state.current) return;
+    const s = store.state.current;
     const composed = withTray ? composeMessageWithAttachments(raw, pendingAttachments) : raw;
     textarea.value = '';
     renderSlashMenu();
     autoGrow();
+    let text: string | null;
     try {
-      const sent = await sendText(composed, reaskLatest ? { reaskLatest: true } : undefined);
-      // 真发送成功才清托盘；失败保留（与回填文字一起等再发），本地斜杠命令消化时也保留（附件根本没发出）。
-      if (withTray && sent) {
-        pendingAttachments = [];
-        renderAttTray();
-      }
+      text = await runSlash(composed.trim());
     } catch (e) {
-      if (e instanceof RestoreInputError) {
-        textarea.value = raw;
-        autoGrow();
-        notify(e.message);
-      } else {
-        notify(errorText(e));
-      }
+      notify(errorText(e));
+      return;
+    }
+    // 被本地斜杠命令消化（未发送）：命令已执行，预置使命结束；托盘保留（附件根本没发出）。
+    if (text === null) {
+      clearPrime();
+      return;
+    }
+    const setup = agentSetupHint(s.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
+    if (setup) {
+      textarea.value = raw;
+      autoGrow();
+      notify(setup);
+      return;
+    }
+    // 乐观追加用户消息（主进程会写入同样内容；切换会话时以持久化版本为准）
+    const local: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: text, createdAt: new Date().toISOString() };
+    s.messages.push(local);
+    renderAll();
+    try {
+      await api.invoke('agent:send', reaskLatest ? { sessionId: s.id, text, reaskLatest: true } : { sessionId: s.id, text });
+    } catch (e) {
+      s.messages.splice(s.messages.indexOf(local), 1);
+      renderAll();
+      textarea.value = raw;
+      autoGrow();
+      notify(errorText(e));
+      return;
+    }
+    // 发送成功完成：清预置；托盘也只在真发送成功时清（失败保留，与回填文字一起等再发）。
+    clearPrime();
+    if (withTray) {
+      pendingAttachments = [];
+      renderAttTray();
     }
   };
 
   textarea.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
+    // 输入法组字期间整体豁免：方向键 / 确认键都归输入法，菜单与发送一律不接管（US3-4）。
+    if (ev.isComposing) return;
+    // 规格 004 接管必须排在 Enter 发送判断之前：菜单可见时 Enter 只 pick、绝不发送（FR-003 / SC-002）。
+    currentSlashItems();
+    if (slashMenuOpen) {
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        slashIndex = wrapIndex(slashIndex, ev.key === 'ArrowDown' ? 1 : -1, slashItems.length);
+        renderSlashMenu();
+        return;
+      }
+      if (ev.key === 'Enter' && !ev.shiftKey) {
+        const cmd = slashItems[slashIndex];
+        if (cmd) {
+          ev.preventDefault();
+          pickSlashCommand(cmd);
+        }
+        return;
+      }
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        slashSuppressed = true;
+        slashSuppressedValue = textarea.value;
+        renderSlashMenu();
+        return;
+      }
+    }
+    // 菜单已关但有预置时，Esc 先取消预置（保留文本）；其余情形零干预。
+    if (ev.key === 'Escape' && primedName !== null) {
+      ev.preventDefault();
+      clearPrime();
+      return;
+    }
+    if (ev.key === 'Enter' && !ev.shiftKey) {
       ev.preventDefault();
       void send();
     }
   });
-  textarea.addEventListener('input', renderSlashMenu);
+  textarea.addEventListener('input', handleTextareaInput);
   textarea.addEventListener('input', autoGrow);
   sendBtn.addEventListener('click', () => void send());
   stopBtn.addEventListener('click', () => {
@@ -978,42 +1106,10 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   });
   renderAll();
 
-  /** 审批请求 → 对话流中的工具卡片 DOM（卡片以 data-tool-call-id 标记，请求本身不带 DOM 信息）。 */
-  const approvalCardEl = (approvalId: string): HTMLElement | null => {
-    const req = store.state.approvals.get(approvalId);
-    if (!req) return null;
-    return log.querySelector<HTMLElement>(`[data-tool-call-id="${CSS.escape(req.toolCallId)}"]`);
-  };
-
-  const isApprovalCardVisible = (approvalId: string): boolean => {
-    const req = store.state.approvals.get(approvalId);
-    if (!req || store.state.view !== 'session' || store.state.current?.id !== req.sessionId) return false;
-    const el = approvalCardEl(approvalId);
-    if (!el) return false;
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
-  };
-
-  const focusApproval = (approvalId: string): boolean => {
-    const el = approvalCardEl(approvalId);
-    if (!el) return false;
-    // 卡片所在的思考区若被折叠，先展开所有祖先 details，否则 scrollIntoView 落不到可视位置。
-    for (let p = el.parentElement; p && p !== log; p = p.parentElement) {
-      if (p instanceof HTMLDetailsElement) p.open = true;
-    }
-    el.scrollIntoView({ block: 'center', inline: 'nearest' });
-    el.classList.add('appr-flash');
-    setTimeout(() => el.classList.remove('appr-flash'), 1600);
-    return true;
-  };
-
   return {
     renderAll,
     appendDelta,
     notify,
-    isApprovalCardVisible,
-    focusApproval,
-    sendText: async (text) => { await sendText(text); },
     insertText: insertAtCursor,
     insertBlock: (text) => {
       const r = insertBlock(textarea.value, textarea.selectionStart, textarea.selectionEnd, text);

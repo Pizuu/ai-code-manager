@@ -42,11 +42,6 @@ export const IPC_CONTRACT_REVISION = 'v1.14' as const;
 // 提问时为 true，后端据此截断旧问答只保留最新一轮）；未修改或删除任何既有字段。
 // v1.12 = 「系统文件选择」的纯增量：新增 `files:pick` 通道（无参，弹出系统原生文件选择框多选，
 // 返回选中的文件绝对路径数组，取消返回空数组）；未修改或删除任何既有字段。
-// v1.13 = 功能 005「审批通知提醒器」的纯增量：新增提醒事项类型（`ReminderLevel` / `ReminderSource` /
-// `ReminderItem`）与激活跳转目标 `NotifyTarget`，`AgentEvent` 新增 'notify-activate' 变体（点击系统
-// 通知后主进程回传，渲染进程据此跳转定位）；`PublicSettings` 新增可选字段 `notify`（提醒偏好）与
-// `notifyNativeAvailable`（主进程原生通知能力标记），`SettingsUpdate` 新增可选字段 `notify`，
-// 并新增 `NotifySettings` 与 `DEFAULT_NOTIFY_SETTINGS` 常量；未修改或删除任何既有字段。
 // v1.14 = 「上传真实文件」的纯增量：新增 `files:import` 通道（把 `files:pick` 选中的绝对路径
 // 文件复制进当前项目根的 `uploads/` 目录，返回与入参同序的项目相对路径数组，前端据此以
 // @ 引用插入，未打开项目时返回 E_NO_PROJECT）；未修改或删除任何既有字段。
@@ -85,14 +80,6 @@ export interface PublicSettings {
   agentClis?: AgentCliConfig[];
   /** v1.1：新会话默认使用的 agent。缺省 = 'builtin'。 */
   defaultAgent?: AgentRef;
-  /** v1.13：审批通知提醒器的提醒偏好；缺省 = `DEFAULT_NOTIFY_SETTINGS`（功能 005，FR-512）。 */
-  notify?: NotifySettings;
-  /**
-   * v1.13：主进程原生（系统）通知能力标记。桌面端主进程可发系统通知时为 true；
-   * Web 预览等无此能力的环境为 false，渲染进程据此只用应用内弹窗 + 收件箱降级呈现（功能 005，FR-513），
-   * 不得宣称已发出系统通知。缺省（旧数据）按 false 对待。
-   */
-  notifyNativeAvailable?: boolean;
 }
 
 /** 渲染进程可提交的设置更新。apiKey 只进不出：写入后主进程立即加密，永不回传。 */
@@ -105,8 +92,6 @@ export interface SettingsUpdate {
   apiKey?: { provider: ProviderId; value: string };
   /** v1.1：新会话默认 agent。 */
   defaultAgent?: AgentRef;
-  /** v1.13：提醒偏好全量更新（功能 005，FR-512）；以完整 `NotifySettings` 形状提交，不做字段级合并。 */
-  notify?: NotifySettings;
 }
 
 export interface ProjectInfo {
@@ -278,92 +263,6 @@ export interface ApprovalRequest {
   description?: string;
 }
 
-// ───────────────────────── v1.13：审批通知提醒器（功能 005） ─────────────────────────
-
-/**
- * 提醒级别（v1.13，spec 005 FR-501）。级别决定提醒通道，级别之外不得用弹窗打扰负责人：
- *
- * - `P0`：审批请求——应用内弹窗 + 系统通知 + 未消解计数；等待超过 3 分钟升级提醒一次（FR-506）。
- * - `P1`：受阻 / 出错——弹窗一次 + 系统通知 + 计数；不重复弹、不升级。
- * - `P2`：待审查——应用内轻提示一次 + 进收件箱；不发系统通知（默认值口径，见 `DEFAULT_NOTIFY_SETTINGS`）。
- * - `P3`：新 ready——仅进收件箱；不弹窗、不发系统通知。
- */
-export type ReminderLevel = 'P0' | 'P1' | 'P2' | 'P3';
-
-/**
- * 提醒事项来源（v1.13）：
- *
- * - `approval`：审批请求（`ApprovalRequest`），恒为 P0。
- * - `session`：会话自身状态（出错），产生 P1。
- * - `card`：看板任务卡状态变迁（受阻 → P1；待审查 → P2；新 ready → P3）。
- */
-export type ReminderSource = 'approval' | 'session' | 'card';
-
-/** 提醒事项状态（v1.13）。resolved = 来源已消解（审批被处理、状态恢复等），由系统自动置位，用户不能手动置。 */
-export type ReminderState = 'active' | 'snoozed' | 'resolved' | 'read';
-
-/**
- * 一条提醒事项（v1.13，功能 005）。由渲染进程按实时来源（审批事件、会话状态、看板快照）
- * 推导重建，不落盘为权威数据（FR-514：重启后按当前待批准集合与现状重建）。
- *
- * 去重键口径（FR-504 / FR-509 / FR-510）：来源为 approval 时以 `approvalId` 为唯一键；
- * 其余来源以「source + 对象 id（sessionId / cardId）+ 目标状态（由 level 与 title 表达）」推导 `id`，
- * 同一来源同一状态持续期间不得重复产生，状态离开后再次进入可再产生。
- */
-export interface ReminderItem {
-  /** 事项唯一 id（推导规则见上方去重键口径）。 */
-  id: string;
-  level: ReminderLevel;
-  source: ReminderSource;
-  /** 一句话标题，例：「T-020 worker 要执行命令」「T-021 变为 ready 可派发」。 */
-  title: string;
-  /** 内容摘要（可含命令原文或错误摘要首行）；P0 审批的完整内容仍以 `ApprovalRequest` 为准，弹窗不得只凭本字段截断展示（FR-502）。 */
-  body?: string;
-  /** 产生时间（ISO 8601，与 `Session.createdAt` 同口径）。 */
-  createdAt: string;
-  state: ReminderState;
-  /** 来源为 approval / session 时的会话 id（跳转落点）。 */
-  sessionId?: string;
-  /** 来源为 approval 时的审批 id（去重键，且与 `ApprovalRequest.id` 一致）。 */
-  approvalId?: string;
-  /** 来源为 card 时的任务卡 id（例：T-020）。 */
-  cardId?: string;
-}
-
-/**
- * 提醒激活（点击跳转）的落点（v1.13，FR-503）。主进程经 'notify-activate' 事件回传，
- * 渲染进程据此唤起窗口并定位：
- *
- * - `approval`：切到会话并滚动定位、高亮对应审批卡。
- * - `session`：切到会话（P1 出错事项）。
- * - `card`：切到看板并定位任务卡（P1 受阻 / P2 待审查 / P3 ready 事项）。
- */
-export type NotifyTarget =
-  | { kind: 'approval'; sessionId: string; approvalId: string }
-  | { kind: 'session'; sessionId: string }
-  | { kind: 'card'; cardId: string }
-  ;
-
-/** 提醒偏好（v1.13，FR-512）。关闭某级别的系统通知不影响该级别的应用内呈现与计数；P0 计数没有任何开关可关（FR-511）。 */
-export interface NotifySettings {
-  /** 按级别是否发系统（原生）通知。 */
-  systemNotify: Record<ReminderLevel, boolean>;
-  /** 按级别是否播放提醒声音。 */
-  sound: Record<ReminderLevel, boolean>;
-  /** 「稍后」的时长（分钟）：事项转入收件箱保持计数，时长内不再弹窗。 */
-  snoozeMinutes: number;
-}
-
-/**
- * 提醒偏好默认值（v1.13，FR-512 的默认值口径）：系统通知 P0 / P1 开、P2 / P3 关；
- * 声音全部关；稍后 10 分钟。设置页（T-050）与各使用方一律以此为缺省，不得各自另设一套。
- */
-export const DEFAULT_NOTIFY_SETTINGS: NotifySettings = Object.freeze({
-  systemNotify: Object.freeze({ P0: true, P1: true, P2: false, P3: false }),
-  sound: Object.freeze({ P0: false, P1: false, P2: false, P3: false }),
-  snoozeMinutes: 10,
-});
-
 // ───────────────────────── invoke 通道（渲染 → 主） ─────────────────────────
 
 /**
@@ -525,13 +424,6 @@ export type AgentEvent =
   // ── v1.7（自动刷新）──
   /** v1.7：项目 git 引用发生变化（新增 / 删除 / 移动分支、切换 HEAD），提示渲染进程重拉看板与 Git 快照。 */
   | { type: 'git-changed' }
-  // ── v1.13（审批通知提醒器）──
-  /**
-   * v1.13：用户点击系统通知后，主进程回传激活目标，渲染进程据此切换视图并定位
-   * （审批卡 / 会话 / 任务卡，FR-503）。系统通知本身不承载批准 / 拒绝动作（FR-508），
-   * 审批决定仍只走既有 `agent:approve` 通道。Web 预览无系统通知，本事件不会产生（FR-513）。
-   */
-  | { type: 'notify-activate'; target: NotifyTarget }
   ;
 
 export type AgentEventType = AgentEvent['type'];

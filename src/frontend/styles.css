@@ -281,6 +281,14 @@ input,select,textarea{font:inherit;color:inherit}
 .attchip .att-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .attchip .att-x{border:0;background:none;color:inherit;font:inherit;font-size:13px;line-height:1;padding:0 2px;cursor:pointer;flex:none;opacity:.7}
 .attchip .att-x:hover{opacity:1}
+/* 规格 004 预置条（.box 内、附件托盘之上）：小字 + 次级底，命令名走强调色，与托盘同视觉语言 */
+.primebar{display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:6px 8px 6px 10px;border-radius:8px;background:var(--asoft);color:var(--ink2);font-size:12px;line-height:1.4}
+.primebar[hidden]{display:none}
+.primebar .prime-label{flex:none;font-weight:600;color:var(--accent)}
+.primebar .prime-name{flex:none;font-family:var(--mono);color:var(--accent)}
+.primebar .prime-hint{flex:1;min-width:0;color:var(--mute)}
+.primebar .prime-x{border:0;background:none;color:var(--accent);font:inherit;font-size:13px;line-height:1;padding:0 2px;cursor:pointer;flex:none;opacity:.7}
+.primebar .prime-x:hover{opacity:1}
 .ubub-atts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;margin:16px 0 6px}
 .ubub-atts+.ubub-row{margin-top:0}
 .turn.folded .ubub-atts{display:none}
@@ -295,7 +303,8 @@ input,select,textarea{font:inherit;color:inherit}
 .comp .bar .right{display:flex;align-items:center}
 .comp .mode{border:0;background:transparent;color:var(--mute);font-size:12px;cursor:pointer}
 .slash-menu{border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:12px;margin-bottom:8px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
-.slash-menu div{padding:5px 12px}.slash-menu b{font-family:var(--mono);margin-right:8px;font-weight:500}
+.slash-menu div{padding:5px 12px;cursor:pointer}.slash-menu b{font-family:var(--mono);margin-right:8px;font-weight:500}
+.slash-menu div:hover,.slash-menu div.on{background:var(--asoft)}
 /* 工具卡片：沿用原型 .verify */
 .verify.tool .h .nm{flex:none;font-size:12px;font-weight:600;color:var(--ink)}
 .verify.tool .h .rn{flex:none;font-family:var(--mono);font-size:11px;color:var(--mute)}
@@ -1032,93 +1041,5 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .tour-mi-name{font-size:12px;font-weight:600;color:var(--ink)}
 .tour-mi-desc{font-size:11px;color:var(--mute);line-height:1.5}
 
-/* ── SPEC KIT 视图（speckit-view）：总览条 + 三流程面板，前缀 sk- ── */
-.sk-wrap{display:flex;flex-direction:column;gap:16px;padding:16px 24px 24px;height:100%;overflow-y:auto;box-sizing:border-box}
-.sk-overview{display:flex;align-items:center;gap:14px;padding:12px 16px;flex-wrap:wrap}
-.sk-panel{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
-.sk-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.sk-title{font-weight:600;font-size:14px;color:var(--ink)}
-.sk-sum{color:var(--ink2);font-size:12px}
-.sk-cur{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.sk-fname{font-weight:600;color:var(--ink)}
-.sk-steps{display:flex;gap:12px;flex-wrap:wrap;align-items:center;color:var(--mute);font-size:12px;row-gap:6px}
-.sk-step.ok{color:var(--green);font-weight:600}
-.sk-step.cur{color:var(--accent);font-weight:600}
-.sk-actions{display:flex;gap:8px;flex-wrap:wrap}
-.sk-sub{font-size:12px;color:var(--mute);font-weight:600}
-.sk-rows{display:flex;flex-direction:column}
-.sk-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;cursor:pointer;color:inherit}
-a.sk-row:hover{background:var(--chip)}
-.sk-row.on{background:var(--asoft)}
-.sk-row.static{cursor:default}
-.sk-row .sk-steps{gap:8px;flex:1}
-.sk-rid{font-weight:600;white-space:nowrap;color:var(--ink)}
-.sk-rname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sk-empty{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-/* Spec Kit 引导步进向导（speckit-view 页内模态，复用 .dialog / .btn / .chip / .field 体系） */
-.dialog.skwiz{width:560px}
-.skwiz-steps{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.skwiz-body{display:flex;flex-direction:column;gap:12px;min-height:168px}
-.skwiz-sec{display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--ink)}
-.skwiz-sec b{font-size:12px;color:var(--mute);font-weight:600}
-.skwiz-status{border-top:1px solid var(--line);padding-top:10px;font-size:12px;color:var(--ink2)}
-.chip.bad{background:color-mix(in srgb,var(--err) 12%,transparent);color:var(--err)}
-
-/* ── 审批提醒（功能 005 / T-048，前缀 notify-）：弹窗栈 + rail 收件箱 ──
-   层级：根层 850（盖住应用内容，低于右键菜单 / 教程的 900+ 与原生对话框 top layer）。 */
-.notify-root{position:fixed;inset:0;z-index:850;pointer-events:none}
-.notify-stack{position:absolute;right:16px;bottom:44px;width:min(408px,calc(100vw - 76px));display:flex;flex-direction:column;gap:10px}
-.notify-card{pointer-events:auto;background:var(--bg);border:1px solid var(--line);border-radius:var(--border-radius-lg);box-shadow:var(--shadow-lg);padding:12px 14px;color:var(--ink)}
-.notify-hd{display:flex;align-items:center;gap:8px;min-width:0}
-.notify-kind{font-weight:var(--font-weight-semibold);color:var(--ink2);white-space:nowrap}
-.notify-sess{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mute)}
-.notify-time{margin-left:auto;color:var(--mute);white-space:nowrap}
-.notify-x{margin-left:auto;flex:none;width:24px;height:24px;border:0;border-radius:var(--border-radius-sm);background:none;color:var(--mute);font-size:16px;line-height:1;cursor:pointer;display:grid;place-items:center}
-.notify-sess + .notify-x{margin-left:0}
-.notify-x:hover{background:var(--chip);color:var(--ink)}
-.notify-title{margin-top:8px;font-size:var(--font-body);font-weight:var(--font-weight-semibold);line-height:1.5;overflow-wrap:anywhere}
-.notify-content{margin-top:8px}
-.notify-shell,.notify-diffsum{color:var(--mute);margin-bottom:4px}
-.notify-path{overflow-wrap:anywhere;color:var(--ink2)}
-.notify-command,.notify-lines{margin:0;max-height:180px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--code-bg);border:var(--border-width-regular) solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px 10px;font:12px/1.6 var(--mono);color:var(--ink)}
-.notify-lines + .notify-lines{margin-top:6px}
-.notify-note{margin-top:6px;color:var(--amber);line-height:1.6}
-.notify-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-.notify-more{pointer-events:auto;border:1px solid var(--line);border-radius:var(--border-radius-lg);background:var(--panel);color:var(--ink2);box-shadow:var(--shadow-md);padding:9px 12px;font-weight:var(--font-weight-semibold);cursor:pointer;text-align:center}
-.notify-more:hover{color:var(--accent);border-color:var(--accent)}
-.notify-pop{pointer-events:auto;position:absolute;width:min(480px,calc(100vw - 76px));max-height:min(640px,calc(100vh - 96px));display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--line);border-radius:var(--border-radius-lg);box-shadow:var(--shadow-lg);color:var(--ink);overflow:hidden}
-.notify-pop[hidden]{display:none}
-.notify-pop-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px 8px;font-size:var(--font-heading-sm)}
-.notify-pop-hd .notify-x{margin-left:0}
-.notify-tabs{display:flex;gap:6px;padding:0 14px 10px;border-bottom:1px solid var(--line)}
-.notify-tab{border:1px solid var(--line);background:var(--bg);color:var(--ink2);border-radius:99px;padding:4px 12px;cursor:pointer;font-size:var(--font-caption)}
-.notify-tab.on{background:var(--asoft);border-color:var(--accent);color:var(--accent);font-weight:var(--font-weight-semibold)}
-.notify-list{overflow:auto;min-height:0;flex:1;padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px}
-.notify-card.inbox{box-shadow:none;background:var(--panel)}
-.notify-row{border:1px solid var(--line);border-radius:var(--border-radius-md);background:var(--panel);padding:10px 12px}
-/* 未读事项（feed 的 P2 / P3 未落已读者）：圆点 + 浅强调底；已读回常态行样式 */
-.notify-row.unread{background:color-mix(in srgb,var(--accent) 7%,var(--panel))}
-.notify-dot{flex:none;width:8px;height:8px;border-radius:99px;background:var(--accent)}
-.notify-row-body{margin-top:6px;color:var(--ink2);line-height:1.6;overflow-wrap:anywhere}
-.notify-empty{color:var(--mute);padding:18px 8px;text-align:center;line-height:1.7}
 /* 审批卡定位高亮（chat.ts focusApproval，与看板 .card.flash 同口径） */
 .appr-flash{outline:2px solid var(--accent);outline-offset:2px}
-/* P2 轻提示（T-049）：非模态小条，右上角短暂出现后自动消失，点击打开收件箱 */
-.notify-toasts{position:absolute;top:64px;right:16px;display:flex;flex-direction:column;gap:8px;width:min(360px,calc(100vw - 76px))}
-.notify-toast{pointer-events:auto;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:var(--border-radius-md);box-shadow:var(--shadow-md);padding:8px 12px;color:var(--ink);cursor:pointer;font-size:var(--font-caption)}
-.notify-toast-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 「进度」页签（FR-516 / T-049）：全量开发进度；分段进度指示，受阻整轨异常态（红） */
-.notify-prog-sum{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:var(--border-radius-md);background:var(--panel);padding:10px 12px}
-/* 汇总头现为弹层固定区（页签之下、滚动列表之外）：不收缩、外距与列表内边距对齐 */
-.notify-pop>.notify-prog-sum{flex:none;margin:10px 12px 0}
-.notify-prog-sum-text{font-weight:var(--font-weight-semibold)}
-.notify-prog-bar{height:6px;border-radius:99px;background:var(--chip);overflow:hidden}
-.notify-prog-bar-fill{display:block;height:100%;border-radius:99px;background:var(--accent)}
-.notify-prog-bar-fill.full{background:var(--green)}
-.notify-prog-row{cursor:pointer}
-.notify-prog-row:hover{border-color:var(--accent)}
-.notify-prog-track{display:flex;gap:4px;margin-top:8px}
-.notify-prog-seg{flex:1;height:6px;border-radius:99px;background:var(--chip)}
-.notify-prog-seg.on{background:var(--green)}
-.notify-prog-seg.blocked{background:var(--err)}
-.notify-prog-meta{margin-top:6px;color:var(--mute);font-size:var(--font-caption);line-height:1.6;overflow-wrap:anywhere}

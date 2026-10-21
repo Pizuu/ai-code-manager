@@ -5,8 +5,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { AgentCliConfig, AgentCliInput, AgentRef, NotifySettings, PermissionMode, ProviderId, PublicSettings, ReminderLevel, SettingsUpdate } from '../../../contracts/ipc.ts';
-import { DEFAULT_NOTIFY_SETTINGS } from '../../../contracts/ipc.ts';
+import type { AgentCliConfig, AgentCliInput, AgentRef, PermissionMode, ProviderId, PublicSettings, SettingsUpdate } from '../../../contracts/ipc.ts';
 import type { CliRuntimeConfig } from '../agent-cli/cli-runner.ts';
 import { normalizeCliRuntimeFields } from '../agent-cli/normalize.ts';
 import { resolveOpencodeMode, type OpencodeMode } from '../agent-cli/serve-runner.ts';
@@ -44,8 +43,6 @@ interface StoredSettings {
   lastProjectPath: string | null;
   agentClis: StoredAgentCli[];
   defaultAgent: AgentRef;
-  /** v1.13（功能 005）：提醒偏好；缺省 = DEFAULT_NOTIFY_SETTINGS，不落默认值进文件。 */
-  notify?: NotifySettings;
   /**
    * 实验：opencode 接入方式（T127）。仅后端内部使用，不经 IPC、不进 PublicSettings
    * （需要 contracts v1.4：PublicSettings.agentCli.opencodeMode）。缺省 = acp。
@@ -83,30 +80,6 @@ export function findCliRebindCandidate(missingId: string, clis: ReadonlyArray<{ 
   return hits.length === 1 && only ? only.id : null;
 }
 
-const REMINDER_LEVELS: readonly ReminderLevel[] = ['P0', 'P1', 'P2', 'P3'];
-
-/**
- * 提醒偏好的清洗（v1.13）：形状不对的字段逐个回落 DEFAULT_NOTIFY_SETTINGS，
- * 保证 getNotifySettings 永远返回完整可用的 NotifySettings（存盘数据可能来自旧版本或手改）。
- */
-export function sanitizeNotifySettings(value: unknown): NotifySettings {
-  const v = (typeof value === 'object' && value !== null ? value : {}) as Partial<NotifySettings>;
-  const boolRecord = (rec: unknown, fallback: Record<ReminderLevel, boolean>): Record<ReminderLevel, boolean> => {
-    const r = (typeof rec === 'object' && rec !== null ? rec : {}) as Partial<Record<ReminderLevel, unknown>>;
-    const out = {} as Record<ReminderLevel, boolean>;
-    for (const lv of REMINDER_LEVELS) out[lv] = typeof r[lv] === 'boolean' ? r[lv] : fallback[lv];
-    return out;
-  };
-  const snooze = typeof v.snoozeMinutes === 'number' && Number.isFinite(v.snoozeMinutes)
-    ? Math.min(120, Math.max(1, Math.round(v.snoozeMinutes)))
-    : DEFAULT_NOTIFY_SETTINGS.snoozeMinutes;
-  return {
-    systemNotify: boolRecord(v.systemNotify, DEFAULT_NOTIFY_SETTINGS.systemNotify),
-    sound: boolRecord(v.sound, DEFAULT_NOTIFY_SETTINGS.sound),
-    snoozeMinutes: snooze,
-  };
-}
-
 function defaults(): StoredSettings {
   return {
     // provider 只是协议类型（OpenAI 兼容 / Anthropic）；地址与模型由用户填写
@@ -121,28 +94,14 @@ function defaults(): StoredSettings {
   };
 }
 
-/** 宿主能力注入（构造时给定）：宿主事实，不是设置数据——不落盘、不能经设置更新通道修改。 */
-export interface SettingsStoreOptions {
-  /**
-   * 宿主是否具备原生系统通知能力（功能 005，v1.13）：桌面 Electron 主进程为 true（缺省），
-   * Web 预览（scripts/web-dev.ts）没有系统通知通道，组装时显式注入 false。
-   * getPublic() 如实投影为 PublicSettings.notifyNativeAvailable，渲染层据此禁用提醒分区的原生通知开关。
-   */
-  notifyNativeAvailable?: boolean;
-}
-
 export class SettingsStore {
   private readonly file: string;
   private readonly cipher: KeyCipher;
-  private readonly notifyNativeAvailable: boolean;
   private data: StoredSettings = defaults();
 
-  constructor(file: string, cipher: KeyCipher, options: SettingsStoreOptions = {}) {
+  constructor(file: string, cipher: KeyCipher) {
     this.file = file;
     this.cipher = cipher;
-    // 缺省 true：本类的本籍宿主是桌面主进程（main.ts 的既有构造即两参、语义就是桌面能力）；
-    // 借用本类的宿主（Web 预览）必须在组装处显式注入 false，不靠平台 / 环境变量猜测。
-    this.notifyNativeAvailable = options.notifyNativeAvailable ?? true;
   }
 
   /** 读取设置文件；不存在时使用默认值，损坏时备份后重置并抛出说明。 */
@@ -155,7 +114,10 @@ export class SettingsStore {
       throw err;
     }
     try {
-      const parsed = JSON.parse(raw) as Partial<StoredSettings>;
+      const parsed = JSON.parse(raw) as Partial<StoredSettings> & Record<string, unknown>;
+      // 已移除的提醒功能（功能 005）曾落盘 notify 偏好键：旧设置文件带此多余键时忽略并丢弃，
+      // 不报错、不回投影（沿用未知键忽略口径），下次保存即不再写回。
+      delete parsed.notify;
       this.data = { ...defaults(), ...parsed, agentClis: Array.isArray(parsed.agentClis) ? parsed.agentClis : [] };
     } catch {
       await fs.rename(this.file, `${this.file}.corrupt-${Date.now()}`);
@@ -164,21 +126,11 @@ export class SettingsStore {
     }
   }
 
-  /** 当前提醒偏好（v1.13）：未存过时返回 DEFAULT_NOTIFY_SETTINGS 口径的完整形状。 */
-  getNotifySettings(): NotifySettings {
-    return sanitizeNotifySettings(this.data.notify);
-  }
-
   getPublic(): PublicSettings {
-    const { encryptedKeys, agentClis, opencodeMode: _internal, notify: _notifyRaw, ...rest } = this.data;
+    const { encryptedKeys, agentClis, opencodeMode: _internal, ...rest } = this.data;
     void _internal;
-    void _notifyRaw;
     return {
       ...rest,
-      // v1.13（T-047）：提醒偏好走清洗后的完整形状回传；原生通知能力标记如实投影构造时
-      // 由宿主注入的值（桌面 true / Web 预览 false，见 SettingsStoreOptions），不在此写死。
-      notify: this.getNotifySettings(),
-      notifyNativeAvailable: this.notifyNativeAvailable,
       hasApiKey: { openai: Boolean(encryptedKeys.openai), anthropic: Boolean(encryptedKeys.anthropic) },
       encryptionAvailable: this.cipher.isAvailable(),
       agentClis: agentClis.map((c) => ({
@@ -286,7 +238,6 @@ export class SettingsStore {
     if (update.baseUrl !== undefined) next.baseUrl = update.baseUrl;
     if (update.model !== undefined) next.model = update.model;
     if (update.permissionMode !== undefined) next.permissionMode = update.permissionMode;
-    if (update.notify !== undefined) next.notify = sanitizeNotifySettings(update.notify);
     if (update.defaultAgent !== undefined) {
       if (update.defaultAgent !== 'builtin' && !next.agentClis.some((c) => `cli:${c.id}` === update.defaultAgent)) {
         throw ipcError('E_VALIDATION', `未知的 agent：${update.defaultAgent}`);

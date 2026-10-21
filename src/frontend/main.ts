@@ -2,15 +2,13 @@
  * 渲染进程入口：加载初始状态，挂载工作台外框与三个板块（泳道看板 / 任务会话 / Git 分支与集成），
  * 把 agent:event 分发到状态与视图。
  */
-import type { AgentEvent, BoardCard, ChatMessage, ReminderItem, Session } from '../../contracts/ipc.ts';
+import type { AgentEvent, BoardCard, ChatMessage, Session } from '../../contracts/ipc.ts';
 import { api, errorText } from './api.ts';
 import { agentError, sessionErrorEntries, toolCallError } from './lib/error-log.ts';
-import { recordApprovalResolution } from './lib/notify.ts';
 import { store } from './store.ts';
 import { focusBoardCard, mountBoard } from './views/board-view.ts';
-import { decideApproval, type ChatView } from './views/chat.ts';
+import { type ChatView } from './views/chat.ts';
 import { mountAgents } from './views/agents-view.ts';
-import { mountSpeckit } from './views/speckit-view.ts';
 import { mountGit } from './views/git-view.ts';
 import { formatSendText } from './lib/context-send.ts';
 import { installContextMenu } from './views/context-menu.ts';
@@ -34,14 +32,6 @@ function sendToSession(text: string): void {
 async function sendToNewSession(text: string): Promise<void> {
   if (store.state.project) await newSession();
   sendToSession(text);
-}
-
-/** Spec Kit 向导：把向导生成的对话指令真实发送到任务会话（无当前会话时先新建，失败处理沿用 newSession 现状），发送成功后切到任务会话；发送失败抛给向导就地提示、不切视图。 */
-async function sendInstruction(text: string): Promise<void> {
-  if (!store.state.current) await newSession();
-  await chat.sendText(text);
-  shell.setView('session');
-  sessionView.showChat();
 }
 
 /** 右键选中文本的来源区域中文名。 */
@@ -70,36 +60,6 @@ export async function selectSession(id: string): Promise<void> {
   // P1-6：用持久化消息重建该会话的错误条目（重启后仍能看到「出错」与错误分区）
   store.setErrors(id, sessionErrorEntries(store.state.current.messages));
   store.emit('current', 'todos');
-}
-
-/** T-048：切到指定会话（提醒「查看」与 notify-activate 的 session 落点共用）。 */
-async function jumpToSession(sessionId: string): Promise<void> {
-  try {
-    shell.setView('session');
-    sessionView.showChat();
-    if (store.state.current?.id !== sessionId) await selectSession(sessionId);
-    shell.setView('session');
-    sessionView.showChat();
-  } catch (e) {
-    chat.notify(errorText(e));
-  }
-}
-
-/** T-053：审批定位的等待上限与间隔。切会话是异步的（sessions:get 回来才重渲染对话），
- *  冷启动时数据加载更慢，原 rAF + 80ms 两拍盖不住；改为轮询等卡片出现，超时静默放弃。 */
-const APPROVAL_FOCUS_TIMEOUT_MS = 3000;
-const APPROVAL_FOCUS_POLL_MS = 120;
-
-/** T-048 / T-053：切到审批所属会话并定位审批卡。focusApproval 找到卡片并滚动定位才返回 true，
- *  未找到按间隔重试至上限；超时不弹错误（负责人已在应用里，可自行点开会话）。 */
-async function jumpToApproval(sessionId: string, approvalId: string): Promise<void> {
-  await jumpToSession(sessionId);
-  const deadline = Date.now() + APPROVAL_FOCUS_TIMEOUT_MS;
-  for (;;) {
-    if (chat.focusApproval(approvalId)) return;
-    if (Date.now() >= deadline) return;
-    await new Promise((r) => setTimeout(r, APPROVAL_FOCUS_POLL_MS));
-  }
 }
 
 async function newSession(): Promise<void> {
@@ -175,18 +135,10 @@ function handleEvent(e: AgentEvent): void {
       store.state.approvals.set(e.approval.id, e.approval);
       store.emit('approvals');
       return;
-    case 'approval-resolved': {
-      // T-048：先从待批表取回请求本体生成历史摘要（删表后就取不到了），再删表撤下弹窗 / 待处理条目。
-      const req = store.state.approvals.get(e.approvalId);
-      if (req) {
-        const sessionTitle = store.state.sessions.find((x) => x.id === req.sessionId)?.title
-          ?? (s?.id === req.sessionId ? s.title : '');
-        recordApprovalResolution(req, e.approved, sessionTitle);
-      }
+    case 'approval-resolved':
       store.state.approvals.delete(e.approvalId);
       store.emit('approvals');
       return;
-    }
     case 'terminal':
       store.appendTerminal({ toolCallId: e.toolCallId, stream: e.stream, data: e.data });
       return;
@@ -201,17 +153,6 @@ function handleEvent(e: AgentEvent): void {
     case 'git-changed':
       void shell.refreshWorkspace();
       return;
-    // v1.13 / T-048：提醒激活（系统通知点击回传）——按落点跳转定位；card 落点复用看板既有定位通路。
-    case 'notify-activate': {
-      const target = e.target;
-      if (target.kind === 'approval') void jumpToApproval(target.sessionId, target.approvalId);
-      else if (target.kind === 'session') void jumpToSession(target.sessionId);
-      else {
-        shell.setView('board');
-        focusBoardCard(target.cardId);
-      }
-      return;
-    }
     default:
       break;
   }
@@ -286,21 +227,6 @@ async function bootstrap(): Promise<void> {
       sessionView.showChat();
       void selectSession(id).catch((e: unknown) => chat.notify(errorText(e)));
     },
-    notifyDecide: (approvalId, approved) => decideApproval(approvalId, approved),
-    notifyView: (approvalId) => {
-      const req = store.state.approvals.get(approvalId);
-      if (req) void jumpToApproval(req.sessionId, approvalId);
-    },
-    isApprovalCardVisible: (approvalId) => chat.isApprovalCardVisible(approvalId),
-    // T-049：收件箱 P1–P3 事项查看——卡片事项跳看板定位，会话事项切到该会话。
-    notifyViewItem: (item: ReminderItem) => {
-      if (item.source === 'card' && item.cardId) {
-        shell.setView('board');
-        focusBoardCard(item.cardId);
-      } else if (item.sessionId) {
-        void jumpToSession(item.sessionId);
-      }
-    },
   });
   sessionView = mountSessionView(shell.views.session, {
     selectSession,
@@ -323,15 +249,6 @@ async function bootstrap(): Promise<void> {
     },
     openSettings: (tab) => openSettings(tab),
     notify: (t) => chat.notify(t, 'info'),
-  });
-  mountSpeckit(shell.views.speckit, {
-    sendInstruction,
-    openProject: () => void pickProject(),
-    // 与顶栏规格下拉同款口径：setFeature 已返回完整快照，不再叠加 refreshWorkspace。
-    setFeature: async (featureId) => {
-      store.state.board = await api.invoke('board:setFeature', { featureId });
-      store.emit('workspace');
-    },
   });
   api.onEvent(handleEvent);
 

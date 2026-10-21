@@ -91,9 +91,7 @@ function emit(event: AgentEvent): void {
 }
 
 // ── 真实后端实例化（与 main.ts bootstrap 相同的组装，注入换成 Web 等价物）──
-// Web 预览没有系统通知通道（下方 createHandlers 未注入 notifyService）：原生通知能力如实注入 false，
-// 使 settings:get 的 notifyNativeAvailable 为 false、渲染层据此禁用提醒分区的原生通知开关（功能 005）。
-const settings = new SettingsStore(path.join(dataDir, 'settings.json'), webCipher, { notifyNativeAvailable: false });
+const settings = new SettingsStore(path.join(dataDir, 'settings.json'), webCipher);
 try {
   await settings.load();
 } catch (err) {
