@@ -219,8 +219,9 @@ select.chip{border:0;outline:none;cursor:pointer;font-family:var(--sans);appeara
 
 /* ───────── 第三部分：应用补充部件（沿用原型变量） ───────── */
 :root{--add-bg:#E9F1DC;--del-bg:#F9E3DD;--hunk-bg:#F5F4ED;--code-bg:#F5F4ED;--err:#B3261E;--ubub:#F0EEE6}
+/* 手动主题双通道：无 data-theme 时跟随系统深色；data-theme='dark' 时强制深色（同一组变量声明，两处须同步改）。 */
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-theme]){
     --bg:#1F1E1D;--panel:#262624;--rail:#232321;--chip:#30302E;--line:#3A3936;
     --ink:#F5F4EF;--ink2:#D6D4CC;--mute:#A3A199;--mute2:rgba(163,161,153,.5);
     --accent:#E07A57;--accent2:#E28B6D;--asoft:#3D2A22;
@@ -228,7 +229,16 @@ select.chip{border:0;outline:none;cursor:pointer;font-family:var(--sans);appeara
     --add-bg:#24301C;--del-bg:#3D2420;--hunk-bg:#30302E;--code-bg:#30302E;--err:#F2857B;--ubub:#30302E;
   }
 }
+:root[data-theme='dark']{
+  --bg:#1F1E1D;--panel:#262624;--rail:#232321;--chip:#30302E;--line:#3A3936;
+  --ink:#F5F4EF;--ink2:#D6D4CC;--mute:#A3A199;--mute2:rgba(163,161,153,.5);
+  --accent:#E07A57;--accent2:#E28B6D;--asoft:#3D2A22;
+  --green:#9BCB7E;--gsoft:#24301C;--amber:#E2C66F;--asoft2:#352E1A;--blue:#7FB5EA;--bsoft:rgba(127,181,234,.14);
+  --add-bg:#24301C;--del-bg:#3D2420;--hunk-bg:#30302E;--code-bg:#30302E;--err:#F2857B;--ubub:#30302E;
+}
 html{color-scheme:light dark}
+html[data-theme='light']{color-scheme:light}
+html[data-theme='dark']{color-scheme:dark}
 button{cursor:pointer}
 [hidden]{display:none!important}
 input,select,textarea{font:inherit;color:inherit}
@@ -408,7 +418,8 @@ input,select,textarea{font:inherit;color:inherit}
   --green:var(--color-text-success);--gsoft:var(--color-background-success);--amber:var(--color-text-warning);--asoft2:var(--color-background-warning);
   --blue:var(--color-text-info);--bsoft:var(--color-background-info);--err:var(--color-text-danger);--code-bg:var(--color-background-secondary);--ubub:var(--color-background-secondary);
 }
-@media (prefers-color-scheme: dark){:root{
+/* 手动主题双通道：无 data-theme 时跟随系统深色；data-theme='dark' 时强制深色（同一组变量声明，两处须同步改）。 */
+@media (prefers-color-scheme: dark){:root:not([data-theme]){
   --color-background-primary:#30302E;--color-background-secondary:#262624;--color-background-tertiary:#1F1E1D;--color-background-inverse:#FAF9F5;
   --color-background-info:#253E5F;--color-background-danger:#602A28;--color-background-success:#1B4614;--color-background-warning:#483A0F;
   --color-text-primary:#FAF9F5;--color-text-secondary:#C2C0B6;--color-text-tertiary:#9C9A92;--color-text-inverse:#141413;--color-text-ghost:rgba(156,154,146,.5);
@@ -416,6 +427,14 @@ input,select,textarea{font:inherit;color:inherit}
   --color-border-primary:rgba(222,220,209,.4);--color-border-secondary:rgba(222,220,209,.3);--color-border-tertiary:rgba(222,220,209,.15);
   --color-border-info:#4682D5;--color-border-danger:#CD5C58;--color-border-success:#599130;--color-border-warning:#A87829;--color-ring-primary:rgba(250,249,245,.7);
 }}
+:root[data-theme='dark']{
+  --color-background-primary:#30302E;--color-background-secondary:#262624;--color-background-tertiary:#1F1E1D;--color-background-inverse:#FAF9F5;
+  --color-background-info:#253E5F;--color-background-danger:#602A28;--color-background-success:#1B4614;--color-background-warning:#483A0F;
+  --color-text-primary:#FAF9F5;--color-text-secondary:#C2C0B6;--color-text-tertiary:#9C9A92;--color-text-inverse:#141413;--color-text-ghost:rgba(156,154,146,.5);
+  --color-text-info:#80AADD;--color-text-danger:#EE8884;--color-text-success:#7AB948;--color-text-warning:#D1A041;
+  --color-border-primary:rgba(222,220,209,.4);--color-border-secondary:rgba(222,220,209,.3);--color-border-tertiary:rgba(222,220,209,.15);
+  --color-border-info:#4682D5;--color-border-danger:#CD5C58;--color-border-success:#599130;--color-border-warning:#A87829;--color-ring-primary:rgba(250,249,245,.7);
+}
 body{font-size:var(--font-caption);font-weight:var(--font-weight-normal);line-height:1.4;letter-spacing:-.005em;background:var(--color-background-tertiary);color:var(--color-text-primary)}
 b,strong,.b600{font-weight:var(--font-weight-semibold)}
 :focus-visible{outline:2px solid var(--color-ring-primary);outline-offset:1px}
@@ -772,14 +791,11 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .prl .pr:hover{background:var(--color-background-secondary)}
 .prl .pr.hl{background:var(--color-background-info);border-color:var(--color-border-info)}
 .panel.pub{margin-bottom:12px}
-/* 状态栏：Git 视图时右侧显示集成摘要 */
-.status .st-r{margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;padding-left:16px}
 /* 规格进度行（原看板 .prog 移入状态栏右端）：抵消 .prog 看板场景的面板外观（背景/边框/外边距/换行），在 28px 状态栏内单行紧凑常驻 */
-.status .prog{margin:0;padding:0;height:auto;min-height:0;background:none;border:0;border-radius:0;gap:10px;flex:none;flex-wrap:nowrap;white-space:nowrap}
+.status .prog{margin:0;margin-left:auto;padding:0;height:auto;min-height:0;background:none;border:0;border-radius:0;gap:10px;flex:none;flex-wrap:nowrap;white-space:nowrap}
 .status .prog[hidden]{display:none}
 .status .prog .stg{margin-left:0;gap:8px}
-/* 靠右机制：statusR 可见时由其 margin-left:auto 把两者一起推到右端、prog 居最右；statusR 隐藏（非 Git 视图）时改由 prog 自己承接 auto 边距 */
-.status .st-r[hidden] + .prog{margin-left:auto}
+/* 靠右机制：.prog 自承接 margin-left:auto，所有视图下恒居状态栏最右端 */
 /* 状态栏活动计数（P0-3）：点击跳转到相关会话 */
 .status .st-act{display:flex;gap:10px;align-items:center;padding-left:16px;flex:none}
 .status .act{white-space:nowrap}
@@ -943,3 +959,30 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .turn .md th,.turn .md td{padding:4px 8px}
 .turn .md blockquote{margin:8px 0;padding-left:12px;border-left:2px solid var(--color-border-tertiary);color:var(--color-text-tertiary)}
 .turn .md a{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+
+/* 快速教程步进器（lib/tour.ts）：层级口径——应用内容最高 z-index 为 5（.tip）、右键菜单 .ctxmenu 为 1000、
+   设置对话框是原生 <dialog>（top layer 恒在最上）。教程取遮罩 900 / 高亮 901 / 卡片·菜单 902：
+   盖住全部应用内容，但不压右键菜单与原生对话框（教程中误开它们时仍可正常操作/关闭）。 */
+.tour-mask{position:fixed;inset:0;background:rgba(20,20,19,.45);z-index:900}
+.tour-hl{position:relative;z-index:901;box-shadow:0 0 0 2px var(--accent),0 0 0 6px var(--asoft),0 0 24px 6px rgba(198,97,63,.35);border-radius:8px}
+.tour-card{position:fixed;width:320px;z-index:902;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:14px 16px;font-size:12px;color:var(--ink)}
+.tour-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.tour-name{color:var(--accent);font-weight:600;font-size:12px}
+.tour-x{border:0;background:none;color:var(--mute);font-size:16px;line-height:1;cursor:pointer;padding:2px 4px;border-radius:6px}
+.tour-x:hover{color:var(--ink);background:var(--chip)}
+.tour-title{font-size:14px;font-weight:600;margin-bottom:4px}
+.tour-text{color:var(--ink2);line-height:1.6}
+.tour-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}
+.tour-prog{color:var(--mute);font-size:11px}
+.tour-btns{display:inline-flex;gap:8px}
+.tour-btn{height:28px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:12px;font-weight:600;cursor:pointer}
+.tour-btn:hover{border-color:var(--accent);color:var(--accent)}
+.tour-btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.tour-btn.pri:hover{color:#fff;opacity:.92}
+.tour-btn[disabled]{color:var(--mute);cursor:not-allowed;opacity:.55}
+.tour-btn[disabled]:hover{border-color:var(--line);color:var(--mute)}
+.tour-menu{position:fixed;width:300px;z-index:902;background:var(--bg);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:5px;display:flex;flex-direction:column;gap:2px}
+.tour-mi{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;border:0;background:none;border-radius:8px;padding:8px 10px;cursor:pointer;font:inherit}
+.tour-mi:hover{background:var(--asoft)}
+.tour-mi-name{font-size:12px;font-weight:600;color:var(--ink)}
+.tour-mi-desc{font-size:11px;color:var(--mute);line-height:1.5}

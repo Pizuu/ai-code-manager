@@ -9,6 +9,7 @@ import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
 import { activityLabels, activityTarget, activityTotal, sessionActivity, type ActivityKind } from '../lib/session-activity.ts';
 import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
+import { mountTourButton } from '../lib/tour.ts';
 import { store, type ViewId } from '../store.ts';
 
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
@@ -43,6 +44,21 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   clear(app);
   app.className = 'app';
 
+  // ── 主题偏好（应用内手动切换）：localStorage 'acm.theme' = 'light' | 'dark'；无值 = 跟随系统
+  // （不写 data-theme，styles.css 的深色变量块经 @media (prefers-color-scheme: dark) + :root:not([data-theme]) 生效；
+  // 写了 data-theme 则由 :root[data-theme='dark'] / 基础浅色 + color-scheme 强制口径压过系统）。
+  // 在构建早期、首帧前应用，保证首屏不闪。注意：桌面端主进程窗口背景（nativeTheme）仍跟随系统，本切换只管应用内主题。
+  const THEME_KEY = 'acm.theme';
+  type ThemeName = 'light' | 'dark';
+  const storedTheme = localStorage.getItem(THEME_KEY);
+  if (storedTheme === 'light' || storedTheme === 'dark') document.documentElement.setAttribute('data-theme', storedTheme);
+  /** 当前生效主题：手动偏好优先，否则按系统配色推导。 */
+  const currentTheme = (): ThemeName => {
+    const attr = document.documentElement.getAttribute('data-theme');
+    if (attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  };
+
   // ── rail（原型 rail()）──
   // 板块图标与项目栏导航同序（泳道看板 → 任务会话 → Git 与集成，T-039）；切换项目入口在项目选择器与 ⋯ 菜单
   const railView = {} as Record<ViewId, HTMLAnchorElement>;
@@ -53,13 +69,30 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const railBadge = h('span', { class: 'ri-badge', attrs: { hidden: '' } });
   railBadge.hidden = true;
   railView.session.append(railBadge);
+  // 主题切换按钮（rail 底部组、设置齿轮上方）：图标 = 点击后要去的状态（深色显 sun、浅色显 moon），两态切换并落盘。
+  const themeBtn = h('a', { class: 'ri', on: { click: () => {
+    const next: ThemeName = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(THEME_KEY, next);
+    syncThemeBtn();
+  } } });
+  const syncThemeBtn = () => {
+    const dark = currentTheme() === 'dark';
+    themeBtn.replaceChildren(icon(dark ? 'sun' : 'moon'));
+    themeBtn.title = `切换主题（当前：${dark ? '深色' : '浅色'}）`;
+  };
+  syncThemeBtn();
   const rail = h('nav', { class: 'rail' },
     railBtn('side', '侧栏', () => explorer.toggleAttribute('hidden')),
     h('div', { class: 'gap26' }),
     ...NAV.map(([id]) => railView[id]),
     h('div', { class: 'sp' }),
+    themeBtn,
     h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
   );
+  // 快速教程（高亮步进器，lib/tour.ts）：按钮插在主题按钮与设置齿轮之间（齿轮上方），navigate 透传 setView 供跨视图步骤切换。
+  const tourBtn = mountTourButton(rail, { navigate: (v) => setView(v) });
+  rail.insertBefore(tourBtn, rail.lastElementChild);
 
   // ── explorer（原型 explorer()）──
   const badge = h('div', { class: 'mono-badge' });
@@ -249,13 +282,11 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     agents: h('div', { class: 'ws-view wb', attrs: { id: 'wb-agents' } }),
   };
   const statusL = h('span');
-  /** Git 视图时显示的集成摘要（原 Git 顶部说明行，T-039）。 */
-  const statusR = h('span', { class: 'st-r' });
   /** P0-3：活动计数（运行中 / 待批准 / 错误），可点击跳转到对应会话。 */
   const statusAct = h('span', { class: 'st-act' });
   /** 规格进度行（原看板 .prog 移入）：状态栏最右端常驻，类名沿用 .prog，布局覆盖在 styles.css 的 .status .prog。 */
   const statusProg = h('span', { class: 'prog' });
-  const status = h('footer', { class: 'status' }, statusL, statusAct, statusR, statusProg);
+  const status = h('footer', { class: 'status' }, statusL, statusAct, statusProg);
   const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, status);
   app.append(rail, explorer, ws);
 
@@ -292,7 +323,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     } else {
       statusL.replaceChildren(h('span', { class: 'dot' }), store.state.project ? (store.state.workspaceError ?? g?.reason ?? '读取中…') : '未打开项目');
     }
-    renderGitStatus();
     renderProg();
     renderActivity();
     renderProject();
@@ -366,16 +396,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       h('span', { class: 'mute' }, '按序合入 → Converge'));
   };
 
-  const renderGitStatus = () => {
-    const g = store.state.git;
-    statusR.hidden = store.state.view !== 'git' || !g?.available;
-    if (!g?.available) return;
-    const open = g.branches.filter((x) => x.kind !== 'main' && x.kind !== 'integration' && !x.mergedIntoIntegration).length;
-    const f = store.state.board?.feature;
-    statusR.textContent = `${f ? `${f.id} · ` : ''}${g.integrationBranch} 基线 ${g.integrationHead ?? '—'} · ${open} 未合入 · ${g.merges.length} 次合入`;
-    statusR.title = `${f ? `${f.id} · ${f.title}\n` : ''}任务分支合入后已删除，以合并提交追溯`;
-  };
-
   const nodeAttrs = (n: FileNode) => sendAttrs({ kind: 'file', path: n.relPath, dir: n.kind === 'dir' });
   /** 展开的目录（relPath），初始为空 = 全部折叠；目录单击折叠 / 展开，子项按需读取并缓存。 */
   const expanded = new Set<string>();
@@ -440,7 +460,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       railView[id].classList.toggle('on', id === v);
     }
     navloc.textContent = `当前 · ${VIEW_TITLES[v]}`;
-    renderGitStatus();
     store.emit('view');
     if (v !== 'session' && !store.state.board) void refreshWorkspace();
   };
