@@ -8,6 +8,7 @@ import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
 import { activityLabels, activityTarget, activityTotal, sessionActivity, type ActivityKind } from '../lib/session-activity.ts';
+import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
 import { store, type ViewId } from '../store.ts';
 
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
@@ -88,7 +89,40 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     localStorage.setItem(TREE_COLLAPSED_KEY, tree.hidden ? '1' : '0');
   });
   const moreBtn = h('button', { class: 'exh-more', title: '更多操作', attrs: { type: 'button', 'aria-haspopup': 'menu' } }, icon('more', 14));
-  const explorer = h('aside', { class: 'explorer' }, psel, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, brCaret, moreBtn), tree);
+  // ── 收藏栏（项目结构之后）：默认折叠且不记偏好——每次启动都折叠（用户口径），展开 / 折叠复用 .exh-t 模式。
+  // 数据来自 lib/favorites（与 chat 的收藏按钮共用），变更经 onFavoritesChanged 即时重渲染。
+  const favList = h('div', { class: 'favlist' });
+  favList.hidden = true;
+  const favToggle = h('button', { class: 'exh-t', title: '折叠 / 展开收藏', attrs: { type: 'button', 'aria-expanded': 'false' } }, icon('caret', 12), h('span', {}, '收藏'));
+  favToggle.addEventListener('click', () => {
+    favList.hidden = !favList.hidden;
+    favToggle.classList.toggle('open', !favList.hidden);
+    favToggle.setAttribute('aria-expanded', String(!favList.hidden));
+  });
+  const favItemEl = (f: Favorite) => {
+    const rm = h('button', { class: 'fav-rm', title: '取消收藏', attrs: { type: 'button' } }, '×');
+    rm.addEventListener('click', (ev) => { ev.stopPropagation(); removeFavorite(f.id); });
+    const el = h('div', { class: 'fav-item', title: f.text },
+      h('div', { class: 'fav-main' },
+        h('span', { class: 'fav-tx' }, f.text.replace(/\s+/g, ' ').trim()),
+        h('span', { class: 'fav-ss' }, f.sessionTitle || '未命名会话')),
+      rm);
+    el.addEventListener('click', () => {
+      // 目标会话已不在会话列表（已删除）：不跳转，走 shell 既有提示通道（hooks.onError → chat 通知）
+      if (!store.state.sessions.some((s) => s.id === f.sessionId)) { hooks.onError('该收藏所属的会话已不存在。'); return; }
+      hooks.onJumpToSession(f.sessionId);
+    });
+    return el;
+  };
+  const renderFavorites = () => {
+    const favs = listFavorites();
+    favList.replaceChildren(...(favs.length
+      ? favs.map(favItemEl)
+      : [h('div', { class: 'fav-empty' }, '暂无收藏。在回答上点 ☆ 可收藏到这里。')]));
+  };
+  renderFavorites();
+  onFavoritesChanged(renderFavorites); // shell 常驻，无需退订
+  const explorer = h('aside', { class: 'explorer' }, psel, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, brCaret, moreBtn), tree, h('div', { class: 'exh' }, favToggle), favList);
 
   // 「⋯」菜单：当前只支持单项目根（无多文件夹工作区），「打开文件夹」= 切换项目（project:pick）
   const exMenu = h('div', { class: 'ctxmenu exmenu', attrs: { role: 'menu' } });

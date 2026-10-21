@@ -620,6 +620,16 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .exh-t.open svg{transform:none}
 .exh-more{width:24px;height:24px;display:grid;place-items:center;border:0;background:none;border-radius:var(--border-radius-sm);color:var(--color-text-tertiary);cursor:pointer}
 .exh-more:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+/* 收藏栏（侧栏项目结构之后，默认折叠；.tree flex:1 使其贴侧栏底部） */
+.favlist{flex:none;max-height:260px;overflow-y:auto;padding:0 8px 8px}
+.fav-item{display:flex;align-items:flex-start;gap:6px;padding:6px;border-radius:var(--border-radius-sm);cursor:pointer}
+.fav-item:hover{background:var(--color-background-secondary)}
+.fav-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.fav-tx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-caption);color:var(--color-text-primary)}
+.fav-ss{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--color-text-tertiary)}
+.fav-rm{flex:none;width:20px;height:20px;display:grid;place-items:center;border:0;background:none;border-radius:var(--border-radius-sm);color:var(--color-text-tertiary);cursor:pointer;font-size:14px;line-height:1;padding:0}
+.fav-rm:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.fav-empty{padding:2px 6px 6px;font-size:var(--font-caption);color:var(--color-text-tertiary);line-height:1.5}
 .exmenu{min-width:180px}
 .exmenu .mi{font-size:var(--font-caption)}
 /* 当前分支下拉切换：分支名可点 + caret 指示 + 分支菜单 */
@@ -882,6 +892,13 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .turn:hover .turn-hd .acts,.turn-hd .acts:focus-within{opacity:1}
 .turn-hd .act{border:0;background:transparent;width:24px;height:24px;border-radius:var(--border-radius-sm);display:grid;place-items:center;color:var(--mute)}
 .turn-hd .act:hover{background:var(--chip);color:var(--ink2)}
+/* 回合折叠：隐藏正文（.msg）与思考区（.think）；回合头（头像 / 名称 / 时间 / 操作）保持可见 */
+.turn.folded .msg,.turn.folded .think{display:none}
+.turn-hd .act-fold svg{transition:transform .15s ease}
+.turn.folded .act-fold svg{transform:rotate(-90deg)}
+/* 收藏按钮：未收藏时星形降透明 + 灰度，已收藏（.on）全色 */
+.turn-hd .act-fav svg{width:16px;height:16px;opacity:.4;filter:grayscale(1)}
+.turn-hd .act-fav.on svg{opacity:1;filter:none}
 /* 助手正文 */
 .turn .msg{padding-left:0;font-size:var(--font-body);line-height:1.7;color:var(--ink)}
 .turn .msg .md{white-space:normal}

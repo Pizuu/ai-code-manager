@@ -14,6 +14,7 @@ import { hm } from '../lib/board-format.ts';
 import { avatarText, hasPendingApproval, thinkCountText, thinkLastAction, thinkStatusText } from '../lib/chat-turn.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { errorSectionTitle } from '../lib/error-log.ts';
+import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
 import { parseSlashCommand, suggestCommands } from '../lib/slash-commands.ts';
@@ -72,7 +73,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     h('span', {}, '正在思考…'));
   liveEl.hidden = true;
   // ── .comp ──
-  const ctxChip = h('span', { class: 'chip acc' });
   /** 当前会话累计 token 数（Session.usage，opencode 聚合；无数据时隐藏）。 */
   const ctxUsage = h('span', { class: 'chip' });
   ctxUsage.hidden = true;
@@ -102,10 +102,10 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     modelMenuFor = null;
   };
   const comp = h('div', { class: 'comp' },
-    h('div', { class: 'ctx' }, ctxChip, ctxUsage),
+    h('div', { class: 'ctx' }, ctxUsage),
     slashMenu,
     h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, h('span', { class: 'mute plus', title: '插入 @文件：在左侧项目结构中点击文件' }, '+'), h('span', { class: 'right' }, stopBtn, sendBtn))),
-    h('div', { class: 'ft' }, h('span', {}, 'Enter 发送 · Shift + Enter 换行'), modelPick, modeSel));
+    h('div', { class: 'ft' }, modelPick, modeSel));
   container.append(thd, log, comp);
 
   const pendingDeltas = new Set<string>();
@@ -117,13 +117,41 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const thinkOpen = new Map<string, boolean>();
   /** 因待批准而自动展开过的消息：用户手动收起前保持展开（否则批准后卡片会突然消失）。 */
   const thinkSticky = new Set<string>();
+  /** 回合折叠状态（被折叠的 assistant 消息 ID；仅前端内存，不落盘，切换会话时清掉）。 */
+  const turnFolded = new Set<string>();
   /** 当前会话 ID（切换会话时清掉展开状态）。 */
   let lastSessionId: string | null = null;
 
-  /** 助手回合头部的操作按钮（复制 / 重新提问）。悬停回合时显示。 */
-  const turnActions = (m: ChatMessage): HTMLElement => h('span', { class: 'acts' },
-    m.content ? h('button', { class: 'act', title: '复制', attrs: { type: 'button' }, on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')) : null,
-    h('button', { class: 'act', title: '重新提问（把上一条消息放回输入框）', attrs: { type: 'button' }, on: { click: () => retryFrom(m.id) } }, icon('retry')));
+  /** 折叠 / 展开一个回合：状态记进 turnFolded（重渲染可还原），同时直接切换该回合的 class 免整表重渲染。 */
+  const toggleFold = (messageId: string, ev: MouseEvent) => {
+    const btn = ev.currentTarget as HTMLElement | null;
+    const folded = !turnFolded.has(messageId);
+    if (folded) turnFolded.add(messageId);
+    else turnFolded.delete(messageId);
+    btn?.closest('article.turn')?.classList.toggle('folded', folded);
+    if (btn) btn.title = folded ? '展开' : '折叠';
+  };
+
+  /** 收藏 / 取消收藏一个回合（状态变更经 onFavoritesChanged 同步回按钮选中态）。 */
+  const toggleFav = (m: ChatMessage, fid: string) => {
+    const s = store.state.current;
+    if (!s) return;
+    toggleFavorite({ id: fid, sessionId: s.id, sessionTitle: s.title, text: m.content, at: Date.now() });
+  };
+
+  /** 助手回合头部的操作按钮（复制 / 折叠 / 重新回答 / 收藏）。悬停回合时显示。 */
+  const turnActions = (m: ChatMessage): HTMLElement => {
+    const s = store.state.current;
+    const fid = s ? favoriteId(s.id, m.id) : null;
+    const folded = turnFolded.has(m.id);
+    // 流式生成中的回合不显示折叠按钮（正文还在变长，折叠无意义）；回合结束重渲染后出现。
+    const streaming = streamingMessage()?.id === m.id;
+    return h('span', { class: 'acts' },
+      m.content ? h('button', { class: 'act', title: '复制', attrs: { type: 'button' }, on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')) : null,
+      streaming ? null : h('button', { class: 'act act-fold', title: folded ? '展开' : '折叠', attrs: { type: 'button' }, on: { click: (ev) => toggleFold(m.id, ev) } }, icon('caret')),
+      h('button', { class: 'act', title: '重新回答', attrs: { type: 'button' }, on: { click: () => reanswerFrom(m.id) } }, icon('retry')),
+      m.content && fid ? h('button', { class: `act act-fav${isFavorite(fid) ? ' on' : ''}`, title: '收藏', attrs: { type: 'button', 'data-fav': fid }, on: { click: () => toggleFav(m, fid) } }, icon('star')) : null);
+  };
 
   /** 用户回合：右侧气泡 + 时间戳。 */
   const userTurn = (m: ChatMessage): HTMLElement => h('article', { class: 'turn user' },
@@ -184,7 +212,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const body = h('div', { class: 'md' });
     setTrustedHtml(body, renderMarkdown(m.content));
     const who = agentWho(m.agent ?? 'builtin', settings());
-    const turn = h('article', { class: 'turn assistant' },
+    const turn = h('article', { class: `turn assistant${turnFolded.has(m.id) ? ' folded' : ''}` },
       h('header', { class: 'turn-hd' },
         h('span', { class: 'avatar', attrs: { 'aria-hidden': 'true' } }, avatarText(who)),
         h('span', { class: 'who', attrs: { title: agentName(m.agent ?? 'builtin', settings()) } }, who),
@@ -229,14 +257,21 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
   };
 
-  const retryFrom = (assistantId: string) => {
+  /**
+   * 重新回答：取该回合对应的上一条 user 消息，经现行发送路径（与发送按钮同一入口 send）作为新回合再发一次。
+   * 取代旧「重新提问（放回输入框）」行为。会话运行中不并发发送，只给提示。
+   */
+  const reanswerFrom = (assistantId: string) => {
+    if (store.isRunning()) {
+      notify('正在回答中，稍后再试', 'info');
+      return;
+    }
     const msgs = store.state.current?.messages ?? [];
     const i = msgs.findIndex((x) => x.id === assistantId);
     const prev = msgs.slice(0, i).reverse().find((x) => x.role === 'user');
-    if (prev) {
-      textarea.value = prev.content;
-      textarea.focus();
-    }
+    if (!prev) return;
+    textarea.value = prev.content;
+    void send();
   };
 
   const noticeEl = (text: string, kind: 'notice' | 'info') => h('div', { class: `notice${kind === 'info' ? ' info' : ''}` }, text);
@@ -260,7 +295,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     stopBtn.hidden = !running;
     sendBtn.disabled = running || !s;
     thTitle.textContent = s ? s.title : '';
-    ctxChip.textContent = `@${cli ? (st?.agentClis?.find((x) => `cli:${x.id}` === agent)?.name ?? 'cli') : 'agent'}`;
     // 当前会话累计 token 用量（s.usage，后端聚合的 opencode 会话用量；内置 agent 无此字段 → 隐藏）。
     const usage = s?.usage;
     if (usage && usage.total > 0) {
@@ -295,6 +329,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       lastSessionId = sid;
       thinkOpen.clear();
       thinkSticky.clear();
+      turnFolded.clear();
     }
     const sysb = sysbEl();
     if (sysb) logIn.append(sysb);
@@ -620,6 +655,13 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   // v1.10：session-updated（'sessions' 主题）会带回回合进行中的累计 token 用量（已由 main 合并进
   // current.usage）；只重渲染标题行刷新 Tokens chip，不整体重渲染，避免打断流式输出。
   store.on('sessions', renderHeader);
+  // 收藏变更（chat 按钮 / shell 收藏栏共用 favorites 库）：只同步各收藏按钮的选中态，
+  // 不重渲染日志，避免打断流式输出；按钮靠 data-fav 定位。
+  onFavoritesChanged(() => {
+    for (const btn of container.querySelectorAll<HTMLElement>('[data-fav]')) {
+      btn.classList.toggle('on', isFavorite(btn.dataset.fav ?? ''));
+    }
+  });
   renderAll();
 
   return {
