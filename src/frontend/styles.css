@@ -508,12 +508,13 @@ b,strong,.b600{font-weight:var(--font-weight-semibold)}
 .fo .d{font-size:var(--font-caption);margin-top:6px}
 .prog{height:auto;min-height:40px;margin-top:16px;padding:8px 14px;gap:12px;flex-wrap:wrap;border-radius:var(--border-radius-lg);background:var(--color-background-tertiary);border:var(--border-width-regular) solid var(--color-border-tertiary)}
 .prog .stg{gap:12px;font-size:var(--font-caption)}
-.cap{height:auto;margin-top:16px;gap:12px;flex-wrap:wrap;font-size:var(--font-body);padding:10px 14px;border-radius:var(--border-radius-lg);background:var(--color-background-tertiary);border:var(--border-width-regular) solid var(--color-border-tertiary)}
-.cap>span:first-child{font-size:var(--font-heading-md);font-weight:var(--font-weight-semibold)}
-.cap>b{font-size:var(--font-heading-md)}
+.cap{height:auto;margin-top:16px;gap:12px;flex-wrap:nowrap;font-size:var(--font-body);padding:10px 14px;border-radius:var(--border-radius-lg);background:var(--color-background-tertiary);border:var(--border-width-regular) solid var(--color-border-tertiary)}
+.cap>span:first-child{font-size:var(--font-heading-md);font-weight:var(--font-weight-semibold);flex:none}
+.cap>b{font-size:var(--font-heading-md);flex:none}
 .cap .mute{font-size:var(--font-caption)}
-.cap .sep{height:16px;margin:0 6px;background:var(--color-border-tertiary)}
-.cap .cap-ctl{flex-basis:100%;display:flex;align-items:center;justify-content:flex-end;gap:12px}
+.cap .cap-sum{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap .sep{height:16px;margin:0;background:var(--color-border-tertiary);flex:none}
+.cap .cap-ctl{margin-left:auto;flex:none;display:flex;align-items:center;justify-content:flex-end;gap:12px}
 select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius-md)}
 .conflicts{margin-top:12px;padding:0;background:var(--color-background-warning);color:var(--color-text-warning);border-radius:var(--border-radius-md);font-size:var(--font-caption);line-height:1.6}
 .conflicts summary{list-style:none;cursor:pointer;padding:8px 12px;display:flex;gap:8px;align-items:center;min-width:0}

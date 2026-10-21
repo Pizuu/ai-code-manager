@@ -159,8 +159,7 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     const F = snap.feature;
     const cards = snap.cards;
     const integ = snap.integrationBranch;
-    const activeC = cards.filter((c) => c.status === 'active' || c.status === 'review');
-    const workers = activeC.filter((c) => c.lane !== '@shared');
+    const workers = cards.filter((c) => (c.status === 'active' || c.status === 'review') && c.lane !== '@shared');
     // 功能状态 chip：按当前所选功能自身的真实进度推导（F.tasksDone / F.tasksTotal，源自该功能 tasks.md 勾选），
     // 不再取全项目任务卡的合入情况——旧口径下切功能时 chip 不随功能变、与标题/stages/tasks 计数不同源。
     const featureDone = F !== null && F.tasksTotal > 0 && F.tasksDone >= F.tasksTotal;
@@ -203,12 +202,12 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       f.agent = agentSel.value;
       renderMatrix(snap);
     });
-    // 容量（两行：第一行容量与计数，第二行靠右依次：搜索 / 泳道筛选 / Agent 筛选 / 显示已完成开关）
+    // 容量（单行：容量与汇总计数在左，搜索 / 泳道筛选 / Agent 筛选 / 显示已完成开关靠右）
+    const capSummary = `${countBy(cards, 'ready')} 张可派工\u3000·\u3000${countBy(cards, 'blocked')} 张等待依赖\u3000·\u3000${countBy(cards, 'review')} 张待审查\u3000·\u3000${countBy(cards, 'merged')} 张已合入`;
     pad.append(h('div', { class: 'cap' },
       h('span', {}, 'Worker 容量'), h('b', { class: 'b600' }, `${workers.length} / ${snap.maxParallel ?? '?'}`),
-      h('span', { class: 'mute' }, activeC.length ? activeC.map((c) => `${c.assignee} ${c.id} ${STATUS_META[c.status].label}`).join(' · ') : '暂无执行中'),
       h('span', { class: 'sep' }),
-      h('span', { class: 'mute' }, `${countBy(cards, 'ready')} 张可派工\u3000·\u3000${countBy(cards, 'blocked')} 张等待依赖\u3000·\u3000${countBy(cards, 'review')} 张待审查\u3000·\u3000${countBy(cards, 'merged')} 张已合入`),
+      h('span', { class: 'mute cap-sum', attrs: { title: capSummary } }, capSummary),
       h('div', { class: 'cap-ctl' }, q, selWrap(laneSel), selWrap(agentSel), tog)));
     // 根因提示（P0-1）：集成分支本地缺失 / 已回退远端时，先说清「为什么」，再看逐条冲突
     if (snap.integrationMissing) {
