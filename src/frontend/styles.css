@@ -273,6 +273,17 @@ input,select,textarea{font:inherit;color:inherit}
 .ubub-row{display:flex;justify-content:flex-end;margin:16px 0 8px;width:100%}
 .ubub{background:var(--ubub);border:1px solid transparent;border-radius:16px;padding:10px 16px;font-size:16px;line-height:1.5;max-width:78%;white-space:pre-wrap;word-break:break-word;color:var(--ink)}
 .umeta{justify-content:flex-end}
+/* 待发送附件托盘（.box 内 textarea 上方）与附件标签（托盘 / 用户回合气泡上方共用 .attchip） */
+.attray{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.attray[hidden]{display:none}
+.attchip{display:inline-flex;align-items:center;gap:5px;max-width:260px;padding:3px 6px 3px 8px;border-radius:999px;background:var(--asoft);color:var(--accent);font-size:12px;line-height:1.4}
+.attchip svg{flex:none}
+.attchip .att-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attchip .att-x{border:0;background:none;color:inherit;font:inherit;font-size:13px;line-height:1;padding:0 2px;cursor:pointer;flex:none;opacity:.7}
+.attchip .att-x:hover{opacity:1}
+.ubub-atts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;margin:16px 0 6px}
+.ubub-atts+.ubub-row{margin-top:0}
+.turn.folded .ubub-atts{display:none}
 .notice{background:var(--asoft2);color:var(--amber);border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12px;white-space:pre-wrap;line-height:1.6}
 .notice.info{background:var(--panel);color:var(--ink2)}
 /* 错误 / 日志分区（P1-6）：错误集中一处，便于追溯；现为对话区 .ctx 条红点上方的弹出层（.errpop），条目内部呈现不变 */

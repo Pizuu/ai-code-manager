@@ -9,7 +9,8 @@ import type { BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
 import { agentName, agentWho, isCli } from '../lib/agent-label.ts';
-import { formatSendText, insertBlock } from '../lib/context-send.ts';
+import { insertBlock } from '../lib/context-send.ts';
+import { composeMessageWithAttachments, splitMessageAttachments, type MessageAttachment } from '../lib/message-attachments.ts';
 import { hm } from '../lib/board-format.ts';
 import { avatarText, hasPendingApproval, thinkCountText, thinkStatusText } from '../lib/chat-turn.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
@@ -128,10 +129,13 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     modelMenu.hidden = true;
     modelMenuFor = null;
   };
+  /** 待发送附件托盘（.box 内、textarea 上方）：选好的文件先停在这里，点发送时才拼进消息文本。 */
+  const attray = h('div', { class: 'attray' });
+  attray.hidden = true;
   const comp = h('div', { class: 'comp' },
     h('div', { class: 'ctx' }, ctxUsage, stDots),
     slashMenu,
-    h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
+    h('div', { class: 'box' }, attray, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
     h('div', { class: 'ft' }, modelPick, modeSel));
   container.append(thd, log, comp);
 
@@ -238,10 +242,37 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (target) hooks.onJumpToSession?.(target.id);
   });
 
-  // ── 附件添加（+）：弹系统文件选择框（契约 v1.12 files:pick），选中路径逐个插入输入框光标处。
-  // 项目内文件与点文件树发送同格式（formatSendText({ kind:'file', path, dir:false }) → `@<相对路径>`，
-  // 相对路径按正斜杠）；项目外文件先经 files:import（契约 v1.14）上传到项目 uploads/ 再 @ 引用其相对路径。
-  // 插入顺序保持用户选择顺序；多个文件空格分隔、末尾留一空格。──
+  // ── 待发送附件：选好的文件先停在托盘（pendingAttachments），点发送时才经 composeMessageWithAttachments
+  // 拼成「正文 + 尾随 @路径块」的完整消息（拼装/拆分口径唯一在 lib/message-attachments）。
+  // 托盘是输入区状态而非会话状态：切换会话不清空；发送成功才清，失败保留等用户再发。──
+  let pendingAttachments: MessageAttachment[] = [];
+
+  /** path 的 basename（与 lib/message-attachments 的口径一致：同时兼容 '/' 与 '\' 分隔）。 */
+  const attName = (p: string): string => p.split(/[\\/]/).filter((s) => s !== '').at(-1) ?? p;
+
+  /** 附件 chip（托盘与用户回合共用 .attchip 样式；托盘版多一个 × 移除按钮）。 */
+  const attChip = (a: MessageAttachment, removable: boolean): HTMLElement =>
+    h('span', { class: 'attchip', attrs: { title: a.path } },
+      icon('file'),
+      h('span', { class: 'att-name' }, a.name),
+      removable
+        ? h('button', { class: 'att-x', attrs: { type: 'button', 'aria-label': `移除附件 ${a.name}` }, on: {
+            click: () => {
+              pendingAttachments = pendingAttachments.filter((x) => x.path !== a.path);
+              renderAttTray();
+            },
+          } }, '×')
+        : null);
+
+  const renderAttTray = () => {
+    clear(attray);
+    attray.hidden = pendingAttachments.length === 0;
+    for (const a of pendingAttachments) attray.append(attChip(a, true));
+  };
+
+  // ── 附件添加（+）：弹系统文件选择框（契约 v1.12 files:pick），选中文件进待发送托盘（不再直接插入输入框）。
+  // 项目内文件记其相对路径（按正斜杠）；项目外文件先经 files:import（契约 v1.14）上传到项目 uploads/，
+  // 再记返回的相对路径。托盘内同 path 去重；顺序保持用户选择顺序。──
   const pickSystemFiles = async () => {
     let paths: string[];
     try {
@@ -281,10 +312,17 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
         notify(errorText(e));
       }
     }
-    const parts = relOf
-      .filter((rel): rel is string => rel !== null)
-      .map((rel) => formatSendText({ kind: 'file', path: rel, dir: false }));
-    if (parts.length) insertAtCursor(`${parts.join(' ')} `);
+    // 终点：相对路径逐个进待发送托盘（同 path 已在托盘则跳过），发送时才拼进消息。
+    let added = 0;
+    for (const rel of relOf) {
+      if (rel === null || pendingAttachments.some((a) => a.path === rel)) continue;
+      pendingAttachments.push({ name: attName(rel), path: rel });
+      added++;
+    }
+    if (added) {
+      renderAttTray();
+      textarea.focus();
+    }
   };
   attachBtn.addEventListener('click', () => void pickSystemFiles());
 
@@ -370,10 +408,15 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       m.content && fid ? h('button', { class: `act act-fav${isFavorite(fid) ? ' on' : ''}`, attrs: { type: 'button', 'data-fav': fid, 'data-tip': '收藏' }, on: { click: () => toggleFav(m, fid) } }, icon('star')) : null);
   };
 
-  /** 用户回合：右侧气泡 + 操作行（按钮 + 时间戳）。 */
-  const userTurn = (m: ChatMessage): HTMLElement => h('article', { class: `turn user${turnFolded.has(m.id) ? ' folded' : ''}` },
-    h('div', { class: 'ubub-row' }, h('div', { class: 'ubub' }, m.content)),
-    h('div', { class: 'turn-ft' }, userTurnActions(m), h('span', { class: 'turn-tm' }, hm(m.createdAt))));
+  /** 用户回合：附件标签（尾随 @ 引用块经 splitMessageAttachments 拆出，渲染为气泡上方的标签排）+ 右侧气泡 + 操作行。
+   * 正文为空（纯附件消息）时不渲染气泡；回合按钮仍作用于整条 m（content 原文，含引用块）。 */
+  const userTurn = (m: ChatMessage): HTMLElement => {
+    const { text, attachments } = splitMessageAttachments(m.content);
+    return h('article', { class: `turn user${turnFolded.has(m.id) ? ' folded' : ''}` },
+      attachments.length ? h('div', { class: 'ubub-atts' }, ...attachments.map((a) => attChip(a, false))) : null,
+      text ? h('div', { class: 'ubub-row' }, h('div', { class: 'ubub' }, text)) : null,
+      h('div', { class: 'turn-ft' }, userTurnActions(m), h('span', { class: 'turn-tm' }, hm(m.createdAt))));
+  };
 
   /**
    * 「思考」区：工具调用的可折叠容器。
@@ -799,13 +842,14 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
    * 本地斜杠命令（/help、/clear、/model）在 runSlash 内消化（返回 null），不产生发送。
    * 内容为空 / 无当前会话 / 配置未就绪 / 发送失败均抛错；不操作输入框 DOM，原文恢复与提示由调用方处理。
    */
-  const sendText = async (rawText: string, opts?: { reaskLatest?: boolean }): Promise<void> => {
+  /** 返回 true = 真的发给了 agent；false = 被本地斜杠命令消化（未发送）。 */
+  const sendText = async (rawText: string, opts?: { reaskLatest?: boolean }): Promise<boolean> => {
     const raw = rawText.trim();
     const s = store.state.current;
     if (!raw) throw new Error('发送内容为空');
     if (!s) throw new Error('当前没有打开的会话');
     const text = await runSlash(raw);
-    if (text === null) return;
+    if (text === null) return false;
     const setup = agentSetupHint(s.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
     if (setup) throw new RestoreInputError(setup);
     // 乐观追加用户消息（主进程会写入同样内容；切换会话时以持久化版本为准）
@@ -819,6 +863,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       renderAll();
       throw new RestoreInputError(errorText(e));
     }
+    return true;
   };
 
   const send = async () => {
@@ -826,12 +871,21 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const reaskLatest = pendingReask;
     pendingReask = false;
     const raw = textarea.value.trim();
-    if (!raw || !store.state.current) return;
+    // 托盘附件只挂普通发送：重提路径发的就是消息原文（已含尾随引用块），不经托盘、不清托盘。
+    const withTray = !reaskLatest && pendingAttachments.length > 0;
+    // 准入：正文与待发送附件至少有一项（只有附件也能发）。
+    if ((!raw && !withTray) || !store.state.current) return;
+    const composed = withTray ? composeMessageWithAttachments(raw, pendingAttachments) : raw;
     textarea.value = '';
     renderSlashMenu();
     autoGrow();
     try {
-      await sendText(raw, reaskLatest ? { reaskLatest: true } : undefined);
+      const sent = await sendText(composed, reaskLatest ? { reaskLatest: true } : undefined);
+      // 真发送成功才清托盘；失败保留（与回填文字一起等再发），本地斜杠命令消化时也保留（附件根本没发出）。
+      if (withTray && sent) {
+        pendingAttachments = [];
+        renderAttTray();
+      }
     } catch (e) {
       if (e instanceof RestoreInputError) {
         textarea.value = raw;
