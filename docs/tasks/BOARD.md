@@ -60,7 +60,7 @@
 | T-047 | 主进程通知服务：审批 / 出错系统通知与点击激活 | backend | T-046 | ready | （待派发） | — |
 | T-048 | 提醒弹窗栈与待办收件箱（P0 主线） | frontend | T-046 | done | worker | `feat/frontend/T-048-notify-inbox`（协调者直合 manus `089e7e0`；chat/styles 与附件托盘并发，已按 hunk 分拣） |
 | T-049 | P1–P3 事项生成：受阻 / 出错 / 待审查 / 新 ready | frontend | T-048 | done | worker | `feat/frontend/T-049-notify-board-events`（协调者直合 manus `9ca2005`；含 FR-516 进度页签） |
-| T-050 | 设置页提醒分区 | frontend | T-046 | blocked | （待派发） | — |
+| T-050 | 设置页提醒分区 | frontend | T-046 | done | worker | `feat/frontend/T-050-notify-settings`（代码随旁聊提交 `4de9c59` 合入，协调者独立验证全绿后记 done） |
 | T-051 | 005 用户与测试文档 | docs | T-047, T-048 | blocked | （待派发） | — |
 
 ## 依赖图
