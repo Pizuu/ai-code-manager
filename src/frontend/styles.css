@@ -260,7 +260,7 @@ input,select,textarea{font:inherit;color:inherit}
 .md table{border-collapse:collapse}.md th,.md td{border:1px solid var(--line);padding:3px 8px}
 .md blockquote{margin:.4em 0;padding-left:10px;border-left:3px solid var(--line);color:var(--mute)}
 .md a{color:var(--accent)}
-.ubub-row{display:flex;justify-content:flex-end;margin:16px 0 8px}
+.ubub-row{display:flex;justify-content:flex-end;margin:16px 0 8px;width:100%}
 .ubub{background:var(--ubub);border-radius:16px;padding:10px 16px;font-size:16px;line-height:1.5;max-width:78%;white-space:pre-wrap;word-break:break-word;color:var(--ink)}
 .umeta{justify-content:flex-end}
 .notice{background:var(--asoft2);color:var(--amber);border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12px;white-space:pre-wrap;line-height:1.6}
@@ -895,7 +895,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .turn:last-child{margin-bottom:6px}
 /* 用户回合：右侧气泡 + 右下时间戳 */
 .turn.user{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
-.turn.user .ubub-row{margin:0;display:flex;justify-content:flex-end}
+.turn.user .ubub-row{margin:0;display:flex;justify-content:flex-end;width:100%}
 .turn.user .ubub{max-width:min(78%,620px);background:var(--ubub);border-radius:var(--border-radius-xl);padding:10px 16px;font-size:var(--font-body);line-height:1.6;white-space:pre-wrap;word-break:break-word;color:var(--ink)}
 .turn.user .turn-ft{display:flex;gap:8px;padding-right:4px;color:var(--mute);font-size:var(--font-caption)}
 /* 助手回合：头部（头像 / 名称 / 时间 / 操作） */
