@@ -16,6 +16,9 @@ function field(label: string, control: HTMLElement, help?: string): HTMLElement 
 
 export function mountAgentCliSettings(container: HTMLElement, headerSlot?: HTMLElement): void {
   let editing: AgentCliForm | null = null;
+  // 条目检查状态按 CLI id 存于 mount 作用域：renderList 重渲染（切换默认、进出编辑保存/返回）时按此恢复常驻状态指示，不随 DOM 重建丢失。
+  type CliCheckState = { state: 'none' | 'checking' | 'ok' | 'bad'; text: string };
+  const checkStates = new Map<string, CliCheckState>();
 
   const renderList = () => {
     clear(container);
@@ -25,9 +28,26 @@ export function mountAgentCliSettings(container: HTMLElement, headerSlot?: HTMLE
     const list = h('div', { class: 'cli-list' });
     for (const c of clis) {
       const out = h('div', { class: 'check-out', attrs: { hidden: '' } });
+      // 常驻状态指示（名称行右侧）：状态点 + 文案，与下方 .check-out 详情同步更新；初值从 checkStates 按 id 恢复。
+      const savedState: CliCheckState = checkStates.get(c.id) ?? { state: 'none', text: '未检查' };
+      const stateDot = h('span', { class: `cli-dot ${savedState.state}` });
+      const stateText = h('span', { class: 'cli-state-text' }, savedState.text);
+      const stateEl = h('span', { class: 'cli-state', attrs: { title: savedState.text } }, stateDot, stateText);
+      const setState = (s: CliCheckState) => {
+        checkStates.set(c.id, s);
+        stateDot.className = `cli-dot ${s.state}`;
+        stateText.textContent = s.text;
+        stateEl.title = s.text;
+      };
+      // 不可用文案：只取 message 第一行，过长截断（完整内容仍在下方 .check-out 详情区）。
+      const briefLine = (msg: string): string => {
+        const line = msg.split('\n')[0] ?? '';
+        return line.length > 40 ? `${line.slice(0, 40)}…` : line;
+      };
       const check = h('button', { class: 'btn', attrs: { type: 'button' } }, '检查');
       check.addEventListener('click', async () => {
         check.disabled = true;
+        setState({ state: 'checking', text: '检查中…' });
         out.hidden = false;
         out.className = 'check-out';
         out.textContent = '检查中…';
@@ -35,9 +55,12 @@ export function mountAgentCliSettings(container: HTMLElement, headerSlot?: HTMLE
           const r = await api.invoke('agentCli:check', c.id);
           out.className = `check-out ${r.ok ? 'ok' : 'bad'}`;
           out.textContent = r.ok ? `可用 · ${r.version ?? ''}\n${r.resolvedPath ?? ''}` : r.message;
+          if (r.ok) setState({ state: 'ok', text: r.version ? `可用 · ${r.version}` : '可用' });
+          else setState({ state: 'bad', text: briefLine(r.message) || '不可用' });
         } catch (e) {
           out.className = 'check-out bad';
           out.textContent = errorText(e);
+          setState({ state: 'bad', text: briefLine(errorText(e)) || '不可用' });
         } finally {
           check.disabled = false;
         }
@@ -48,16 +71,30 @@ export function mountAgentCliSettings(container: HTMLElement, headerSlot?: HTMLE
         try {
           store.state.settings = await api.invoke('agentCli:delete', c.id);
           store.emit('settings');
+          checkStates.delete(c.id);
           renderList();
         } catch (e) {
           err.textContent = errorText(e);
         }
       });
       const inUse = st?.defaultAgent === `cli:${c.id}`;
+      // 非使用中条目可一键设为默认（defaultAgent）；使用中条目已有「使用中」chip，不再显示该按钮。
+      const setDefault = inUse ? null : h('button', { class: 'btn', attrs: { type: 'button' } }, '设为默认');
+      setDefault?.addEventListener('click', async () => {
+        err.textContent = '';
+        try {
+          store.state.settings = await api.invoke('settings:set', { defaultAgent: `cli:${c.id}` });
+          store.emit('settings');
+          renderList();
+        } catch (e) {
+          err.textContent = errorText(e);
+        }
+      });
       list.append(h('div', {},
         h('div', { class: 'cli-item' },
-          h('div', { class: 'grow0' }, h('div', { class: 'fx8' }, h('b', {}, c.name), inUse ? h('span', { class: 'chip grn' }, '使用中') : null), h('div', { class: 'mono' }, previewCommand(configToForm(c), { session: true }))),
+          h('div', { class: 'grow0' }, h('div', { class: 'fx8' }, h('b', {}, c.name), inUse ? h('span', { class: 'chip grn' }, '使用中') : null, stateEl), h('div', { class: 'mono' }, previewCommand(configToForm(c), { session: true }))),
           check,
+          setDefault,
           h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => { editing = configToForm(c); renderEdit(); } } }, '编辑'),
           del),
         out));

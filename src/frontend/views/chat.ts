@@ -59,9 +59,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const menuBtn = h('button', { class: 'circ', title: '会话列表', on: { click: hooks.onToggleList } }, icon('menu'));
   const newBtn = h('button', { class: 'circ acc', title: '新建会话', on: { click: hooks.onNewSession } }, icon('plus'));
   const thTitle = h('span', { class: 'th-title' });
-  const thRight = h('span', { class: 'mute' });
-  // 标题行三列 grid：左端菜单按钮 · 中间标题 · 右端容器（thRight + 新建按钮，整体靠右）
-  const thRightBox = h('span', { class: 'fx8' }, thRight, newBtn);
+  // 标题行三列 grid：左端菜单按钮 · 中间标题 · 右端容器（新建按钮，整体靠右）
+  const thRightBox = h('span', { class: 'fx8' }, newBtn);
   const thChip = h('span', { class: 'chip acc' });
   const thDesc = h('span', { class: 'mute' });
   const thd = h('div', { class: 'thd' },
@@ -265,8 +264,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     stopBtn.hidden = !running;
     sendBtn.disabled = running || !s;
     thTitle.textContent = s ? s.title : '';
-    const cliSid = s && agent !== 'builtin' ? s.cliSessions?.[agent.slice(4)] : undefined;
-    thRight.textContent = cli ? (cliSid ? `CLI 会话 ${cliSid}` : 'CLI 会话：首轮后建立') : `${s?.messages.length ?? 0} 条消息`;
     thChip.textContent = cli ? `外部 CLI · ${agentName(agent, st)}` : `内置 · ${agentName(agent, st)}`;
     thDesc.textContent = store.state.project ? `工作目录 ${store.state.project.name} · ${MODE_LABELS[st?.permissionMode ?? 'ask']}` : '未打开项目（外部 CLI 需要项目；内置 agent 仅对话）';
     ctxChip.textContent = `@${cli ? (st?.agentClis?.find((x) => `cli:${x.id}` === agent)?.name ?? 'cli') : 'agent'}`;

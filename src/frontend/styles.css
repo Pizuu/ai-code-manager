@@ -321,6 +321,12 @@ input,select,textarea{font:inherit;color:inherit}
 .cli-item{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--panel)}
 .cli-item .grow0 b{font-weight:600}
 .cli-item .mono{font-size:11px;color:var(--mute)}
+.cli-item .cli-state{display:inline-flex;align-items:center;gap:5px;margin-left:auto;min-width:0;font-size:12px;color:var(--mute)}
+.cli-item .cli-state-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cli-item .cli-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--mute)}
+.cli-item .cli-dot.checking{background:var(--amber)}
+.cli-item .cli-dot.ok{background:var(--green)}
+.cli-item .cli-dot.bad{background:var(--err)}
 .env-row{display:grid;grid-template-columns:150px 1fr auto auto;gap:6px;align-items:center}
 .env-row input[type=text],.env-row input[type=password]{height:30px;border:1px solid var(--line);border-radius:6px;padding:0 8px;background:var(--bg)}
 .check-out{font-size:12px;white-space:pre-wrap;border-radius:8px;padding:8px 10px;background:var(--panel)}
@@ -657,7 +663,6 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .tip .mono{color:var(--color-text-secondary)}
 .tip .mute{color:var(--color-text-tertiary)}
 /* 打开文件时对话列变窄：次要说明省略，右侧上下文在窄屏让位 */
-.sx.has-file .thd .r:first-child>.fx8>.mute{display:none}
 .sx.has-file .thd .fx8{min-width:0;overflow:hidden}
 .sx.has-file .thd .fx8>.mute{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .sx.has-file .comp .ft{flex-wrap:wrap;gap:4px 12px}
