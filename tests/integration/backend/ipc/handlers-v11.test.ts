@@ -114,6 +114,8 @@ test('full opencode conversation: stream, tools, diff, terminal, todos, resume w
   assert.equal(JSON.stringify(events).includes('sk-SUPER-SECRET'), false);
 
   const saved = await sessions.get(s.id);
+  // v1.8：两步 step_finish（{input:0,output:0} 与 {total:15,input:10,output:5}）累加落盘
+  assert.deepEqual(saved.usage, { total: 15, input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 });
   const sid = saved.cliSessions?.[cli.id];
   assert.match(sid ?? '', /^ses_fake/);
   const assistant = saved.messages.find((m) => m.role === 'assistant');

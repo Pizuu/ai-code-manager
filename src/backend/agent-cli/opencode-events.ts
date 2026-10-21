@@ -2,6 +2,29 @@
  * opencode `run --format json` JSONL 事件解析（FR-112）。依据 opencode 1.19.3 真实输出
  * （contracts/fixtures/opencode-*.jsonl）。未知事件归为 other，由调用方作为终端输出显示。纯函数。
  */
+import type { SessionUsage } from '../../../contracts/ipc.ts';
+
+/** step_finish 的 token 用量（part.tokens 归一化形状，与契约 SessionUsage 同字段）。 */
+export interface StepTokens {
+  total: number;
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/** 逐字段累加会话用量（v1.8）：prev 缺省按全 0。 */
+export function accumulateUsage(prev: SessionUsage | undefined, t: StepTokens): SessionUsage {
+  return {
+    total: (prev?.total ?? 0) + t.total,
+    input: (prev?.input ?? 0) + t.input,
+    output: (prev?.output ?? 0) + t.output,
+    reasoning: (prev?.reasoning ?? 0) + t.reasoning,
+    cacheRead: (prev?.cacheRead ?? 0) + t.cacheRead,
+    cacheWrite: (prev?.cacheWrite ?? 0) + t.cacheWrite,
+  };
+}
 
 export type OpencodeEvent =
   | { kind: 'text'; sessionId: string | null; partId: string; text: string }
@@ -17,7 +40,7 @@ export type OpencodeEvent =
       title: string;
       metadata: Record<string, unknown>;
     }
-  | { kind: 'step-finish'; sessionId: string | null; reason: string; tokens: number | null }
+  | { kind: 'step-finish'; sessionId: string | null; reason: string; tokens: StepTokens | null }
   | { kind: 'step-start'; sessionId: string | null }
   | { kind: 'error'; sessionId: string | null; message: string }
   | { kind: 'other'; sessionId: string | null; raw: string }
@@ -49,9 +72,22 @@ export function parseOpencodeLine(line: string): OpencodeEvent {
       };
     }
     case 'step_finish': {
-      const t = rec(part.tokens);
-      const total = typeof t.total === 'number' ? t.total : null;
-      return { kind: 'step-finish', sessionId, reason: str(part.reason), tokens: total };
+      // tokens 整体缺失 / 非对象 → null（本步无用量）；各字段非 number 按 0；
+      // total 缺失时以 input+output+reasoning+cache.read+cache.write 合成。
+      const rawT = part.tokens;
+      if (typeof rawT !== 'object' || rawT === null || Array.isArray(rawT)) {
+        return { kind: 'step-finish', sessionId, reason: str(part.reason), tokens: null };
+      }
+      const t = rec(rawT);
+      const cache = rec(t.cache);
+      const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+      const input = num(t.input);
+      const output = num(t.output);
+      const reasoning = num(t.reasoning);
+      const cacheRead = num(cache.read);
+      const cacheWrite = num(cache.write);
+      const total = typeof t.total === 'number' && Number.isFinite(t.total) ? t.total : input + output + reasoning + cacheRead + cacheWrite;
+      return { kind: 'step-finish', sessionId, reason: str(part.reason), tokens: { total, input, output, reasoning, cacheRead, cacheWrite } };
     }
     case 'step_start':
       return { kind: 'step-start', sessionId };

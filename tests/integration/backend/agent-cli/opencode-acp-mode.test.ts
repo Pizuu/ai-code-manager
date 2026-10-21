@@ -94,6 +94,12 @@ test('default mode is acp: opencode turn runs over ACP (text + tool calls land i
   assert.equal(invoke?.status, 'done');
   assert.equal(after.cliSessions?.[`${cli.id}@acp`], 'ses_fake_1');
   assert.equal(acpManager.size, 1);
+  // usage_update（累计口径）：fake 先后发 used:10、4242，落盘的 session.usage.total 应为最后一值 4242（整值覆盖，非累加）
+  assert.equal(after.usage?.total, 4242);
+  assert.deepEqual(
+    { input: after.usage?.input, output: after.usage?.output, reasoning: after.usage?.reasoning, cacheRead: after.usage?.cacheRead, cacheWrite: after.usage?.cacheWrite },
+    { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+  );
 });
 
 test('acp startup failure falls back to run mode with a notice event', { skip: posixOnly }, async (t) => {

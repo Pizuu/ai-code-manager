@@ -114,6 +114,8 @@ async function runPrompt(id) {
   update({ sessionUpdate: 'some_unknown_kind', foo: 1 });
   update({ sessionUpdate: 'tool_call_update', toolCallId: 'call_bash', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'hi\\n' } }], rawOutput: { metadata: { output: 'hi\\n', exit: 0 } } });
   textChunk('done');
+  // 本轮结束时的上下文用量（累计口径）：适配层应以此覆盖 session.usage.total（与上方 used:10 区分，验证整值覆盖而非累加）
+  update({ sessionUpdate: 'usage_update', used: 4242, size: 1000 });
   reply(id, { stopReason: 'end_turn' });
 }
 

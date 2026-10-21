@@ -319,7 +319,7 @@ test('mapServeEvent reuses run-mode parsing for parts and maps deltas, status an
   assert.deepEqual(mapServeEvent(E.textDelta), { kind: 'text-delta', sessionId: SID, partId: 'prt_1583e7c350015O0vtBCbY27QgO', delta: '完成' });
   const fin = mapServeEvent(E.stepFinish);
   assert.ok(fin && fin.kind === 'step-finish');
-  assert.equal(fin.tokens, 6);
+  assert.deepEqual(fin.tokens, { total: 6, input: 5, output: 1, reasoning: 0, cacheRead: 0, cacheWrite: 0 });
   const err = mapServeEvent(E.abortedError);
   assert.ok(err && err.kind === 'error');
   assert.equal(err.message, 'Aborted');

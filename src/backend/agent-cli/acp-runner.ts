@@ -513,6 +513,14 @@ export interface AcpTurnEngineDeps {
   requestApproval(req: ApprovalRequest, perm: AcpPermissionRequest): Promise<AcpApprovalAnswer>;
   onTextDelta(partId: string, delta: string): void;
   onEvent(ev: OpencodeEvent): void;
+  /** usage_update 的 used（当前会话上下文已用 token 总量，累计口径）；适配层据此覆盖 session.usage.total 并落盘。 */
+  onUsage?: (used: number) => void;
+}
+
+/** usage_update 的 used 提取：须为有限 number，否则返回 null（忽略该条）。 */
+export function parseAcpUsageUsed(update: Record<string, unknown>): number | null {
+  const used = update.used;
+  return typeof used === 'number' && Number.isFinite(used) ? used : null;
 }
 
 type AcpPermissionOutcome = { outcome: 'selected'; optionId: string } | { outcome: 'cancelled' };
@@ -556,9 +564,16 @@ export async function runAcpTurn(deps: AcpTurnEngineDeps): Promise<AcpTurnResult
         }
         break;
       }
+      case 'usage_update': {
+        // ACP 的 used = 当前会话上下文已用 token 总量（累计口径、整值覆盖，非逐轮增量——与 run/serve 的
+        // step_finish tokens 逐轮累加口径不同，勿在此相加）；分解项（input/output/…）ACP 不给，由适配层保留旧值。
+        const used = parseAcpUsageUsed(upd);
+        if (used !== null) deps.onUsage?.(used);
+        break;
+      }
       default:
         // user_message_chunk / plan / available_commands_update / current_mode_update /
-        // config_option_update / session_info_update / usage_update / 未知 kind：本期不映射，忽略。
+        // config_option_update / session_info_update / 未知 kind：本期不映射，忽略。
         break;
     }
   };
@@ -694,6 +709,20 @@ export async function runAcpCliTurn(session: Session, userText: string, prepared
     },
     onTextDelta: (partId, delta) => sink.appendDelta(partId, delta),
     onEvent: (ev) => sink.handle(ev),
+    onUsage: (used) => {
+      // used 是累计总量：只覆盖 total，分解项保留上一轮的值（ACP 不提供分解），并落盘保存
+      // （sink.save 自带串行队列，与 run/serve 的 step-finish 落盘同口径；失败不打断回合，回合末 save 会再落一次）。
+      const prev = session.usage;
+      session.usage = {
+        total: used,
+        input: prev?.input ?? 0,
+        output: prev?.output ?? 0,
+        reasoning: prev?.reasoning ?? 0,
+        cacheRead: prev?.cacheRead ?? 0,
+        cacheWrite: prev?.cacheWrite ?? 0,
+      };
+      void sink.save().catch(() => undefined);
+    },
   });
 
   const aborted = result.status === 'aborted' || deps.signal.aborted;

@@ -11,7 +11,7 @@ import path from 'node:path';
 import type { AgentEvent, ApprovalRequest, Session } from '../../../../contracts/ipc.ts';
 import { AcpPeer, AcpProcessExitError, startAcpProcess } from '../../../../src/backend/agent-cli/acp-client.ts';
 import {
-  AcpProcessManager, AcpStartupError, acpAutoDecision, acpSessionKey, parseAcpPermissionRequest,
+  AcpProcessManager, AcpStartupError, acpAutoDecision, acpSessionKey, parseAcpPermissionRequest, parseAcpUsageUsed,
   prepareAcpTurn, runAcpCliTurn, runAcpTurn, selectPermissionOption, toAcpApprovalRequest,
   type AcpPermissionOption, type AcpTurnRunDeps,
 } from '../../../../src/backend/agent-cli/acp-runner.ts';
@@ -88,6 +88,26 @@ test('ACP 全链路（引擎层）：文本增量、工具生命周期合并、e
   assert.equal(last?.output, 'hi\n');
   assert.deepEqual(last?.input, { command: 'echo hi' });
   assert.deepEqual(res.approvals, []);
+});
+
+test('ACP usage_update：used 经 onUsage 上报（累计口径，逐条原样转发，最后一值为准）', { skip: posixOnly }, async (t) => {
+  const { handle } = await acquire(t, { FAKE_ACP_SCENARIO: 'basic' });
+  const usages: number[] = [];
+  const res = await runAcpTurn({
+    handle, appSessionId: 'sess-1', projectRoot: ROOT, prompt: 'hello', mode: 'ask',
+    signal: new AbortController().signal, newId: nextId,
+    requestApproval: async () => 'once',
+    onTextDelta: () => undefined,
+    onEvent: () => undefined,
+    onUsage: (used) => usages.push(used),
+  });
+  assert.equal(res.status, 'done');
+  // fake basic 场景先后发 used:10 与 used:4242：引擎不累加、不去重，原样上报，覆盖语义在适配层
+  assert.deepEqual(usages, [10, 4242]);
+  assert.equal(parseAcpUsageUsed({ used: 4242 }), 4242);
+  assert.equal(parseAcpUsageUsed({ used: '4242' }), null);
+  assert.equal(parseAcpUsageUsed({}), null);
+  assert.equal(parseAcpUsageUsed({ used: Number.NaN }), null);
 });
 
 test('ACP 全链路（适配层）：消息落盘、工具记录、cliSessions 写回、invoke 完成', { skip: posixOnly }, async (t) => {

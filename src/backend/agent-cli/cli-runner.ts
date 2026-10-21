@@ -11,7 +11,7 @@ import { summarizeSession } from '../sessions/session-store.ts';
 import { createUnifiedDiff } from '../tools/diff.ts';
 import { buildArgs, describePermission, formatCommandLine, needsTurnApproval, permissionEnv, type InvocationConfig } from './invocation.ts';
 import { opencodePlatformEnv } from './platform-env.ts';
-import { mapTodoStatus, parseOpencodeLine, toolStatus, type OpencodeEvent } from './opencode-events.ts';
+import { accumulateUsage, mapTodoStatus, parseOpencodeLine, toolStatus, type OpencodeEvent } from './opencode-events.ts';
 
 /** 主进程内部的 CLI 配置（env 已解密，绝不进入 IPC）。 */
 export interface CliRuntimeConfig extends InvocationConfig {
@@ -102,10 +102,16 @@ export interface CliTurnSinkDeps {
 export async function beginCliTurn(session: Session, userText: string, deps: CliTurnSinkDeps): Promise<CliTurnSink> {
   const agent: AgentRef = `cli:${deps.config.id}`;
   const sid = session.id;
-  const save = async () => {
-    session.updatedAt = deps.now();
-    await deps.persist(session);
-    deps.emit({ type: 'session-updated', summary: summarizeSession(session) });
+  // 落盘串行化：step-finish 等事件会并发触发 save，SessionStore 的 tmp+rename 不耐并发，必须排队。
+  let saveChain: Promise<void> = Promise.resolve();
+  const save = (): Promise<void> => {
+    const run = saveChain.then(async () => {
+      session.updatedAt = deps.now();
+      await deps.persist(session);
+      deps.emit({ type: 'session-updated', summary: summarizeSession(session) });
+    });
+    saveChain = run.catch(() => {});
+    return run;
   };
 
   session.messages.push({ id: deps.newId(), role: 'user', content: userText, createdAt: deps.now() });
@@ -177,7 +183,12 @@ export async function beginCliTurn(session: Session, userText: string, deps: Cli
         break;
       }
       case 'step-finish':
-        if (ev.tokens !== null) terminal(deps.infoToolCallId(), 'info', `[${deps.config.name}] 步骤结束（${ev.reason || 'stop'}）· tokens ${ev.tokens}\n`);
+        if (ev.tokens !== null) {
+          // v1.8：会话累计 token 用量，落盘保存（run / serve 共用此 sink；失败不打断回合，回合末 save 会再落一次）。
+          session.usage = accumulateUsage(session.usage, ev.tokens);
+          void save().catch(() => {});
+          terminal(deps.infoToolCallId(), 'info', `[${deps.config.name}] 步骤结束（${ev.reason || 'stop'}）· tokens ${ev.tokens.total}\n`);
+        }
         break;
       case 'error':
         sawError = true;

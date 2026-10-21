@@ -48,6 +48,11 @@ export async function decideApproval(approvalId: string, approved: boolean): Pro
   }
 }
 
+/** token 总数格式化：<1000 显示原数；>=1000 显示 (n/1000) 保留一位小数加 'k'（如 12.3k）。 */
+function fmtTokens(n: number): string {
+  return n < 1000 ? String(n) : `${(n / 1000).toFixed(1)}k`;
+}
+
 export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   clear(container);
   // ── .ctop：运行指示 · 新建（菜单按钮在 .thd 标题行左侧）──
@@ -74,6 +79,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   liveEl.hidden = true;
   // ── .comp ──
   const ctxChip = h('span', { class: 'chip acc' });
+  /** 当前会话累计 token 数（Session.usage，opencode 聚合；无数据时隐藏）。 */
+  const ctxUsage = h('span', { class: 'chip' });
+  ctxUsage.hidden = true;
   const ctxText = h('span');
   const slashMenu = h('div', { class: 'slash-menu' });
   slashMenu.hidden = true;
@@ -101,7 +109,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     modelMenuFor = null;
   };
   const comp = h('div', { class: 'comp' },
-    h('div', { class: 'ctx' }, ctxChip, ctxText),
+    h('div', { class: 'ctx' }, ctxChip, ctxUsage, ctxText),
     slashMenu,
     h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, h('span', { class: 'mute plus', title: '插入 @文件：在左侧项目结构中点击文件' }, '+'), h('span', { class: 'right' }, stopBtn, sendBtn))),
     h('div', { class: 'ft' }, h('span', {}, 'Enter 发送 · Shift + Enter 换行'), modelPick, modeSel));
@@ -262,6 +270,15 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     thChip.textContent = cli ? `外部 CLI · ${agentName(agent, st)}` : `内置 · ${agentName(agent, st)}`;
     thDesc.textContent = store.state.project ? `工作目录 ${store.state.project.name} · ${MODE_LABELS[st?.permissionMode ?? 'ask']}` : '未打开项目（外部 CLI 需要项目；内置 agent 仅对话）';
     ctxChip.textContent = `@${cli ? (st?.agentClis?.find((x) => `cli:${x.id}` === agent)?.name ?? 'cli') : 'agent'}`;
+    // 当前会话累计 token 用量（s.usage，后端聚合的 opencode 会话用量；内置 agent 无此字段 → 隐藏）。
+    const usage = s?.usage;
+    if (usage && usage.total > 0) {
+      ctxUsage.hidden = false;
+      ctxUsage.textContent = `Tokens ${fmtTokens(usage.total)}`;
+      ctxUsage.title = `累计 token：输入 ${usage.input} · 输出 ${usage.output} · 推理 ${usage.reasoning} · 缓存读 ${usage.cacheRead} / 写 ${usage.cacheWrite}`;
+    } else {
+      ctxUsage.hidden = true;
+    }
     const card = hooks.linkedCard();
     ctxText.textContent = `上下文：${card ? `${card.id} · ` : ''}${store.state.project ? `${store.state.project.name} · AGENTS.md` : '无项目'}`;
     textarea.placeholder = `回复 ${agentName(agent, st)}…（Enter 发送，Shift+Enter 换行，/ 查看命令）`;

@@ -19,6 +19,8 @@
 - 文档：ADR 0010、宪法 1.3.0（原则 九 增加显式豁免、原则 十一 补终端工作目录）、任务卡 T-037 / T-038 / T-039。
 - 测试：新增 32 个（ANSI 解析 8、终端进程池 4、终端 IPC 集成 7、终端运行态 3、权限模式 4、对话回合与思考区摘要 6）。
 
+- 会话 token 用量（契约 v1.8）：opencode 三条通道统一采集到会话 `usage` 并落盘——run / serve 取 `step_finish.part.tokens`（total / input / output / reasoning / 缓存读写）逐字段累加（共用 beginCliTurn 的 sink），ACP 取 `usage_update` 的 used（上下文已用总量，整值覆盖）；聊天上下文行在「上下文：…」左侧显示当前会话累计 `Tokens <总数>`，悬停看分解明细。内置 agent 会话暂不采集。
+
 ### Fixed
 
 - opencode 的 question 工具在本客户端必然失败（无承接界面）：此前仅 ACP 通道禁用，现 acp / serve / run 三条对话通道与会话终端模式（管道、非 PTY）统一以 `OPENCODE_ENABLE_QUESTION_TOOL=false` 禁用，serve 另在会话规则集里对 question 显式 deny；win32 的 shell 适配（Git Bash 探测 / PowerShell 回退）同样覆盖终端模式。
