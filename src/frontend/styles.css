@@ -756,12 +756,6 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 /* 看板工具条：搜索框 / 筛选按钮 / 下拉框统一 radius-md 与焦点环 */
 .cap .inp,.cap .ibtn,.cap .selw,.cap .selw select.chip{border-radius:var(--border-radius-md)}
 .cap .selw select.chip:focus-visible{outline:0;border-color:var(--color-border-primary);box-shadow:0 0 0 3px var(--color-background-secondary)}
-/* 矩阵缩放控件（工具条右端）：− / 百分比（点击重置 100%）/ +，按钮复用 .ibtn 外观 */
-.zoomctl{display:flex;align-items:center;gap:6px;flex:none}
-.zoomctl .ibtn{cursor:pointer;color:var(--ink2);font-size:15px}
-.zoomctl .ibtn:disabled{opacity:.35;cursor:default}
-.zoompct{min-width:46px;height:var(--h-ctl);padding:0 6px;border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--ink2);font-family:var(--sans);font-size:12px;cursor:pointer}
-.zoompct:hover{border-color:var(--color-border-primary)}
 /* 状态色圆点（列头、泳道行首） */
 .mh .dot,.lanec .dot{width:7px;height:7px;margin:0;flex:none}
 .matrix .dot.st-none{background:var(--color-text-ghost)}

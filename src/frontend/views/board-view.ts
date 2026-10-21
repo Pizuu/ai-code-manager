@@ -40,21 +40,6 @@ function loadColOrder(): BoardCardStatus[] {
   }
 }
 
-/** 矩阵缩放倍率：仅本机界面偏好，存 localStorage（不经 IPC）。用 CSS zoom 做布局缩放（回流重排，不用 transform）。 */
-const ZOOM_KEY = 'acm.boardZoom';
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 1.5;
-const ZOOM_STEP = 0.1;
-
-function loadZoom(): number {
-  try {
-    const v = Number(localStorage.getItem(ZOOM_KEY));
-    return Number.isFinite(v) && v >= ZOOM_MIN && v <= ZOOM_MAX ? Math.round(v * 10) / 10 : 1;
-  } catch {
-    return 1;
-  }
-}
-
 /** 泳道整体状态（看板矩阵行首的语义色圆点）。 */
 function laneState(cards: readonly BoardCard[]): { label: string; cls: string } {
   if (cards.some((c) => c.status === 'active' || c.status === 'review')) return { label: '执行中', cls: 'blu' };
@@ -71,28 +56,6 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
   const f: BoardFilter = { q: '', lane: '', agent: '', done: true };
   let matrixHost: HTMLElement | null = null;
   let cols = loadColOrder();
-  let zoom = loadZoom();
-  // 缩放控件与当前矩阵元素的引用：render() / renderMatrix() 重建 DOM 后由 applyZoom 统一同步
-  let matrixEl: HTMLElement | null = null;
-  let zoomPctBtn: HTMLButtonElement | null = null;
-  let zoomOutBtn: HTMLButtonElement | null = null;
-  let zoomInBtn: HTMLButtonElement | null = null;
-
-  /** 把当前 zoom 落到矩阵元素、百分比文本与按钮禁用态，并持久化。 */
-  const applyZoom = () => {
-    matrixEl?.style.setProperty('zoom', String(zoom));
-    if (zoomPctBtn) zoomPctBtn.textContent = `${Math.round(zoom * 100)}%`;
-    if (zoomOutBtn) zoomOutBtn.disabled = zoom <= ZOOM_MIN;
-    if (zoomInBtn) zoomInBtn.disabled = zoom >= ZOOM_MAX;
-    try {
-      localStorage.setItem(ZOOM_KEY, String(zoom));
-    } catch { /* 存储不可用时仅本次会话生效 */ }
-  };
-
-  const setZoom = (next: number) => {
-    zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(next * 10) / 10));
-    applyZoom();
-  };
 
   const cardEl = (c: BoardCard, snap: BoardSnapshot) => {
     const l = cardLines(c, snap);
@@ -111,14 +74,6 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     if (!matrixHost) return;
     const vis = filterCards(snap.cards, f);
     const matrix = h('div', { class: 'matrix' });
-    // 布局缩放只作用于矩阵本体；Ctrl+滚轮步进缩放（普通滚轮滚动不受影响），监听随元素重建不叠加
-    matrixEl = matrix;
-    matrix.style.setProperty('zoom', String(zoom));
-    matrix.addEventListener('wheel', (e) => {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      setZoom(zoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
-    }, { passive: false });
     const head = h('div', { class: 'mrow mhead' }, h('div', { class: 'mh mute' }, '泳道 / 所有权'));
     let dragFrom: BoardCardStatus | null = null;
     for (const s of cols) {
@@ -248,22 +203,14 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       f.agent = agentSel.value;
       renderMatrix(snap);
     });
-    // 矩阵缩放控件：− / 百分比（点击重置 100%）/ +，到上下限时对应按钮禁用；状态由 applyZoom 同步
-    const zoomOut = h('button', { class: 'ibtn', attrs: { type: 'button', 'aria-label': '缩小矩阵' }, on: { click: () => setZoom(zoom - ZOOM_STEP) } }, '−');
-    const zoomPct = h('button', { class: 'zoompct', title: '重置为 100%', attrs: { type: 'button' }, on: { click: () => setZoom(1) } }, '100%');
-    const zoomIn = h('button', { class: 'ibtn', attrs: { type: 'button', 'aria-label': '放大矩阵' }, on: { click: () => setZoom(zoom + ZOOM_STEP) } }, '+');
-    zoomOutBtn = zoomOut;
-    zoomPctBtn = zoomPct;
-    zoomInBtn = zoomIn;
-    const zoomCtl = h('span', { class: 'zoomctl' }, zoomOut, zoomPct, zoomIn);
-    // 容量（右端依次：搜索 / 泳道筛选 / Agent 筛选 / 显示已完成开关 / 矩阵缩放）
+    // 容量（右端依次：搜索 / 泳道筛选 / Agent 筛选 / 显示已完成开关）
     pad.append(h('div', { class: 'cap' },
       h('span', {}, 'Worker 容量'), h('b', { class: 'b600' }, `${workers.length} / ${snap.maxParallel ?? '?'}`),
       h('span', { class: 'mute' }, activeC.length ? activeC.map((c) => `${c.assignee} ${c.id} ${STATUS_META[c.status].label}`).join(' · ') : '暂无执行中'),
       h('span', { class: 'sep' }),
       h('span', { class: 'mute' }, `${countBy(cards, 'ready')} 张可派工\u3000·\u3000${countBy(cards, 'blocked')} 张等待依赖\u3000·\u3000${countBy(cards, 'review')} 张待审查\u3000·\u3000${countBy(cards, 'merged')} 张已合入`),
       h('span', { class: 'flex1' }),
-      q, selWrap(laneSel), selWrap(agentSel), tog, zoomCtl));
+      q, selWrap(laneSel), selWrap(agentSel), tog));
     // 根因提示（P0-1）：集成分支本地缺失 / 已回退远端时，先说清「为什么」，再看逐条冲突
     if (snap.integrationMissing) {
       pad.append(h('div', { class: 'rootcause' },
@@ -288,7 +235,6 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       h('span', {}, `${snap.boardFile ?? 'docs/tasks/BOARD.md（缺失）'} · ${hm(snap.generatedAt)}`)));
     container.append(pad);
     renderMatrix(snap);
-    applyZoom();
   };
 
   /** 消费待定位卡片：筛到该卡（搜索词设为卡片 id，并清掉泳道 / Agent 筛选、显示已完成），全量重渲染后滚动居中并短暂高亮；找不到卡片时静默。 */
