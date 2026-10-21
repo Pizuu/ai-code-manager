@@ -3,6 +3,7 @@
  * - 全部 invoke 通道：POST 到 Web 预览服务器，由与桌面端相同的真实后端执行（settings / sessions 落盘、
  *   内置 agent 真实运行）；仅 Agent CLI 按契约 v2 保持模拟（服务器侧拒绝/固定结果，见 contracts/web-dev.ts）。
  * - agent:event：经服务器的 SSE 端点（/__events）订阅，承载运行状态、流式回复、审批请求、终端输出与 diff。
+ * - 例外：`files:pick`（v1.12）浏览器无系统文件选择框，在此直接返回空数组（按取消处理），不发请求、无副作用。
  * 本文件只做传输适配，不再有任何内存模拟数据。
  */
 import type { AgentEvent, IpcInvokeChannel, RendererApi } from '../../../contracts/ipc.ts';
@@ -36,7 +37,10 @@ async function remote(channel: string, args: unknown[]): Promise<unknown> {
 }
 
 const api: RendererApi = {
-  invoke: (async (channel: IpcInvokeChannel, ...args: unknown[]) => remote(channel, args)) as RendererApi['invoke'],
+  invoke: (async (channel: IpcInvokeChannel, ...args: unknown[]) => {
+    if (channel === 'files:pick') return [];
+    return remote(channel, args);
+  }) as RendererApi['invoke'],
   onEvent: (listener) => {
     listeners.add(listener);
     ensureEvents();

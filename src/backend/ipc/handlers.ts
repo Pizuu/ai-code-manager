@@ -61,6 +61,8 @@ export interface HandlerDeps {
   emit(event: AgentEvent): void;
   /** 打开系统目录选择框，返回绝对路径或 null。 */
   pickDirectory(): Promise<string | null>;
+  /** v1.12：打开系统文件选择框（多选），返回选中的文件绝对路径数组，取消返回空数组；缺省（测试 / Web）为 undefined，handler 按空数组处理。 */
+  pickFiles?: () => Promise<string[]>;
   /** 在系统文件管理器中打开目录（main.ts 注入 Electron shell.openPath）；缺省为 no-op。 */
   openPath?: (path: string) => Promise<void>;
   platform: NodeJS.Platform;
@@ -383,6 +385,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     },
     'fs:tree': async (relDir) => listTree(requireProject(state).root, asRelDir(relDir)),
     'fs:read': async (relPath) => readFileForView(requireProject(state).root, asRelPath(relPath)),
+    'files:pick': async () => (deps.pickFiles ? deps.pickFiles() : []),
     'sessions:list': async () => sessions.list(),
     'sessions:create': async () => sessions.create(state.project?.root ?? null, settings.getActive().defaultAgent),
     'sessions:get': async (id) => sessions.get(asSessionId(id)),

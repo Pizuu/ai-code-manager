@@ -153,6 +153,11 @@ async function bootstrap(): Promise<void> {
       const res = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
       return res.canceled ? null : (res.filePaths[0] ?? null);
     },
+    pickFiles: async () => {
+      const opts = { title: '选择文件', properties: ['openFile' as const, 'multiSelections' as const] };
+      const res = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
+      return res.canceled ? [] : res.filePaths;
+    },
     openPath: async (p) => {
       await shell.openPath(p);
     },

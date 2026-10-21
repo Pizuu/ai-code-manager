@@ -55,6 +55,7 @@
 | 收藏保存 `lib/favorites.ts`（合并落盘、300 条上限裁剪、加载逐条校验、落盘失败保留待写重试） | ✅ 9 条 | — | — | frontend |
 | 会话保存合并 `sessions/session-store.ts`（调用时快照、按会话串行合并突发写 ≤2 次落盘、失败不卡队列） | — | ✅（含突发合并/快照语义/双会话并发/失败口径 4 条） | — | backend |
 | 重提最近提问截断 `sessions/reask.ts` + handlers（契约 v1.11 `reaskLatest`：命中最后一条 user 且文本一致才截断旧问答、确认可启动后才落笔） | ✅ 7 条 | ✅ 3 条（真截断/对照追加/异文本不截断） | — | backend |
+| 系统文件选择 `files:pick`（契约 v1.12：main 注入原生对话框多选、未注入返回空数组、Web mock 短路取消） | — | ✅ 2 条（注入原样返回/未注入空数组） | — | backend |
 | git 引用变化监听 `src/backend/workspace/refs-watcher.ts`（refs 摘要与变更触发） | ✅ 2 条 | — | — | backend |
 | 合并冲突预演 `src/backend/workspace/merge-preview.ts`（merge-tree 只读预演与冲突文件提取） | ✅ 1 条 | ✅ 3 条（临时仓库：干净 / 冲突 / 引用缺失） | — | backend |
 | 集成分支引用回退 `src/backend/workspace/git-overview.ts`（本地缺失 → `origin/<分支>`；看板据此合并冲突、给根因） | ✅ 3 条 | ✅ 3 条（临时仓库：本地缺失 / 仅远端 / 两处皆无） | — | backend |

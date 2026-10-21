@@ -12,7 +12,7 @@ export const IPC_CONTRACT_VERSION = 'v1' as const;
  * 契约修订号：v1.1 = 功能 002（三板块 + Agent CLI）的纯增量扩展——只新增通道、类型与可选字段，
  * 未修改或删除任何 v1 字段，因此主版本保持 v1（宪法 II）。
  */
-export const IPC_CONTRACT_REVISION = 'v1.11' as const;
+export const IPC_CONTRACT_REVISION = 'v1.12' as const;
 // v1.2 = 功能 003（只读代码查看、配置空白）的纯增量：新增 `fs:read` 通道、`FileContent` 类型、`FILE_VIEW_LIMITS`
 // 常量与错误码 `E_NOT_CONFIGURED`；未修改或删除任何既有字段。
 // v1.3 = 任务卡 T-033（为接入 opencode serve 逐条审批做准备，ADR 0006 修订）的纯增量：`ApprovalKind` 新增
@@ -40,6 +40,8 @@ export const IPC_CONTRACT_REVISION = 'v1.11' as const;
 // 未修改或删除任何既有字段。
 // v1.11 = 「重新提问不重复」的纯增量：`AgentSendRequest` 新增可选字段 `reaskLatest`（重提最近一次
 // 提问时为 true，后端据此截断旧问答只保留最新一轮）；未修改或删除任何既有字段。
+// v1.12 = 「系统文件选择」的纯增量：新增 `files:pick` 通道（无参，弹出系统原生文件选择框多选，
+// 返回选中的文件绝对路径数组，取消返回空数组）；未修改或删除任何既有字段。
 
 // ───────────────────────── 基础模型 ─────────────────────────
 
@@ -309,6 +311,9 @@ export interface IpcInvokeMap {
   // ── v1.2（功能 003）──
   /** 只读读取项目内文件供代码查看器显示；路径经项目根沙箱（宪法 十一），大文件截断 / 拒绝，二进制不返回内容。 */
   'fs:read':          { args: [relPath: string];          result: FileContent };
+  // ── v1.12（系统文件选择）──
+  /** 弹出系统原生文件选择框（多选）；返回选中的文件绝对路径数组，用户取消返回空数组。 */
+  'files:pick':       { args: [];                         result: string[] };
   // ── v1.6（终端模式）──
   /**
    * 打开（或复用）某会话的终端。工作目录恒为当前项目根（宪法 十一）；命令由主进程按 kind 决定，

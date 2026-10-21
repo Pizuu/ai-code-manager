@@ -17,6 +17,7 @@
  *   - `agentCli:save` / `agentCli:delete` 是设置数据，随 settings 真实落盘。
  * - `project:pick` 无系统对话框：恒返回 null（项目由 `--project` 参数在启动时确定）；
  *   `project:openRoot` 为 no-op。
+ * - `files:pick`（v1.12）无系统对话框：浏览器侧适配器直接返回空数组（按取消处理），不发请求。
  * - 终端通道（v1.6）：`terminal:open` / `terminal:input` / `terminal:close` 与桌面端同逻辑，
  *   在开发机上真实启动子进程（PowerShell / bash），工作目录恒为项目根。
  * - API Key 与 CLI 敏感 env 在桌面端由 Electron safeStorage 加密，Web 预览无 safeStorage：
@@ -44,6 +45,7 @@ export const WEB_DEV_CHANNELS = [
   'project:openRoot',
   'fs:tree',
   'fs:read',
+  'files:pick',
   'sessions:list',
   'sessions:create',
   'sessions:get',
