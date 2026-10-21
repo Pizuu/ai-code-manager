@@ -7,7 +7,7 @@
  * v1.6（ADR 0010）曾有中列顶部「对话 / 终端」分段切换；现已删除切换条，界面恒为对话模式
  * （终端列与 mountTerminal 本体保留、恒隐藏）。
  */
-import type { BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
+import type { AgentRef, BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentName, isCli } from '../lib/agent-label.ts';
 import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
@@ -279,9 +279,45 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     const agent = s?.agent ?? st?.defaultAgent ?? 'builtin';
     const running = s ? store.state.running.has(s.id) : false;
     const cliId = agent !== 'builtin' ? agent.slice(4) : null;
+    // 孤儿会话：绑定的 Agent CLI 已被删除（agent 仍为 cli:<id> 但设置里查无此条目），发送必报 E_CLI。
+    // 给出重新绑定入口：选一个现存 agent 后经 sessions:setAgent 改绑，即可继续发送。
+    const boundCliId = s?.agent?.startsWith('cli:') ? s.agent.slice(4) : null;
+    const orphanId = boundCliId !== null && s && st && !(st.agentClis ?? []).some((c) => c.id === boundCliId) ? boundCliId : null;
+    let orphanBlock: HTMLElement | null = null;
+    if (orphanId !== null && s && st) {
+      const sid = s.id;
+      const clis = st.agentClis ?? [];
+      const sel = h('select');
+      sel.append(h('option', { attrs: { value: 'builtin' } }, '内置 agent'));
+      for (const c of clis) sel.append(h('option', { attrs: { value: `cli:${c.id}` } }, c.name));
+      // 默认选中：defaultAgent 是仍存在的 CLI 时选它，否则第一条 CLI，再否则内置。
+      const da = st.defaultAgent;
+      sel.value = da && clis.some((c) => `cli:${c.id}` === da) ? da : clis[0] ? `cli:${clis[0].id}` : 'builtin';
+      const switchBtn = h('button', { class: 'btn', attrs: { type: 'button' } }, '切换');
+      switchBtn.addEventListener('click', async () => {
+        const chosen = sel.value as AgentRef;
+        switchBtn.disabled = true;
+        try {
+          const updated = await api.invoke('sessions:setAgent', sid, chosen);
+          store.state.current = updated;
+          const sum = store.state.sessions.find((x) => x.id === sid);
+          if (sum) sum.agent = updated.agent ?? chosen;
+          store.emit('current');
+          const name = chosen === 'builtin' ? '内置 agent' : clis.find((c) => `cli:${c.id}` === chosen)?.name ?? chosen;
+          chat.notify(`已切换为 ${name}，可继续发送。`);
+        } catch (e) {
+          chat.notify(errorText(e));
+          switchBtn.disabled = false;
+        }
+      });
+      orphanBlock = h('div', { class: 'orphan-warn' },
+        h('div', {}, `此会话使用的 Agent CLI（${orphanId}）已不存在，发送会失败。重新选择：`),
+        h('div', { class: 'fx8 mt6' }, sel, switchBtn));
+    }
     ctxp.append(
       h('div', { class: card ? 'h mt20' : 'h' }, h('span', {}, '会话上下文'), h('span', { class: 'mute' }, s?.id ?? '')),
       h('div', { class: 'chips' }, h('span', { class: `chip ${running ? 'acc' : 'grn'}` }, running ? '运行中' : '空闲'), h('span', { class: 'chip' }, isCli(agent, st) ? '外部 CLI' : '内置 agent'), h('span', { class: 'chip perm' }, MODE_LABELS[st?.permissionMode ?? 'ask'])),
+      ...(orphanBlock ? [orphanBlock] : []),
       ...kv('Agent', agentName(agent, st)),
       ...kv('工作目录', store.state.project?.root ?? '未打开项目', true),
       ...(cliId ? kv('CLI 会话（续接）', s?.cliSessions?.[cliId] ?? '首轮后建立', true) : []),

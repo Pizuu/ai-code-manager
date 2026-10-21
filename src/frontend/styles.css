@@ -153,6 +153,8 @@ select.chip{border:0;outline:none;cursor:pointer;font-family:var(--sans);appeara
 .ctxp .v.mono{font-size:11px}
 .ctxp hr{border:0;border-top:1px solid var(--line);margin:18px 0 0}
 .ctxp ul{list-style:none;margin:4px 0 0;padding:0}.ctxp li{margin:2px 0}
+.ctxp .orphan-warn{margin-top:12px;padding:10px 12px;border:1px solid color-mix(in srgb, var(--amber) 45%, transparent);border-radius:8px;background:var(--asoft2);color:var(--amber)}
+.ctxp .orphan-warn select{flex:1;min-width:0}
 .rel{margin-top:18px;background:var(--panel);border-radius:8px;padding:12px}
 /* git */
 .gx{display:grid;grid-template-columns:minmax(0,1fr) 430px;gap:20px;padding:0 24px 24px}

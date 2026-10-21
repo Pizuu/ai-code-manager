@@ -80,7 +80,12 @@ function createWindow(): BrowserWindow {
       spellcheck: false,
     },
   });
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    // 延迟显示（show:false）时构造期的 fullscreen 可能不被应用，显示前再显式设一次兜底。
+    win.setFullScreen(true);
+    win.setResizable(false);
+    win.show();
+  });
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== ENTRY_URL) e.preventDefault();
   });
