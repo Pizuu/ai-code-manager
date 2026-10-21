@@ -470,7 +470,7 @@ b,strong,.b600{font-weight:var(--font-weight-semibold)}
 .nav a:hover{background:var(--color-background-secondary)}
 .nav a.on{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:var(--font-weight-semibold)}
 .nav a.on svg{color:var(--accent)}
-.exh{padding:16px 18px 6px;font-size:var(--font-heading-md)}
+.exh{padding:16px 18px 6px;font-size:var(--font-body)}
 .tree{padding:0 8px}
 .te{height:26px;padding:0 6px;border-radius:var(--border-radius-sm);gap:6px;font-size:var(--font-caption)}
 .te.kid{padding-left:20px}
@@ -670,7 +670,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 /* 项目栏：标题可折叠、引用分支提亮、⋯ 菜单 */
 .exh{align-items:center;gap:6px;padding-right:10px}
 .exh .mono{margin-left:auto;color:var(--color-text-secondary)}
-.exh-t{display:flex;align-items:center;gap:4px;border:0;background:none;padding:0;color:inherit;font:inherit;cursor:pointer}
+.exh-t{display:flex;align-items:center;gap:4px;border:0;background:none;padding:0;color:inherit;font:inherit;font-size:var(--font-body);cursor:pointer}
 .exh-t:hover{color:var(--color-text-primary)}
 .exh-t svg{transform:rotate(-90deg);transition:transform .12s}
 .exh-t.open svg{transform:none}
