@@ -111,14 +111,15 @@ select.chip{border:0;outline:none;cursor:pointer;font-family:var(--sans);appeara
 .slist{width:232px;flex:none;border-right:1px solid var(--line);padding:22px 12px;overflow:auto}
 .slist .hd{display:flex;justify-content:space-between;padding:0 6px;font-size:12px}
 .slist .inp{width:100%;height:44px;margin:16px 0 14px}
-.si{display:block;position:relative;border:1px solid transparent;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font-size:12px}
+.si{display:block;position:relative;border:1px solid transparent;border-radius:8px;margin-bottom:8px;cursor:pointer;font-size:12px}
 .si:hover{background:var(--panel)}
 .si.on{background:var(--asoft);border-color:#E9C2B1}
 .si .a{display:flex;gap:8px;color:var(--ink2)}.si .a .tm{position:absolute;right:8px;bottom:6px;margin-left:0;color:var(--mute)}
 .si.on .a .who,.si.on .a .st{color:var(--accent)}
 .si .b{margin:6px 0 4px}.si .c{color:var(--mute);padding-right:44px}
 .chat{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line)}
-.circ{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;box-shadow:0 1px 6px rgba(0,0,0,.08);background:var(--bg)}
+.circ{width:44px;height:44px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0;box-shadow:0 1px 6px rgba(0,0,0,.08);background:var(--bg)}
+.circ svg{display:block}
 .thd{padding:6px 24px 12px;border-bottom:1px solid var(--line);flex:none}
 .thd .r{display:flex;justify-content:space-between;align-items:center;font-size:12px}
 .log{flex:1;overflow:auto;padding:16px 28px}
@@ -514,7 +515,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .slist .hd{padding:0 8px;font-size:var(--font-heading-sm);font-weight:var(--font-weight-semibold)}
 .slist .inp{width:100%;margin:12px 0}
 .slist .feat{padding:0 8px 8px;font-size:var(--font-caption)}
-.si{display:flex;flex-direction:column;min-height:108px;padding:14px 12px;margin-bottom:4px;border-radius:var(--border-radius-md)}
+.si{display:flex;flex-direction:column;min-height:108px;margin-bottom:4px;border-radius:var(--border-radius-md)}
 .si .a .tm{position:static;margin-left:0}.si .a .pin{margin-left:auto}.si .a .pin,.si .a .del{margin-top:-2px}
 .si:hover{background:var(--color-background-tertiary)}
 .si.on{background:var(--color-background-secondary);border-color:transparent}

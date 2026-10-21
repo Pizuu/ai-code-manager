@@ -303,8 +303,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (sysb) logIn.append(sysb);
     const visible = s?.messages.filter((m) => m.role !== 'tool') ?? [];
     if (!s || (visible.length === 0 && store.state.notices.length === 0)) {
-      logIn.append(h('div', { class: 'meta center' }, '— 开始一个任务 —'),
-        h('div', { class: 'ev' }, icon('route'), h('span', {}, '例如：「解释这个项目的结构」「给 README 加上安装说明」「运行测试并修复失败」。输入 / 查看 /init、/specify、/plan、/tasks、/implement 等命令；顶部可切换内置 agent 或外部 CLI（如 opencode）。')));
+      // 空会话只留标题行：示例提示（.ev）属非主动提示，按用户要求不再展示。
+      logIn.append(h('div', { class: 'meta center' }, '— 开始一个任务 —'));
       const setup = agentSetupHint(s?.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
       if (setup) logIn.append(h('div', { class: 'notice setup' }, setup));
     }
