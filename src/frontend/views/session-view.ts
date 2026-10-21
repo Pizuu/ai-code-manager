@@ -10,7 +10,7 @@
 import type { BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentName, isCli } from '../lib/agent-label.ts';
-import { hm, PR_LINE, STATUS_META } from '../lib/board-format.ts';
+import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
 import { clear, h } from '../lib/dom.ts';
@@ -22,6 +22,16 @@ import { renderDiff } from './diff-view.ts';
 import { mountTerminal } from './terminal-view.ts';
 import { refreshTasks } from './tasks-view.ts';
 import { STATUS_LABELS } from './tool-card.ts';
+
+/** 最后一个回答耗时格式：<1s 显示 '<1s'；<60s 如 '42s'；<60min 如 '3m 05s'（秒补零）；>=60min 如 '1h 12m'。 */
+function fmtDuration(ms: number): string {
+  const sec = Math.floor(ms / 1000);
+  if (sec < 1) return '<1s';
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ${String(sec % 60).padStart(2, '0')}s`;
+  return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
+}
 
 export interface SessionHooks {
   selectSession(id: string): Promise<void>;
@@ -195,7 +205,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       // 回答状态圆点：出错红 / 回答中黄 / 回答完成绿（与 statusOf 三态同步）
       const dotCls = status === '出错' ? 'r' : status === '回答中' ? 'y' : 'g';
       const el = h('a', { class: `si${s.id === cur ? ' on' : ''}${isPinned ? ' pinned' : ''}` },
-        h('div', { class: 'a' }, h('span', { class: 'tm' }, hm(s.updatedAt) || '—'), pin, del),
+        h('div', { class: 'a' }, h('span', { class: 'tm', title: '最后一个回答耗时' }, s.lastTurnMs != null ? fmtDuration(s.lastTurnMs) : '—'), pin, del),
         h('div', { class: 'b' }, h('span', { class: `dot ${dotCls}`, title: status }), h('span', { class: 'ttl' }, s.title)),
         h('div', { class: 'c' }, `${s.messageCount} 条消息`));
       el.addEventListener('click', () => void hooks.selectSession(s.id).catch((e: unknown) => chat.notify(errorText(e))));

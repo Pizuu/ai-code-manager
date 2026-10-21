@@ -19,6 +19,7 @@
 | IPC 校验 `ipc/validate.ts` 与 handlers `ipc/handlers.ts` | ✅ | ✅ | — | backend |
 | 设置存储 / Key 不外泄（SC-004） | — | ✅ | — | backend |
 | 会话存储（SC-005） | — | ✅ | — | backend |
+| 会话摘要最后回答耗时（契约 v1.9：`summarizeSession` 计算 `SessionSummary.lastTurnMs`，最后一个 user → 最后一个 assistant 的墙钟时间） | ✅ | — | — | backend |
 | tasks.md 解析 | ✅ | ✅ | — | backend |
 | 审批登记表 `app-state.ts`（FR-010） | ✅ | ✅ | — | backend |
 | 安全 Markdown `src/frontend/lib/markdown.ts`（XSS） | ✅ | — | — | frontend |

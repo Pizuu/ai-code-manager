@@ -14,8 +14,28 @@ export function newSessionId(now: number = Date.now()): string {
   return `s-${now.toString(36)}-${randomBytes(4).toString('hex')}`;
 }
 
+/**
+ * 最后一个完整问答的耗时（v1.9）：最后一个 assistant 消息与其之前最近的一个 user 消息的时间差。
+ * 口径为墙钟时间——中间夹的 tool 角色消息（工具执行）一并计入。找不到完整问答、时间戳非法
+ * 或差值 <= 0 时返回 undefined（摘要不带 lastTurnMs 字段）。
+ */
+export function lastTurnMs(s: Session): number | undefined {
+  let userAt: number | undefined;
+  let ms: number | undefined;
+  for (const m of s.messages) {
+    if (m.role === 'user') {
+      userAt = Date.parse(m.createdAt);
+    } else if (m.role === 'assistant' && userAt !== undefined) {
+      const d = Date.parse(m.createdAt) - userAt;
+      ms = Number.isFinite(d) && d > 0 ? d : undefined;
+    }
+  }
+  return ms;
+}
+
 export function summarizeSession(s: Session): SessionSummary {
-  return { id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: s.messages.length, ...(s.agent ? { agent: s.agent } : {}) };
+  const turnMs = lastTurnMs(s);
+  return { id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: s.messages.length, ...(s.agent ? { agent: s.agent } : {}), ...(turnMs !== undefined ? { lastTurnMs: turnMs } : {}) };
 }
 
 export class SessionStore {

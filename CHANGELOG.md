@@ -20,6 +20,7 @@
 - 测试：新增 32 个（ANSI 解析 8、终端进程池 4、终端 IPC 集成 7、终端运行态 3、权限模式 4、对话回合与思考区摘要 6）。
 
 - 会话 token 用量（契约 v1.8）：opencode 三条通道统一采集到会话 `usage` 并落盘——run / serve 取 `step_finish.part.tokens`（total / input / output / reasoning / 缓存读写）逐字段累加（共用 beginCliTurn 的 sink），ACP 取 `usage_update` 的 used（上下文已用总量，整值覆盖）；聊天上下文行在「上下文：…」左侧显示当前会话累计 `Tokens <总数>`，悬停看分解明细。内置 agent 会话暂不采集。
+- 会话摘要最后回答耗时（契约 v1.9）：`SessionSummary` 新增可选字段 `lastTurnMs`——后端按最后一个 user 消息 → 最后一个 assistant 消息的墙钟时间计算（含中间工具执行），无完整问答时不带该字段；会话列表改显最后回答耗时（前端展示同批接入）。
 
 ### Fixed
 

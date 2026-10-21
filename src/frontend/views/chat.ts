@@ -61,11 +61,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const thTitle = h('span', { class: 'th-title' });
   // 标题行三列 grid：左端菜单按钮 · 中间标题 · 右端容器（新建按钮，整体靠右）
   const thRightBox = h('span', { class: 'fx8' }, newBtn);
-  const thChip = h('span', { class: 'chip acc' });
-  const thDesc = h('span', { class: 'mute' });
   const thd = h('div', { class: 'thd' },
-    h('div', { class: 'r' }, menuBtn, thTitle, thRightBox),
-    h('div', { class: 'r' }, h('span', { class: 'fx8' }, thChip, thDesc)));
+    h('div', { class: 'r' }, menuBtn, thTitle, thRightBox));
   const log = h('div', { class: 'log' });
   // v1.8：对话正文限宽居中（长文更好读）；「正在思考…」提示固定挂在末尾。
   const logIn = h('div', { class: 'log-in' });
@@ -264,8 +261,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     stopBtn.hidden = !running;
     sendBtn.disabled = running || !s;
     thTitle.textContent = s ? s.title : '';
-    thChip.textContent = cli ? `外部 CLI · ${agentName(agent, st)}` : `内置 · ${agentName(agent, st)}`;
-    thDesc.textContent = store.state.project ? `工作目录 ${store.state.project.name} · ${MODE_LABELS[st?.permissionMode ?? 'ask']}` : '未打开项目（外部 CLI 需要项目；内置 agent 仅对话）';
     ctxChip.textContent = `@${cli ? (st?.agentClis?.find((x) => `cli:${x.id}` === agent)?.name ?? 'cli') : 'agent'}`;
     // 当前会话累计 token 用量（s.usage，后端聚合的 opencode 会话用量；内置 agent 无此字段 → 隐藏）。
     const usage = s?.usage;

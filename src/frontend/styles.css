@@ -121,7 +121,6 @@ select.chip{border:0;outline:none;cursor:pointer;font-family:var(--sans);appeara
 .circ{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;box-shadow:0 1px 6px rgba(0,0,0,.08);background:var(--bg)}
 .thd{padding:6px 24px 12px;border-bottom:1px solid var(--line);flex:none}
 .thd .r{display:flex;justify-content:space-between;align-items:center;font-size:12px}
-.thd .r+.r{margin-top:8px}
 .log{flex:1;overflow:auto;padding:16px 28px}
 .sysb{background:var(--panel);border-radius:8px;padding:12px 12px;font-size:12px;color:var(--ink);line-height:1.75}
 .meta{display:flex;align-items:center;gap:8px;color:var(--mute);margin:16px 0 8px;font-size:12px}
@@ -514,7 +513,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .slist .inp{width:100%;margin:12px 0}
 .slist .feat{padding:0 8px 8px;font-size:var(--font-caption)}
 .si{display:flex;flex-direction:column;min-height:108px;padding:14px 12px;margin-bottom:4px;border-radius:var(--border-radius-md)}
-.si .a .tm{position:static;margin-left:auto}.si .a .pin{margin-left:0}
+.si .a .tm{position:static;margin-left:0}.si .a .pin{margin-left:auto}.si .a .pin,.si .a .del{margin-top:-2px}
 .si:hover{background:var(--color-background-tertiary)}
 .si.on{background:var(--color-background-secondary);border-color:transparent}
 .si .b{margin:4px 0 2px;font-size:var(--font-body);font-weight:var(--font-weight-semibold);display:flex;align-items:center;gap:6px}.si .c{font-size:var(--font-caption);margin-top:auto}
@@ -548,7 +547,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .comp .ft{gap:16px;margin-top:8px;font-size:var(--font-caption)}
 .ctxp{width:304px;padding:16px 18px;background:var(--color-background-primary)}
 .ctxp .h{font-size:var(--font-heading-sm);font-weight:var(--font-weight-semibold)}
-.ctxp .k{margin-top:14px;font-size:var(--font-caption);color:var(--accent)}
+.ctxp .k{margin-top:14px;font-size:var(--font-caption);color:color-mix(in srgb, var(--accent) 55%, var(--ink))}
 .ctxp .lk{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
 .ctxp .chip.fr{background:var(--asoft);color:var(--accent)}
 .ctxp .chip.perm{background:var(--asoft2);color:var(--amber)}
@@ -680,7 +679,6 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .tip .mute{color:var(--color-text-tertiary)}
 /* 打开文件时对话列变窄：次要说明省略，右侧上下文在窄屏让位 */
 .sx.has-file .thd .fx8{min-width:0;overflow:hidden}
-.sx.has-file .thd .fx8>.mute{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .sx.has-file .comp .ft{flex-wrap:wrap;gap:4px 12px}
 .sx.has-file .comp .ft>*{white-space:nowrap}
 .fpane .cvh{gap:8px;padding:0 12px}

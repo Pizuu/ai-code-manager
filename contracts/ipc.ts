@@ -12,7 +12,7 @@ export const IPC_CONTRACT_VERSION = 'v1' as const;
  * 契约修订号：v1.1 = 功能 002（三板块 + Agent CLI）的纯增量扩展——只新增通道、类型与可选字段，
  * 未修改或删除任何 v1 字段，因此主版本保持 v1（宪法 II）。
  */
-export const IPC_CONTRACT_REVISION = 'v1.8' as const;
+export const IPC_CONTRACT_REVISION = 'v1.9' as const;
 // v1.2 = 功能 003（只读代码查看、配置空白）的纯增量：新增 `fs:read` 通道、`FileContent` 类型、`FILE_VIEW_LIMITS`
 // 常量与错误码 `E_NOT_CONFIGURED`；未修改或删除任何既有字段。
 // v1.3 = 任务卡 T-033（为接入 opencode serve 逐条审批做准备，ADR 0006 修订）的纯增量：`ApprovalKind` 新增
@@ -33,6 +33,8 @@ export const IPC_CONTRACT_REVISION = 'v1.8' as const;
 // v1.8 = opencode 会话 token 用量采集的纯增量：`Session` 新增可选字段 `usage`（类型 `SessionUsage`，
 // 会话累计 token 用量，由 opencode step_finish 的 part.tokens 逐字段累加）；
 // 未修改或删除任何既有字段。
+// v1.9 = 会话摘要最后回答耗时的纯增量：`SessionSummary` 新增可选字段 `lastTurnMs`（最后一个完整
+// 问答的耗时，毫秒；无完整问答时缺省）；未修改或删除任何既有字段。
 
 // ───────────────────────── 基础模型 ─────────────────────────
 
@@ -151,6 +153,8 @@ export interface SessionSummary {
   messageCount: number;
   /** v1.1：会话所用 agent（缺省 = 'builtin'）。 */
   agent?: AgentRef;
+  /** v1.9：最后一个完整问答的耗时（毫秒，最后一个 user 消息 → 最后一个 assistant 消息的墙钟时间）；无完整问答时缺省。 */
+  lastTurnMs?: number;
 }
 
 /** v1.8：会话累计 token 用量（opencode step_finish 的 part.tokens 累加；cache 取 tokens.cache 的 read/write）。 */
