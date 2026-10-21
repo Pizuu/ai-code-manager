@@ -11,7 +11,7 @@ import { agentSetupHint } from '../lib/agent-config.ts';
 import { agentName, agentWho, isCli } from '../lib/agent-label.ts';
 import { insertBlock } from '../lib/context-send.ts';
 import { hm } from '../lib/board-format.ts';
-import { avatarText, hasPendingApproval, thinkCountText, thinkLastAction, thinkStatusText } from '../lib/chat-turn.ts';
+import { avatarText, hasPendingApproval, thinkCountText, thinkStatusText } from '../lib/chat-turn.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { errorSectionTitle } from '../lib/error-log.ts';
 import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
@@ -172,8 +172,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       h('span', { class: 'mute think-count' }, thinkCountText(calls)));
     const status = thinkStatusText(calls);
     if (status) summary.append(h('span', { class: 'mute think-detail' }, status));
-    const last = thinkLastAction(calls);
-    if (last) summary.append(h('span', { class: 'mute think-last', attrs: { title: last } }, last));
     const body = h('div', { class: 'think-body' });
     for (const call of calls) {
       const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === call.id);

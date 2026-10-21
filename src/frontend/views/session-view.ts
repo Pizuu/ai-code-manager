@@ -14,6 +14,7 @@ import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
 import { clear, h } from '../lib/dom.ts';
+import { listFavorites, onFavoritesChanged } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
 import { decideApproval, MODE_LABELS, mountChat, type ChatView } from './chat.ts';
@@ -184,6 +185,44 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     return '回答完成';
   };
 
+  // ── 删除两步确认（防误删）：首次点 ✕ 只进入待确认态（✕ 变红 + 底部行右下角出现提醒），
+  // 再次点 ✕ 或点提醒才执行删除；3.5 秒无操作自动取消，全局只保留一个待确认条目。 ──
+  let pendingDelId: string | null = null;
+  let pendingDelTimer: ReturnType<typeof setTimeout> | null = null;
+  const clearPendingDel = () => {
+    pendingDelId = null;
+    if (pendingDelTimer !== null) {
+      clearTimeout(pendingDelTimer);
+      pendingDelTimer = null;
+    }
+  };
+  const armPendingDel = (id: string) => {
+    clearPendingDel();
+    pendingDelId = id;
+    pendingDelTimer = setTimeout(() => {
+      pendingDelTimer = null;
+      pendingDelId = null;
+      renderList();
+    }, 3500);
+  };
+  /** 真正执行删除（原 confirm 后的同一流程）：调 sessions:delete → 同步列表 → 删的是当前会话时选中下一条或新建。 */
+  const executeDelete = async (s: SessionSummary) => {
+    clearPendingDel();
+    try {
+      await api.invoke('sessions:delete', s.id);
+      const wasCurrent = store.state.current?.id === s.id;
+      store.state.sessions = store.state.sessions.filter((x) => x.id !== s.id);
+      store.emit('sessions');
+      if (wasCurrent) {
+        const next = store.state.sessions[0];
+        if (next) await hooks.selectSession(next.id);
+        else await hooks.newSession();
+      }
+    } catch (e) {
+      chat.notify(errorText(e));
+    }
+  };
+
   const renderList = () => {
     const cur = store.state.current?.id;
     const q = query.trim().toLowerCase();
@@ -191,10 +230,14 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     // 置顶的排在前面，其余保持原顺序（sort 稳定）
     items.sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
     count.textContent = String(store.state.sessions.length);
+    // 各会话的收藏条数（favorites 库按 sessionId 聚合），底部行右下角展示
+    const favCounts = new Map<string, number>();
+    for (const f of listFavorites()) favCounts.set(f.sessionId, (favCounts.get(f.sessionId) ?? 0) + 1);
     clear(list);
     if (!items.length) list.append(h('div', { class: 'mute pad8' }, q ? '无匹配会话' : '暂无会话'));
     for (const s of items) {
-      const del = h('button', { class: 'del', title: '删除会话' }, '✕');
+      const armed = pendingDelId === s.id;
+      const del = h('button', { class: `del${armed ? ' armed' : ''}`, title: armed ? '再次点击确认删除' : '删除会话' }, '✕');
       const isPinned = pinned.has(s.id);
       const pin = h('button', { class: `pin${isPinned ? ' on' : ''}`, title: isPinned ? '取消置顶' : '置顶', attrs: { type: 'button', 'aria-pressed': String(isPinned) } }, icon('pin', 14));
       pin.addEventListener('click', (ev) => {
@@ -204,26 +247,34 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       const status = statusOf(s);
       // 回答状态圆点：出错红 / 回答中黄 / 回答完成绿（与 statusOf 三态同步）
       const dotCls = status === '出错' ? 'r' : status === '回答中' ? 'y' : 'g';
+      // 底部行右下角：收藏标记（有收藏才显示）+ 待确认删除提醒（armed 时出现、可点击直接确认）
+      const favCount = favCounts.get(s.id) ?? 0;
+      const delWarn = armed ? h('span', { class: 'si-delwarn', title: '确认删除此会话' }, '再点一次确认删除') : null;
+      if (delWarn) delWarn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        void executeDelete(s);
+      });
       const el = h('a', { class: `si${s.id === cur ? ' on' : ''}${isPinned ? ' pinned' : ''}` },
         h('div', { class: 'a' }, h('span', { class: 'tm', title: '最后一个回答耗时' }, s.lastTurnMs != null ? fmtDuration(s.lastTurnMs) : '—'), pin, del),
         h('div', { class: 'b' }, h('span', { class: `dot ${dotCls}`, title: status }), h('span', { class: 'ttl' }, s.title)),
-        h('div', { class: 'c' }, `${s.messageCount} 条消息`));
-      el.addEventListener('click', () => void hooks.selectSession(s.id).catch((e: unknown) => chat.notify(errorText(e))));
-      del.addEventListener('click', async (ev) => {
+        h('div', { class: 'c' },
+          h('span', {}, `${s.messageCount} 条消息`),
+          h('span', { class: 'si-br' },
+            favCount > 0 ? h('span', { class: 'si-fav', title: `本会话已收藏 ${favCount} 条回答` }, icon('star'), h('span', {}, String(favCount))) : null,
+            delWarn)));
+      el.addEventListener('click', () => {
+        // 点其它条目时清除已有条目的待确认删除态
+        if (pendingDelId !== null && pendingDelId !== s.id) clearPendingDel();
+        void hooks.selectSession(s.id).catch((e: unknown) => chat.notify(errorText(e)));
+      });
+      del.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        if (!confirm(`删除会话「${s.title}」？此操作不可撤销。`)) return;
-        try {
-          await api.invoke('sessions:delete', s.id);
-          store.state.sessions = store.state.sessions.filter((x) => x.id !== s.id);
-          store.emit('sessions');
-          if (s.id === cur) {
-            const next = store.state.sessions[0];
-            if (next) await hooks.selectSession(next.id);
-            else await hooks.newSession();
-          }
-        } catch (e) {
-          chat.notify(errorText(e));
+        if (pendingDelId === s.id) {
+          void executeDelete(s);
+          return;
         }
+        armPendingDel(s.id);
+        renderList();
       });
       list.append(el);
     }
@@ -368,6 +419,8 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   };
 
   for (const t of ['sessions', 'current', 'running', 'approvals', 'settings', 'workspace', 'project', 'errors'] as const) store.on(t, renderList);
+  // 收藏增减后底部行的收藏条数实时刷新（renderList 只读 favorites 现值重渲，不回写收藏，无循环）
+  onFavoritesChanged(() => renderList());
   for (const t of ['current', 'todos', 'diffs', 'tasks', 'running', 'approvals', 'settings', 'workspace', 'project'] as const) store.on(t, scheduleCtx);
   store.on('project', () => void refreshTasks().catch(() => undefined));
   renderList();

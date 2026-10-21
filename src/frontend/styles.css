@@ -541,6 +541,12 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .si .b .dot{width:8px;height:8px;flex:none;border-radius:50%}
 .si .b .dot.r{background:var(--err)}.si .b .dot.y{background:var(--amber)}.si .b .dot.g{background:var(--green)}
 .si .b .ttl{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.si .c{display:flex;align-items:center;gap:8px}
+.si-br{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.si-fav{display:inline-flex;align-items:center;gap:3px;color:var(--ink2);font-size:var(--font-caption)}
+.si-fav svg{width:12px;height:12px;display:block}
+.si-delwarn{color:var(--err);font-size:var(--font-caption);white-space:nowrap;cursor:pointer}
+.si .del.armed{visibility:visible;color:var(--err)}
 .chat{border-right:var(--border-width-regular) solid var(--color-border-tertiary)}
 .mid{border-right:var(--border-width-regular) solid var(--color-border-tertiary)}
 .circ{width:32px;height:32px;box-shadow:none;border:var(--border-width-regular) solid var(--color-border-secondary)}
@@ -641,10 +647,10 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .exh-more:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
 /* 收藏栏（侧栏项目结构之后，默认折叠；.tree flex:1 使其贴侧栏底部） */
 .favlist{flex:none;max-height:260px;overflow-y:auto;padding:0 8px 8px}
-.fav-item{display:flex;align-items:flex-start;gap:6px;padding:6px;border-radius:var(--border-radius-sm);cursor:pointer}
+.fav-item{display:flex;align-items:flex-start;gap:6px;padding:8px 8px 8px 14px;margin-bottom:4px;background:var(--color-background-tertiary);border-radius:var(--border-radius-md);cursor:pointer}
 .fav-item:hover{background:var(--color-background-secondary)}
 .fav-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.fav-tx{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-caption);color:var(--color-text-primary)}
+.fav-tx{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:var(--font-caption);color:var(--color-text-primary)}
 .fav-ss{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--color-text-tertiary)}
 .fav-rm{flex:none;width:20px;height:20px;display:grid;place-items:center;border:0;background:none;border-radius:var(--border-radius-sm);color:var(--color-text-tertiary);cursor:pointer;font-size:14px;line-height:1;padding:0}
 .fav-rm:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
@@ -928,8 +934,6 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .think-label{color:var(--color-text-secondary);font-weight:var(--font-weight-semibold);flex:none}
 .think-count,.think-detail{font-size:var(--font-caption);flex:none}
 .think-count::before,.think-detail::before{content:'·';margin:0 7px;color:var(--color-text-ghost)}
-.think-last{margin-left:auto;min-width:0;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-caption);text-align:right}
-.think-last::before{content:'·';margin:0 7px;color:var(--color-text-ghost)}
 .think-body{padding:8px 0 0}
 .think-body .verify.tool{margin:0 0 8px;padding:8px 10px;box-shadow:none;background:var(--color-background-tertiary)}
 .think-body .verify.tool:last-child{margin-bottom:0}
