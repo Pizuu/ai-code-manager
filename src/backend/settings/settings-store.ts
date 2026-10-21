@@ -121,14 +121,28 @@ function defaults(): StoredSettings {
   };
 }
 
+/** 宿主能力注入（构造时给定）：宿主事实，不是设置数据——不落盘、不能经设置更新通道修改。 */
+export interface SettingsStoreOptions {
+  /**
+   * 宿主是否具备原生系统通知能力（功能 005，v1.13）：桌面 Electron 主进程为 true（缺省），
+   * Web 预览（scripts/web-dev.ts）没有系统通知通道，组装时显式注入 false。
+   * getPublic() 如实投影为 PublicSettings.notifyNativeAvailable，渲染层据此禁用提醒分区的原生通知开关。
+   */
+  notifyNativeAvailable?: boolean;
+}
+
 export class SettingsStore {
   private readonly file: string;
   private readonly cipher: KeyCipher;
+  private readonly notifyNativeAvailable: boolean;
   private data: StoredSettings = defaults();
 
-  constructor(file: string, cipher: KeyCipher) {
+  constructor(file: string, cipher: KeyCipher, options: SettingsStoreOptions = {}) {
     this.file = file;
     this.cipher = cipher;
+    // 缺省 true：本类的本籍宿主是桌面主进程（main.ts 的既有构造即两参、语义就是桌面能力）；
+    // 借用本类的宿主（Web 预览）必须在组装处显式注入 false，不靠平台 / 环境变量猜测。
+    this.notifyNativeAvailable = options.notifyNativeAvailable ?? true;
   }
 
   /** 读取设置文件；不存在时使用默认值，损坏时备份后重置并抛出说明。 */
@@ -161,10 +175,10 @@ export class SettingsStore {
     void _notifyRaw;
     return {
       ...rest,
-      // v1.13（T-047）：提醒偏好走清洗后的完整形状回传；桌面主进程具备原生通知能力，恒 true。
-      // Web 预览侧不经本 store（其 mock 自行给 false），这里不假装别处的能力。
+      // v1.13（T-047）：提醒偏好走清洗后的完整形状回传；原生通知能力标记如实投影构造时
+      // 由宿主注入的值（桌面 true / Web 预览 false，见 SettingsStoreOptions），不在此写死。
       notify: this.getNotifySettings(),
-      notifyNativeAvailable: true,
+      notifyNativeAvailable: this.notifyNativeAvailable,
       hasApiKey: { openai: Boolean(encryptedKeys.openai), anthropic: Boolean(encryptedKeys.anthropic) },
       encryptionAvailable: this.cipher.isAvailable(),
       agentClis: agentClis.map((c) => ({

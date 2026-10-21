@@ -37,6 +37,18 @@ test('getPublic：未存过 notify 时投影带 DEFAULT 偏好与能力标记 tr
   assert.deepEqual(store.getNotifySettings(), DEFAULT_NOTIFY_SETTINGS);
 });
 
+test('getPublic：notifyNativeAvailable 如实投影宿主构造时注入的能力（桌面 true / Web 预览 false）', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'aicm-notify-cap-'));
+  const file = path.join(dir, 'settings.json');
+  const desktop = new SettingsStore(file, cipher, { notifyNativeAvailable: true });
+  assert.equal(desktop.getPublic().notifyNativeAvailable, true);
+  const web = new SettingsStore(file, cipher, { notifyNativeAvailable: false });
+  assert.equal(web.getPublic().notifyNativeAvailable, false);
+  // 能力是宿主事实而非设置数据：update 的回传投影同样带注入值，不被设置更新覆盖
+  const pub = await web.update({ model: 'm' });
+  assert.equal(pub.notifyNativeAvailable, false);
+});
+
 test('update(notify)：落盘后重读仍在，投影回传更新后的偏好', async () => {
   const store = await tempStore();
   const next = {
