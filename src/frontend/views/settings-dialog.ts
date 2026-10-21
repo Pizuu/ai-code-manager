@@ -1,10 +1,19 @@
 /**
- * 设置对话框（FR-002/003、FR-110）：两个分区——「内置 agent」（提供方 / 模型 / Key / 权限）与「Agent CLI」。
+ * 设置对话框（FR-002/003、FR-110、FR-512）：三个分区——「内置 agent」（提供方 / 模型 / Key / 权限）、「Agent CLI」与「提醒」（按级别的系统通知 / 声音开关与稍后时长）。
  * Key 只进不出——输入框永远为空，已保存时只显示「已保存」。Base URL / 模型同理留空打开、留空保存不修改。
  */
-import type { PermissionMode, ProviderId, SettingsUpdate } from '../../../contracts/ipc.ts';
+import type { NotifySettings, PermissionMode, ProviderId, ReminderLevel, SettingsUpdate } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { clear, h } from '../lib/dom.ts';
+import {
+  notifyNativeAvailable,
+  REMINDER_LEVELS,
+  REMINDER_LEVEL_LABELS,
+  resolveNotifySettings,
+  SNOOZE_MAX_MINUTES,
+  SNOOZE_MIN_MINUTES,
+  validateSnoozeMinutes,
+} from '../lib/notify-settings.ts';
 import { store } from '../store.ts';
 import { mountAgentCliSettings } from './agent-cli-settings.ts';
 
@@ -29,7 +38,7 @@ function options<T extends string>(labels: Readonly<Record<T, string>>, current:
   return sel;
 }
 
-export type SettingsTab = 'model' | 'cli';
+export type SettingsTab = 'model' | 'cli' | 'notify';
 
 export function openSettings(tab: SettingsTab = 'model'): void {
   const dialog = document.getElementById('settings-dialog') as HTMLDialogElement;
@@ -42,7 +51,10 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   const tabBtn = (id: SettingsTab, label: string) => h('button', { class: `chip${id === tab ? ' acc' : ''}`, attrs: { type: 'button' }, on: { click: () => openSettings(id) } }, label);
   const modelTabBtn = tabBtn('model', 'API');
   const cliTabBtn = tabBtn('cli', 'Agent CLI');
-  const tabs = h('div', { class: 'dtabs' }, ...(da === 'builtin' ? [modelTabBtn, cliTabBtn] : [cliTabBtn, modelTabBtn]));
+  const notifyTabBtn = tabBtn('notify', '提醒');
+  const tabs = h('div', { class: 'dtabs' }, ...(da === 'builtin'
+    ? [modelTabBtn, cliTabBtn, notifyTabBtn]
+    : [cliTabBtn, modelTabBtn, notifyTabBtn]));
   if (tab === 'cli') {
     const body = h('div', { class: 'field' });
     // 标题行：左 h3「设置」+ 右 headerSlot 空位，Agent CLI 分区把「自动检测」按钮填进去（同行两端对齐）。
@@ -75,6 +87,80 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     form.addEventListener('submit', (ev) => ev.preventDefault());
     dialog.append(form);
     mountAgentCliSettings(body, headerSlot);
+    if (!dialog.open) dialog.showModal();
+    return;
+  }
+
+  if (tab === 'notify') {
+    // 提醒偏好：存量设置可能缺字段，一律先按 FR-512 默认值补齐再呈现（缺失不呈现为全关）。
+    const current = resolveNotifySettings(s.notify);
+    // Web 预览等无原生通知能力的环境：整分区禁用并明示，不报错（FR-513）。
+    const nativeOk = notifyNativeAvailable(s);
+    const err = h('div', { class: 'error-text' });
+    const sysBoxes = new Map<ReminderLevel, HTMLInputElement>();
+    const sndBoxes = new Map<ReminderLevel, HTMLInputElement>();
+    const levels = h('div', { class: 'set-levels' });
+    for (const lv of REMINDER_LEVELS) {
+      const sys = h('input', { attrs: { type: 'checkbox' } });
+      sys.checked = current.systemNotify[lv];
+      sys.disabled = !nativeOk;
+      sysBoxes.set(lv, sys);
+      const snd = h('input', { attrs: { type: 'checkbox' } });
+      snd.checked = current.sound[lv];
+      snd.disabled = !nativeOk;
+      sndBoxes.set(lv, snd);
+      const toggle = (box: HTMLInputElement, label: string) =>
+        h('label', { class: `set-toggle${nativeOk ? '' : ' off'}` }, box, label);
+      levels.append(h('div', { class: 'set-level' },
+        h('span', { class: 'set-lv' }, REMINDER_LEVEL_LABELS[lv]),
+        toggle(sys, '系统通知'),
+        toggle(snd, '提醒声音')));
+    }
+    const snooze = h('input', {
+      attrs: {
+        type: 'number', min: String(SNOOZE_MIN_MINUTES), max: String(SNOOZE_MAX_MINUTES),
+        step: '1', value: String(current.snoozeMinutes), spellcheck: 'false',
+      },
+    });
+    snooze.disabled = !nativeOk;
+    const save = h('button', { class: 'btn pri', attrs: { type: 'button' } }, '保存');
+    save.addEventListener('click', async () => {
+      err.textContent = '';
+      const snoozeMinutes = validateSnoozeMinutes(snooze.value);
+      if (snoozeMinutes === null) {
+        err.textContent = `稍后提醒时长须为 ${SNOOZE_MIN_MINUTES}–${SNOOZE_MAX_MINUTES} 的整数（分钟）。`;
+        return;
+      }
+      // 契约口径：notify 以完整 NotifySettings 形状提交，不做字段级合并。
+      const systemNotify = {} as Record<ReminderLevel, boolean>;
+      const sound = {} as Record<ReminderLevel, boolean>;
+      for (const lv of REMINDER_LEVELS) {
+        systemNotify[lv] = sysBoxes.get(lv)?.checked ?? current.systemNotify[lv];
+        sound[lv] = sndBoxes.get(lv)?.checked ?? current.sound[lv];
+      }
+      const next: NotifySettings = { systemNotify, sound, snoozeMinutes };
+      try {
+        store.state.settings = await api.invoke('settings:set', { notify: next });
+        store.emit('settings');
+        dialog.close();
+      } catch (e) {
+        err.textContent = errorText(e);
+      }
+    });
+    const form = h('form', { class: 'cfg-card', attrs: { method: 'dialog' } },
+      h('div', { class: 'dhead' }, h('h3', {}, '设置'), h('span', {})),
+      tabs,
+      h('div', { class: 'cfg-panel' },
+        h('div', { class: 'help' }, '按提醒级别分别开关系统通知与提醒声音：P0 审批、P1 受阻 / 出错、P2 待审查、P3 新 ready。关闭某级的系统通知不影响该级的应用内呈现与未消解计数；未消解计数（尤其 P0）没有任何开关可以关闭。'),
+        nativeOk ? null : h('div', { class: 'help' }, '当前环境（Web 预览）不支持系统通知，仅应用内提醒，本分区开关已禁用。'),
+        h('div', { class: 'field' }, h('label', {}, '各级别提醒'), levels, h('div', { class: 'help' }, '提醒声音本期仅保存偏好，暂不实际播放声音。')),
+        field('稍后提醒时长（分钟）', snooze, `事项点「稍后」后转入收件箱并保持计数，该时长内不再弹窗。可填 ${SNOOZE_MIN_MINUTES}–${SNOOZE_MAX_MINUTES} 的整数。`)),
+      err,
+      h('div', { class: 'actions' },
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => dialog.close() } }, '取消'),
+        save));
+    form.addEventListener('submit', (ev) => ev.preventDefault());
+    dialog.append(form);
     if (!dialog.open) dialog.showModal();
     return;
   }

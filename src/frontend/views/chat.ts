@@ -17,7 +17,6 @@ import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
-import { errorSectionTitle } from '../lib/error-log.ts';
 import { activityTarget, sessionStateCounts } from '../lib/session-activity.ts';
 import { parseSlashCommand, suggestCommands } from '../lib/slash-commands.ts';
 import { store } from '../store.ts';
@@ -85,9 +84,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   /** 当前会话累计 token 数（Session.usage，opencode 聚合；无数据时隐藏）。 */
   const ctxUsage = h('span', { class: 'chip' });
   ctxUsage.hidden = true;
-  /** 会话三态计数圆点组（原状态栏三色圆，红 / 黄 / 绿依次为出错 / 回答中 / 回答完成，本批全数迁入 .ctx 条靠右成组）：
-   * 计数与显隐口径与状态栏时期一致（0 时淡显 .zero 且无点击行为）；红点点击优先跳其它出错会话，
-   * 无处可跳且当前会话有错误条目时开关错误日志层；黄 / 绿点点击跳到该状态的第一个会话（经 hooks.onJumpToSession）。 */
+  /** 会话三态计数圆点组（原状态栏三色圆，依次为出错 / 回答中 / 回答完成，迁入 .ctx 条靠右成组；样式已中性化，不再用红黄绿彩色底）：
+   * 计数与显隐口径与状态栏时期一致（0 时淡显 .zero 且无点击行为）；红点点击直接跳到错误位置（见下方 jumpToError），
+   * 目标会话正在回答时挂起、等回答完成再跳，不打断输出；黄 / 绿点点击跳到该状态的第一个会话（经 hooks.onJumpToSession）。 */
   const errDot = h('button', { class: 'st-dot r zero', attrs: { type: 'button' } }, '0');
   const runDot = h('button', { class: 'st-dot y zero', attrs: { type: 'button' } }, '0');
   const doneDot = h('button', { class: 'st-dot g zero', attrs: { type: 'button' } }, '0');
@@ -139,45 +138,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     h('div', { class: 'ft' }, modelPick, modeSel));
   container.append(thd, log, comp);
 
-  // ── 当前会话错误日志层：原对话流内的 .errlog 聚合块移出，改挂 .ctx 条红点上方弹出 ──
-  // 条目呈现沿用 .errlog 内部结构（chip + 文本 + 时间 + detail pre）；开关口径与全站浮层一致
-  //（锚点 stopPropagation + 点层外 / Esc 关闭）。renderStatusDots 每次重渲时经 refreshErrPop 同步：
-  // 层开着就重渲内容，当前会话错误清空则自动关。（本块与红点原在 shell.ts 状态栏，本批整体迁入。）
-  const errPop = h('div', { class: 'errpop errlog', attrs: { role: 'dialog', 'aria-label': '当前会话错误日志' } });
-  errPop.hidden = true;
-  document.body.append(errPop);
-  const closeErrPop = () => { errPop.hidden = true; };
-  const renderErrPop = () => {
-    const cur = store.state.current;
-    const entries = cur ? store.errorsOf(cur.id) : [];
-    errPop.replaceChildren(
-      h('div', { class: 'errpop-hd' }, h('b', { class: 'b600' }, errorSectionTitle(entries)), h('span', { class: 'mute errpop-sess' }, cur?.title ?? '')),
-      h('div', { class: 'list' }, ...entries.map((e) => h('div', { class: 'e' },
-        h('div', { class: 'h' }, h('span', { class: `chip ${e.kind === 'tool' ? 'amb' : 'acc'}` }, e.kind === 'tool' ? '工具失败' : 'Agent 错误'), h('span', { class: 't' }, e.text), h('span', { class: 'mute mono' }, hm(e.at))),
-        e.detail ? h('pre', {}, e.detail) : null))));
-  };
-  /** 锚点定位：横向钳制在视口内，层底贴红点顶部上方 8px（与原状态栏时期的公式一致）。 */
-  const anchorErrPop = () => {
-    const r = errDot.getBoundingClientRect();
-    errPop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - errPop.offsetWidth - 8))}px`;
-    errPop.style.bottom = `${window.innerHeight - r.top + 8}px`;
-  };
-  const toggleErrPop = () => {
-    if (!errPop.hidden) { closeErrPop(); return; }
-    renderErrPop();
-    errPop.hidden = false;
-    anchorErrPop();
-  };
-  const refreshErrPop = () => {
-    if (errPop.hidden) return;
-    const cur = store.state.current;
-    if (!cur || !store.errorsOf(cur.id).length) { closeErrPop(); return; }
-    renderErrPop();
-    anchorErrPop();
-  };
-  document.addEventListener('click', (ev) => { if (!errPop.hidden && !errPop.contains(ev.target as Node) && !errDot.contains(ev.target as Node)) closeErrPop(); });
-  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeErrPop(); });
-
   /** 三点计数：与图标栏徽标共用 lib 的 sessionStateCounts，口径永不漂移。 */
   const dotCounts = () => sessionStateCounts({
     sessions: store.state.sessions,
@@ -197,6 +157,79 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       approvalSessionIds: approvals.map((a) => a.sessionId),
     };
   };
+  // ── 红点「跳到错误位置」：目标 = 第一个有错误条目的会话（当前会话优先），定位其第一条错误 ──
+  // 锚点解析：tool 条目按 callId 回查含该工具调用的消息；agent 条目取错误时刻之前最近的一条助手消息。
+  // 目标会话正在回答时不打断输出：点击只登记挂起（只留最新一次），等它回答完成再跳（见 checkPendingErrorJump）。
+  let pendingErrorJump: { sessionId: string } | null = null;
+
+  /** 选定跳转目标会话：当前会话有错误条目时优先当前会话，否则按会话列表顺序取第一个有错误条目的会话。 */
+  const pickErrorTarget = (): string | null => {
+    const curId = store.state.current?.id ?? null;
+    if (curId && store.errorsOf(curId).length) return curId;
+    return store.state.sessions.find((s) => store.errorsOf(s.id).length)?.id ?? null;
+  };
+
+  /** 锚点解析：tool 条目按 callId 回查含该工具调用的消息（找不到退化为最后一条助手消息）；agent 条目取错误时刻之前最近的一条助手消息。 */
+  const errorAnchorMsgId = (sessionId: string): string | null => {
+    const s = store.state.current;
+    const entry = store.errorsOf(sessionId)[0];
+    if (!s || !entry) return null;
+    const msgs = s.messages.filter((m) => m.role !== 'tool');
+    if (entry.kind === 'tool') {
+      const callId = entry.id.startsWith('tool:') ? entry.id.slice('tool:'.length) : entry.id;
+      return msgs.find((m) => (m.toolCalls ?? []).some((c) => c.id === callId))?.id
+        ?? msgs.filter((m) => m.role === 'assistant').at(-1)?.id
+        ?? null;
+    }
+    return msgs.filter((m) => m.role === 'assistant' && m.createdAt <= entry.at).at(-1)?.id ?? null;
+  };
+
+  /** 在当前已渲染的日志里定位目标会话的第一条错误并滚动高亮；返回 false 表示目标会话尚未成为当前会话 / 消息未渲染（可重试）。 */
+  const locateErrorInLog = (sessionId: string): boolean => {
+    const s = store.state.current;
+    if (!s || s.id !== sessionId) return false;
+    if (!store.errorsOf(sessionId).length) return true; // 错误已清空：无可定位，按完成处理
+    const msgId = errorAnchorMsgId(sessionId);
+    if (!msgId) { log.scrollTop = log.scrollHeight; return true; } // 无锚点消息：退化为滚到底部
+    const el = log.querySelector(`.msg[data-id="${CSS.escape(msgId)}"]`);
+    if (!el) return false;
+    // 目标在折叠回合内先展开（状态与 DOM 同步，免得重渲染又折回去）；祖先 details 一并打开（与 focusApproval 同口径）
+    const art = el.closest('article.turn');
+    if (art?.classList.contains('folded')) {
+      art.classList.remove('folded');
+      turnFolded.delete(msgId);
+      art.querySelector('.act-fold')?.setAttribute('data-tip', '折叠');
+    }
+    for (let p = el.parentElement; p && p !== log; p = p.parentElement) {
+      if (p instanceof HTMLDetailsElement) p.open = true;
+    }
+    el.scrollIntoView({ block: 'center' });
+    el.classList.add('appr-flash');
+    setTimeout(() => el.classList.remove('appr-flash'), 1600);
+    return true;
+  };
+
+  /** 执行一次错误跳转：跨会话先切过去，再等渲染落定（重试上限约 2 秒）后定位滚动。 */
+  const jumpToError = (sessionId: string) => {
+    if (store.state.current?.id !== sessionId) hooks.onJumpToSession?.(sessionId);
+    let tries = 0;
+    const attempt = () => {
+      if (locateErrorInLog(sessionId)) return;
+      if (++tries < 40) setTimeout(attempt, 50);
+    };
+    requestAnimationFrame(attempt);
+  };
+
+  /** 挂起跳转的推进检查（挂在 running / errors 订阅链上）：目标错误已清空则丢弃；仍在回答则继续等；已完成则执行并清空。 */
+  const checkPendingErrorJump = () => {
+    if (!pendingErrorJump) return;
+    const { sessionId } = pendingErrorJump;
+    if (!store.errorsOf(sessionId).length) { pendingErrorJump = null; return; }
+    if (store.state.running.has(sessionId)) return;
+    pendingErrorJump = null;
+    jumpToError(sessionId);
+  };
+
   const renderStatusDots = () => {
     const { nErr, nRun, nDone } = dotCounts();
     errDot.textContent = String(nErr);
@@ -208,21 +241,19 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     doneDot.textContent = String(nDone);
     doneDot.className = `st-dot g${nDone ? '' : ' zero'}`;
     doneDot.title = `回答完成会话 ${nDone}`;
-    refreshErrPop();
+    checkPendingErrorJump();
   };
   errDot.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    const { nErr, isAnswering, isErrored } = dotCounts();
-    if (!nErr) return; // 计数为 0 时无点击行为（与状态栏时期「0 不挂监听」等效）
-    // 优先跳到其它出错会话；无处可跳且当前会话有错误条目时开关错误日志层
-    const curId = store.state.current?.id ?? null;
-    const other = store.state.sessions.find((s) => s.id !== curId && !isAnswering(s.id) && isErrored(s.id));
-    if (other) {
-      closeErrPop();
-      hooks.onJumpToSession?.(other.id);
-    } else if (curId && isErrored(curId)) {
-      toggleErrPop();
+    const targetId = pickErrorTarget();
+    if (!targetId) return; // 无任何错误条目时无点击行为
+    // 目标会话正在回答：只登记挂起（覆盖旧挂起，只留最新一次），等回答完成再跳，绝不打断输出
+    if (store.state.running.has(targetId)) {
+      pendingErrorJump = { sessionId: targetId };
+      notify('将在回答完成后跳转到错误位置');
+      return;
     }
+    jumpToError(targetId);
   });
   runDot.addEventListener('click', (ev) => {
     ev.stopPropagation();
@@ -608,7 +639,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       n.afterMessageId = lastId ?? null;
       logIn.append(noticeEl(n.text, n.kind));
     }
-    // 错误明细已移出对话流：当前会话的错误条目改由 .ctx 条红点上方的错误日志层呈现（本文件 errPop，数据同为 store.errorsOf）。
+    // 错误明细不进对话流：错误条目（store.errorsOf）只驱动 .ctx 条红点计数，点击红点直接跳到错误位置定位。
     // 「正在思考…」提示永远挂在末尾；流式正文末尾另有一个光标。
     logIn.append(liveEl);
     updateLive();
@@ -923,13 +954,15 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   store.on('messages', renderAll);
   store.on('approvals', renderAll);
   store.on('workspace', renderAll);
-  // 错误条目变化（新增 / 清空）时头部未必重渲，三点计数与打开的错误层单独订阅刷新。
+  // 错误条目变化（新增 / 清空）时头部未必重渲，三点计数单独订阅刷新（renderStatusDots 内含挂起跳转推进检查）。
   store.on('errors', renderStatusDots);
   // 运行状态变化：只更新头部与「正在思考…」提示 / 流式光标（不整体重渲染，避免打断流式输出）。
+  // 挂起的错误跳转也在这里推进：目标会话回答一结束（running 移除）就执行跳转。
   store.on('running', () => {
     renderHeader();
     updateLive();
     setCaret();
+    checkPendingErrorJump();
   });
   store.on('settings', renderAll);
   store.on('project', renderHeader);
