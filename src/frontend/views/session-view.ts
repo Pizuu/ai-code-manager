@@ -190,9 +190,12 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         ev.stopPropagation();
         togglePin(s.id);
       });
+      const status = statusOf(s);
+      // 回答状态圆点：出错红 / 运行中·待批准黄 / 空闲·新会话绿
+      const dotCls = status === '出错' ? 'r' : status === '运行中' || status === '待批准' ? 'y' : 'g';
       const el = h('a', { class: `si${s.id === cur ? ' on' : ''}${isPinned ? ' pinned' : ''}` },
-        h('div', { class: 'a' }, h('span', { class: 'who' }, agentWho(s.agent, st)), h('span', { class: 'st' }, statusOf(s)), h('span', { class: 'tm' }, hm(s.updatedAt) || '—'), pin, del),
-        h('div', { class: 'b' }, s.title),
+        h('div', { class: 'a' }, h('span', { class: 'who' }, agentWho(s.agent, st)), h('span', { class: 'st' }, status), h('span', { class: 'tm' }, hm(s.updatedAt) || '—'), pin, del),
+        h('div', { class: 'b' }, h('span', { class: `dot ${dotCls}`, title: status }), h('span', { class: 'ttl' }, s.title)),
         h('div', { class: 'c' }, `${s.messageCount} 条消息 · ${isCli(s.agent, st) ? '外部 CLI' : '内置 agent'}`));
       el.addEventListener('click', () => void hooks.selectSession(s.id).catch((e: unknown) => chat.notify(errorText(e))));
       del.addEventListener('click', async (ev) => {
@@ -292,14 +295,20 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     }
     ctxp.append(h('div', { class: 'k' }, `文件修改 · ${diffs.length}`), ...(diffs.length ? [dl] : []));
 
-    // 终端输出（原终端面板）
-    const term = h('div', { class: 'term' });
-    const chunks = store.state.terminal.slice(-400);
-    if (chunks.length) for (const c of chunks) term.append(h('span', { class: c.stream }, c.data));
-    ctxp.append(h('div', { class: 'k' }, '终端输出'), term);
-    requestAnimationFrame(() => {
-      term.scrollTop = term.scrollHeight;
-    });
+    // 所属分工（原终端输出面板）：关联任务卡的泳道分工详情
+    const laneMeta = card ? store.state.board?.lanes.find((l) => l.name === card.lane) : undefined;
+    ctxp.append(h('div', { class: 'k' }, card ? `所属分工 · ${card.lane}` : '所属分工'));
+    if (card) {
+      const allowGlobs = (laneMeta?.globs ?? []).filter((g) => !g.startsWith('!'));
+      ctxp.append(
+        ...kv('执行者', card.assignee || '—'),
+        ...kv('泳道角色', laneMeta?.ownerRole ?? '—'),
+        ...kv('任务状态', STATUS_META[card.status].label),
+        ...kv('允许路径', allowGlobs.join(' · ') || '—', true),
+        ...kv('分支', card.branch ?? '—', true));
+    } else {
+      ctxp.append(h('div', { class: 'v mute' }, '未关联任务卡'));
+    }
   };
 
   let ctxFrame = 0;
@@ -312,7 +321,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   };
 
   for (const t of ['sessions', 'current', 'running', 'approvals', 'settings', 'workspace', 'project', 'errors'] as const) store.on(t, renderList);
-  for (const t of ['current', 'todos', 'diffs', 'terminal', 'tasks', 'running', 'approvals', 'settings', 'workspace', 'project'] as const) store.on(t, scheduleCtx);
+  for (const t of ['current', 'todos', 'diffs', 'tasks', 'running', 'approvals', 'settings', 'workspace', 'project'] as const) store.on(t, scheduleCtx);
   store.on('project', () => void refreshTasks().catch(() => undefined));
   renderList();
   renderCtx();

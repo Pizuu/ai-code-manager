@@ -173,13 +173,21 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       stg,
       h('span', { class: 'chip acc', title: 'specs tasks.md 勾选数' }, `当前：${currentStage} · tasks.md ${F?.tasksDone ?? 0}/${F?.tasksTotal ?? 0}`),
       h('span', { class: 'mute' }, '按序合入 → Converge'));
+    // 「显示已完成」开关：挂在容量条右端（原在 .ctl 控制行，本批按用户定位反馈移入 .cap）
+    const tog = h('span', { class: `tog${f.done ? ' on' : ''}` }, '显示已完成 ', h('i'));
+    tog.addEventListener('click', () => {
+      f.done = !f.done;
+      tog.classList.toggle('on', f.done);
+      renderMatrix(snap);
+    });
     // 容量
     pad.append(h('div', { class: 'cap' },
       h('span', {}, 'Worker 容量'), h('b', { class: 'b600' }, `${workers.length} / ${snap.maxParallel ?? '?'}`),
       h('span', { class: 'mute' }, activeC.length ? activeC.map((c) => `${c.assignee} ${c.id} ${STATUS_META[c.status].label}`).join(' · ') : '暂无执行中'),
       h('span', { class: 'sep' }),
       h('span', { class: 'mute' }, `${countBy(cards, 'ready')} 张可派工\u3000·\u3000${countBy(cards, 'blocked')} 张等待依赖\u3000·\u3000${countBy(cards, 'review')} 张待审查\u3000·\u3000${countBy(cards, 'merged')} 张已合入`),
-      h('span', { class: 'flex1' })));
+      h('span', { class: 'flex1' }),
+      tog));
     // 控件
     const q = h('input', { class: 'inp', attrs: { placeholder: '搜索任务 / FR / 分支', value: f.q } });
     q.addEventListener('input', () => {
@@ -204,13 +212,7 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       f.agent = agentSel.value;
       renderMatrix(snap);
     });
-    const tog = h('span', { class: `tog ml24${f.done ? ' on' : ''}` }, '显示已完成 ', h('i'));
-    tog.addEventListener('click', () => {
-      f.done = !f.done;
-      tog.classList.toggle('on', f.done);
-      renderMatrix(snap);
-    });
-    pad.append(h('div', { class: 'ctl' }, q, selWrap(laneSel), selWrap(agentSel), h('span', { class: 'flex1' }), tog));
+    pad.append(h('div', { class: 'ctl' }, q, selWrap(laneSel), selWrap(agentSel)));
     // 根因提示（P0-1）：集成分支本地缺失 / 已回退远端时，先说清「为什么」，再看逐条冲突
     if (snap.integrationMissing) {
       pad.append(h('div', { class: 'rootcause' },

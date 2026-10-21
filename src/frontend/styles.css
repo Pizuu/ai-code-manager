@@ -514,7 +514,10 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .si{padding:10px 12px;margin-bottom:4px;border-radius:var(--border-radius-md)}
 .si:hover{background:var(--color-background-tertiary)}
 .si.on{background:var(--color-background-secondary);border-color:transparent}
-.si .b{margin:4px 0 2px;font-size:var(--font-body);font-weight:var(--font-weight-semibold)}.si .c{font-size:var(--font-caption)}
+.si .b{margin:4px 0 2px;font-size:var(--font-body);font-weight:var(--font-weight-semibold);display:flex;align-items:center;gap:6px}.si .c{font-size:var(--font-caption)}
+.si .b .dot{width:8px;height:8px;flex:none;border-radius:50%}
+.si .b .dot.r{background:var(--err)}.si .b .dot.y{background:var(--amber)}.si .b .dot.g{background:var(--green)}
+.si .b .ttl{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chat{border-right:var(--border-width-regular) solid var(--color-border-tertiary)}
 .mid{border-right:var(--border-width-regular) solid var(--color-border-tertiary)}
 .ctop{height:52px;padding:0 12px}
@@ -528,7 +531,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .thd .th-title{justify-self:center;text-align:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .thd .r:first-child>:not(.th-title){flex:none}
 .thd .r:first-child>.circ{justify-self:start}
-.thd .r:first-child>.mute{justify-self:end}
+.thd .r:first-child>.fx8{justify-self:end}
 .log{padding:16px 32px}
 .meta{margin:16px 0 6px;font-size:var(--font-caption)}
 .msg{padding-left:28px;font-size:var(--font-body);line-height:1.6}
@@ -663,7 +666,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .tip .mono{color:var(--color-text-secondary)}
 .tip .mute{color:var(--color-text-tertiary)}
 /* 打开文件时对话列变窄：次要说明省略，右侧上下文在窄屏让位 */
-.sx.has-file .thd .r>.mute{display:none}
+.sx.has-file .thd .r:first-child>.fx8>.mute{display:none}
 .sx.has-file .thd .fx8{min-width:0;overflow:hidden}
 .sx.has-file .thd .fx8>.mute{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .sx.has-file .comp .ft{flex-wrap:wrap;gap:4px 12px}
