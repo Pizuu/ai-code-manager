@@ -115,8 +115,8 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
     }
     left.append(wts);
 
-    // 泳道 → Agent 分工
-    left.append(h('div', { class: 'sec' }, h('span', {}, '泳道与 Agent'), h('span', { class: 'mute' }, `${b.available ? b.lanes.length : 0} 个泳道 · 每个泳道最多一个在途 Agent`)));
+    // 泳道 → Agent 分工（整块位于右栏：先构建，随右栏一起挂载）
+    const lanesSec = h('div', { class: 'sec' }, h('span', {}, '泳道与 Agent'), h('span', { class: 'mute' }, `${b.available ? b.lanes.length : 0} 个泳道 · 每个泳道最多一个在途 Agent`));
     const table = h('div', { class: 'lanes' }, h('div', { class: 'lr lh' }, h('span', {}, '泳道'), h('span', {}, '负责角色'), h('span', {}, '在途任务'), h('span', {}, '允许修改')));
     for (const lane of b.available ? b.lanes : []) {
       const live = cards.filter((c) => c.lane === lane.name && (c.status === 'active' || c.status === 'review'));
@@ -132,12 +132,10 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
         h('span', { class: 'mono globs', title: lane.globs.join(' ') }, lane.globs.join(' '))));
     }
     if (!b.available) table.append(h('div', { class: 'mute pad8' }, b.reason ?? '未读取到泳道配置'));
-    left.append(table);
 
-    // ── 右栏：配置 ──
-    const right = h('div', { class: 'cfgcol' });
+    // ── 左栏续：多 Agent 配置（原右栏面板，整块换列至此，接在 wts 列表之后）──
     const prefix = cfg?.get('BRANCH_PREFIX') ?? 'feat';
-    right.append(h('div', { class: 'panel cfg' },
+    left.append(h('div', { class: 'panel cfg' },
       h('div', { class: 'h' }, h('span', {}, '多 Agent 配置'), h('span', { class: 'mute mono' }, CONFIG_FILE)),
       kv('集成分支', h('span', { class: 'mono' }, integ), '任务分支从这里切出并 --no-ff 合回'),
       kv('主分支', h('span', { class: 'mono' }, b.available ? b.mainBranch : g.mainBranch), '仅 Owner 批准后发布'),
@@ -148,18 +146,9 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
       h('div', { class: 'mute fs12 mt12' }, '配置文件由 coordinator 维护，此处只读；需修改请在任务分支中编辑文件。'),
       h('div', { class: 'fx8 mt12 wrap' }, fileBtn('查看 config.sh', CONFIG_FILE), fileBtn('查看 lanes.conf', LANES_FILE), fileBtn('协作流程', MULTI_AGENT_DOC))));
 
-    right.append(h('div', { class: 'panel cfg' },
-      h('div', { class: 'h' }, h('span', {}, '共享热点文件'), h('span', { class: 'mute' }, '不属于任何泳道')),
-      h('div', { class: 'sflist mt12' }, ...(b.available && b.shared.length ? b.shared.map((x) => h('div', { class: 'sfrow' }, h('span', { class: 'mute' }, icon('file')), h('span', { class: 'mono' }, x))) : [h('div', { class: 'mute' }, '暂无')])),
-      h('div', { class: 'mute fs12 mt12' }, '只能由 coordinator 在 int/* 分支上修改。')));
-
-    right.append(h('div', { class: 'panel cfg' },
-      h('div', { class: 'h' }, h('span', {}, '常用命令'), h('span', { class: 'mute mono' }, 'scripts/agent-worktree.sh')),
-      h('div', { class: 'cmds mono mt12' },
-        h('div', {}, 'new  <泳道> <任务>', h('span', {}, '建 worktree + 分支')),
-        h('div', {}, 'list', h('span', {}, '列出 worktree')),
-        h('div', {}, 'sync [路径]', h('span', {}, `rebase 到 ${integ}`)),
-        h('div', {}, 'rm   <泳道> <任务>', h('span', {}, '删 worktree，保留分支')))));
+    // ── 右栏：泳道与 Agent（整块换列至此）──
+    const right = h('div', { class: 'cfgcol' });
+    right.append(lanesSec, table);
 
     container.append(h('div', { class: 'gx agx' }, left, right));
   };

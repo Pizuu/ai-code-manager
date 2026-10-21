@@ -869,7 +869,8 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 /* Worktree 与 Agent 视图 */
 .agx{grid-template-columns:minmax(0,1fr) 340px}
 .agx .sec.first{margin-top:16px}
-.agx .cfgcol>.panel.cfg:first-child{margin-top:16px}
+.agx .cfgcol>.sec:first-child{margin:16px 0 0}
+.agx .wts+.panel.cfg{margin-top:16px}
 .lanes{border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);overflow:hidden}
 .lr{display:grid;grid-template-columns:88px 104px minmax(0,1.1fr) minmax(0,1fr);gap:12px;padding:9px 12px;align-items:center;font-size:var(--font-body);border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
 .lr.lh{border-top:0;background:var(--color-background-secondary);font-size:var(--font-caption);color:var(--color-text-secondary);padding:7px 12px}
@@ -883,13 +884,6 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .kv .v{color:var(--color-text-primary);word-break:break-all}
 .kv .hint{grid-column:2;font-size:var(--font-caption);color:var(--color-text-tertiary)}
 .panel.cfg .field select{height:32px}
-.sflist{display:flex;flex-direction:column}
-.sflist .sfrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary);font-size:var(--font-body)}
-.sflist .sfrow:last-child{border-bottom:0;padding-bottom:0}
-.sflist .sfrow .mute{display:flex;flex:none}
-.sflist .sfrow .mono{min-width:0;word-break:break-all}
-.cmds>div{display:flex;justify-content:space-between;gap:12px;font-size:12px;padding:3px 0;white-space:nowrap}
-.cmds>div>span{font-family:var(--sans);color:var(--color-text-tertiary);overflow:hidden;text-overflow:ellipsis}
 #wb-git .pr .fx12{flex-wrap:wrap;row-gap:2px}
 #wb-git .pr .fx12>span{white-space:nowrap}
 .lr .tasks .mute+.mute::before{content:'· ';}
