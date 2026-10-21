@@ -58,7 +58,7 @@ export function renderToolCard(call: ToolCallRecord, approval: ApprovalRequest |
   const summary = toolSummary(call);
   const target = toolTarget(call.name, call.input);
   const label = toolLabel(call.name);
-  const card = h('div', { class: 'verify tool', attrs: { 'data-call': call.id } },
+  const card = h('div', { class: 'verify tool', attrs: { 'data-call': call.id, 'data-tool-call-id': call.id } },
     h('div', { class: 'h' },
       h('span', { class: 'fx8' }, icon(call.name === 'agent_cli' ? 'route' : 'check'),
         h('span', { class: 'nm' }, label),

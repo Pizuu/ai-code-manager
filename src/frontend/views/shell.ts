@@ -11,6 +11,7 @@ import { sessionStateCounts } from '../lib/session-activity.ts';
 import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
 import { mountTourButton } from '../lib/tour.ts';
 import { store, type ViewId } from '../store.ts';
+import { mountNotifyView } from './notify-view.ts';
 
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents', speckit: 'Spec Kit' };
 /** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
@@ -27,6 +28,12 @@ export interface ShellHooks {
   onError(text: string): void;
   /** P0-3：点击活动徽标 / 状态栏计数时跳转到指定会话。 */
   onJumpToSession(sessionId: string): void;
+  /** T-048：收件箱 / 弹窗内直批（main 组合 chat.ts 的 decideApproval）。 */
+  notifyDecide(approvalId: string, approved: boolean): Promise<void>;
+  /** T-048：查看审批（main 组合切会话 + 定位审批卡）。 */
+  notifyView(approvalId: string): void;
+  /** T-048：FR-507 抑制判定（chat.ts 的审批卡可见性查询）。 */
+  isApprovalCardVisible(approvalId: string): boolean;
 }
 
 export interface ShellView {
@@ -82,11 +89,18 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     themeBtn.title = `切换主题（当前：${dark ? '深色' : '浅色'}）`;
   };
   syncThemeBtn();
+  // T-048：审批提醒（弹窗栈 + 收件箱）。入口定版在 rail 底部组、主题按钮上方；根节点在 app 组装后追加（fixed 定位，不占布局）。
+  const notifyView = mountNotifyView({
+    decide: hooks.notifyDecide,
+    view: hooks.notifyView,
+    isApprovalCardVisible: hooks.isApprovalCardVisible,
+  });
   const rail = h('nav', { class: 'rail' },
     railBtn('side', '侧栏', () => explorer.toggleAttribute('hidden')),
     h('div', { class: 'gap26' }),
     ...NAV.map(([id]) => railView[id]),
     h('div', { class: 'sp' }),
+    notifyView.button,
     themeBtn,
     h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
   );
@@ -287,7 +301,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const statusProg = h('span', { class: 'prog' });
   const status = h('footer', { class: 'status' }, statusL, statusProg);
   const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, views.speckit, status);
-  app.append(rail, explorer, ws);
+  app.append(rail, explorer, ws, notifyView.root);
 
   // ── 渲染 ──
   const renderProject = () => {

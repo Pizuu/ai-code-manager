@@ -43,6 +43,10 @@ export interface ChatView {
   /** 003：在光标处插入一段带来源标注的内容（前后补换行），不发送。 */
   insertBlock(text: string): void;
   notify(text: string, kind?: 'notice' | 'info'): void;
+  /** T-048：对应审批卡是否正显示在当前会话的可视区（FR-507 的弹窗抑制判定）；找不到卡片按不可见处理。 */
+  isApprovalCardVisible(approvalId: string): boolean;
+  /** T-048：滚动定位并高亮对应审批卡；找到并定位成功返回 true。 */
+  focusApproval(approvalId: string): boolean;
 }
 
 export async function decideApproval(approvalId: string, approved: boolean): Promise<void> {
@@ -887,11 +891,42 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   });
   renderAll();
 
+  /** 审批请求 → 对话流中的工具卡片 DOM（卡片以 data-tool-call-id 标记，请求本身不带 DOM 信息）。 */
+  const approvalCardEl = (approvalId: string): HTMLElement | null => {
+    const req = store.state.approvals.get(approvalId);
+    if (!req) return null;
+    return log.querySelector<HTMLElement>(`[data-tool-call-id="${CSS.escape(req.toolCallId)}"]`);
+  };
+
+  const isApprovalCardVisible = (approvalId: string): boolean => {
+    const req = store.state.approvals.get(approvalId);
+    if (!req || store.state.view !== 'session' || store.state.current?.id !== req.sessionId) return false;
+    const el = approvalCardEl(approvalId);
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
+  };
+
+  const focusApproval = (approvalId: string): boolean => {
+    const el = approvalCardEl(approvalId);
+    if (!el) return false;
+    // 卡片所在的思考区若被折叠，先展开所有祖先 details，否则 scrollIntoView 落不到可视位置。
+    for (let p = el.parentElement; p && p !== log; p = p.parentElement) {
+      if (p instanceof HTMLDetailsElement) p.open = true;
+    }
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    el.classList.add('appr-flash');
+    setTimeout(() => el.classList.remove('appr-flash'), 1600);
+    return true;
+  };
+
   return {
     renderAll,
     appendDelta,
     notify,
-    sendText,
+    isApprovalCardVisible,
+    focusApproval,
+    sendText: async (text) => { await sendText(text); },
     insertText: insertAtCursor,
     insertBlock: (text) => {
       const r = insertBlock(textarea.value, textarea.selectionStart, textarea.selectionEnd, text);

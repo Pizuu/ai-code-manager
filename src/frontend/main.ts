@@ -5,9 +5,10 @@
 import type { AgentEvent, BoardCard, ChatMessage, Session } from '../../contracts/ipc.ts';
 import { api, errorText } from './api.ts';
 import { agentError, sessionErrorEntries, toolCallError } from './lib/error-log.ts';
+import { recordApprovalResolution } from './lib/notify.ts';
 import { store } from './store.ts';
 import { focusBoardCard, mountBoard } from './views/board-view.ts';
-import type { ChatView } from './views/chat.ts';
+import { decideApproval, type ChatView } from './views/chat.ts';
 import { mountAgents } from './views/agents-view.ts';
 import { mountSpeckit } from './views/speckit-view.ts';
 import { mountGit } from './views/git-view.ts';
@@ -69,6 +70,27 @@ export async function selectSession(id: string): Promise<void> {
   // P1-6：用持久化消息重建该会话的错误条目（重启后仍能看到「出错」与错误分区）
   store.setErrors(id, sessionErrorEntries(store.state.current.messages));
   store.emit('current', 'todos');
+}
+
+/** T-048：切到指定会话（提醒「查看」与 notify-activate 的 session 落点共用）。 */
+async function jumpToSession(sessionId: string): Promise<void> {
+  try {
+    shell.setView('session');
+    sessionView.showChat();
+    if (store.state.current?.id !== sessionId) await selectSession(sessionId);
+    shell.setView('session');
+    sessionView.showChat();
+  } catch (e) {
+    chat.notify(errorText(e));
+  }
+}
+
+/** T-048：切到审批所属会话并定位审批卡。切会话后对话要先完成一轮渲染，定位分两拍兜底重试。 */
+async function jumpToApproval(sessionId: string, approvalId: string): Promise<void> {
+  await jumpToSession(sessionId);
+  const run = () => { chat.focusApproval(approvalId); };
+  requestAnimationFrame(run);
+  setTimeout(run, 80);
 }
 
 async function newSession(): Promise<void> {
@@ -144,10 +166,18 @@ function handleEvent(e: AgentEvent): void {
       store.state.approvals.set(e.approval.id, e.approval);
       store.emit('approvals');
       return;
-    case 'approval-resolved':
+    case 'approval-resolved': {
+      // T-048：先从待批表取回请求本体生成历史摘要（删表后就取不到了），再删表撤下弹窗 / 待处理条目。
+      const req = store.state.approvals.get(e.approvalId);
+      if (req) {
+        const sessionTitle = store.state.sessions.find((x) => x.id === req.sessionId)?.title
+          ?? (s?.id === req.sessionId ? s.title : '');
+        recordApprovalResolution(req, e.approved, sessionTitle);
+      }
       store.state.approvals.delete(e.approvalId);
       store.emit('approvals');
       return;
+    }
     case 'terminal':
       store.appendTerminal({ toolCallId: e.toolCallId, stream: e.stream, data: e.data });
       return;
@@ -162,9 +192,17 @@ function handleEvent(e: AgentEvent): void {
     case 'git-changed':
       void shell.refreshWorkspace();
       return;
-    // v1.13：提醒激活事件（系统通知点击回传）先占位忽略——事件在 T-047 落地前不会产生，正式处理在 T-048
-    case 'notify-activate':
+    // v1.13 / T-048：提醒激活（系统通知点击回传）——按落点跳转定位；card 落点复用看板既有定位通路。
+    case 'notify-activate': {
+      const target = e.target;
+      if (target.kind === 'approval') void jumpToApproval(target.sessionId, target.approvalId);
+      else if (target.kind === 'session') void jumpToSession(target.sessionId);
+      else {
+        shell.setView('board');
+        focusBoardCard(target.cardId);
+      }
       return;
+    }
     default:
       break;
   }
@@ -239,6 +277,12 @@ async function bootstrap(): Promise<void> {
       sessionView.showChat();
       void selectSession(id).catch((e: unknown) => chat.notify(errorText(e)));
     },
+    notifyDecide: (approvalId, approved) => decideApproval(approvalId, approved),
+    notifyView: (approvalId) => {
+      const req = store.state.approvals.get(approvalId);
+      if (req) void jumpToApproval(req.sessionId, approvalId);
+    },
+    isApprovalCardVisible: (approvalId) => chat.isApprovalCardVisible(approvalId),
   });
   sessionView = mountSessionView(shell.views.session, {
     selectSession,
