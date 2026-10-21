@@ -265,10 +265,12 @@ input,select,textarea{font:inherit;color:inherit}
 .umeta{justify-content:flex-end}
 .notice{background:var(--asoft2);color:var(--amber);border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12px;white-space:pre-wrap;line-height:1.6}
 .notice.info{background:var(--panel);color:var(--ink2)}
-/* 错误 / 日志分区（P1-6）：错误集中一处，便于追溯 */
-.errlog{margin:14px 0 4px;border:1px solid var(--color-border-danger);border-radius:var(--border-radius-md);background:var(--color-background-danger);color:var(--color-text-danger)}
-.errlog summary{cursor:pointer;padding:8px 12px;display:flex;gap:8px;align-items:center;list-style:none}
-.errlog summary::-webkit-details-marker{display:none}
+/* 错误 / 日志分区（P1-6）：错误集中一处，便于追溯；现为状态栏红圆上方的弹出层（.errpop），条目内部呈现不变 */
+.errlog{border:1px solid var(--color-border-danger);border-radius:var(--border-radius-md);background:var(--color-background-danger);color:var(--color-text-danger)}
+.errpop{position:fixed;z-index:1000;width:min(520px,calc(100vw - 16px));box-shadow:var(--shadow-lg);text-align:left}
+.errpop[hidden]{display:none}
+.errpop .errpop-hd{display:flex;gap:8px;align-items:baseline;padding:8px 12px}
+.errpop .errpop-sess{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-caption)}
 .errlog .list{max-height:260px;overflow:auto;padding:0 12px 10px}
 .errlog .e{padding:6px 0;border-top:1px solid var(--color-border-danger)}
 .errlog .e:first-child{border-top:0}
@@ -803,14 +805,14 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .status .prog[hidden]{display:none}
 .status .prog .stg{margin-left:0;gap:8px}
 /* 靠右机制：.prog 自承接 margin-left:auto，所有视图下恒居状态栏最右端 */
-/* 状态栏活动计数（P0-3）：点击跳转到相关会话 */
-.status .st-act{display:flex;gap:10px;align-items:center;padding-left:16px;flex:none}
-.status .act{white-space:nowrap}
-.status .act.clickable{cursor:pointer;text-decoration:underline;text-underline-offset:2px}
-.status .act.clickable:hover{color:var(--color-text-primary)}
-.status .act-running{color:var(--color-text-info)}
-.status .act-pending{color:var(--color-text-warning)}
-.status .act-errors{color:var(--color-text-danger)}
+/* 状态栏活动指示（P0-3）：三色圆形计数——红出错 / 黄回答中 / 绿回答完成，数字居中；0 计数淡显且不可点 */
+.status .st-act{display:flex;gap:6px;align-items:center;padding-left:16px;flex:none}
+.status .st-dot{width:22px;height:22px;flex:none;border:0;border-radius:50%;display:grid;place-items:center;padding:0;font-size:11px;font-weight:var(--font-weight-semibold);line-height:1;color:#fff;cursor:pointer}
+.status .st-dot.r{background:var(--err)}
+.status .st-dot.y{background:var(--amber);color:#141413}
+.status .st-dot.g{background:var(--green)}
+.status .st-dot.zero{opacity:.28;cursor:default}
+.status .st-dot:not(.zero):hover{filter:brightness(1.12)}
 /* 页头：项目名加大 */
 .crumb>span:first-of-type{font-size:var(--font-heading-md);font-weight:var(--font-weight-semibold);color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 /* 图标栏：当前板块 */

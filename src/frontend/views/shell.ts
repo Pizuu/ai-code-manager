@@ -7,7 +7,9 @@ import { api, errorText } from '../api.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
-import { activityLabels, activityTarget, activityTotal, sessionActivity, type ActivityKind } from '../lib/session-activity.ts';
+import { activityLabels, activityTarget, activityTotal, sessionActivity } from '../lib/session-activity.ts';
+import { hm } from '../lib/board-format.ts';
+import { errorSectionTitle } from '../lib/error-log.ts';
 import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
 import { mountTourButton } from '../lib/tour.ts';
 import { store, type ViewId } from '../store.ts';
@@ -283,7 +285,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     speckit: h('div', { class: 'ws-view wb', attrs: { id: 'wb-speckit' } }),
   };
   const statusL = h('span');
-  /** P0-3：活动计数（运行中 / 待批准 / 错误），可点击跳转到对应会话。 */
+  /** P0-3：活动指示——三色圆形计数（红出错 / 黄回答中 / 绿回答完成），可点击跳转到对应会话。 */
   const statusAct = h('span', { class: 'st-act' });
   /** 规格进度行（原看板 .prog 移入）：状态栏最右端常驻，类名沿用 .prog，布局覆盖在 styles.css 的 .status .prog。 */
   const statusProg = h('span', { class: 'prog' });
@@ -329,9 +331,51 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     renderProject();
   };
 
+  // ── 当前会话错误日志层：原对话流内的 .errlog 聚合块移出，改挂状态栏红圆上方弹出 ──
+  // 条目呈现沿用 .errlog 内部结构（chip + 文本 + 时间 + detail pre）；开关口径与全站浮层一致
+  //（锚点 stopPropagation + 点层外 / Esc 关闭）。renderActivity 每次重渲时经 refreshErrPop 同步：
+  // 层开着就重渲内容，当前会话错误清空则自动关。
+  let redDotEl: HTMLElement | null = null;
+  const errPop = h('div', { class: 'errpop errlog', attrs: { role: 'dialog', 'aria-label': '当前会话错误日志' } });
+  errPop.hidden = true;
+  document.body.append(errPop);
+  const closeErrPop = () => { errPop.hidden = true; };
+  const renderErrPop = () => {
+    const cur = store.state.current;
+    const entries = cur ? store.errorsOf(cur.id) : [];
+    errPop.replaceChildren(
+      h('div', { class: 'errpop-hd' }, h('b', { class: 'b600' }, errorSectionTitle(entries)), h('span', { class: 'mute errpop-sess' }, cur?.title ?? '')),
+      h('div', { class: 'list' }, ...entries.map((e) => h('div', { class: 'e' },
+        h('div', { class: 'h' }, h('span', { class: `chip ${e.kind === 'tool' ? 'amb' : 'acc'}` }, e.kind === 'tool' ? '工具失败' : 'Agent 错误'), h('span', { class: 't' }, e.text), h('span', { class: 'mute mono' }, hm(e.at))),
+        e.detail ? h('pre', {}, e.detail) : null))));
+  };
+  const anchorErrPop = () => {
+    if (!redDotEl) return;
+    const r = redDotEl.getBoundingClientRect();
+    errPop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - errPop.offsetWidth - 8))}px`;
+    errPop.style.bottom = `${window.innerHeight - r.top + 8}px`;
+  };
+  const toggleErrPop = () => {
+    if (!errPop.hidden) { closeErrPop(); return; }
+    renderErrPop();
+    errPop.hidden = false;
+    anchorErrPop();
+  };
+  const refreshErrPop = () => {
+    if (errPop.hidden) return;
+    const cur = store.state.current;
+    if (!cur || !store.errorsOf(cur.id).length) { closeErrPop(); return; }
+    renderErrPop();
+    anchorErrPop();
+  };
+  document.addEventListener('click', (ev) => { if (!errPop.hidden && !errPop.contains(ev.target as Node) && !redDotEl?.contains(ev.target as Node)) closeErrPop(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeErrPop(); });
+
   /**
-   * P0-3：活动计数（运行中 / 待批准 / 错误）——图标栏徽标 + 状态栏，点击直接跳到相关会话。
-   * 目标会话由 activityTarget 决定；无目标时不跳转（保持原地）。
+   * P0-3：活动指示——图标栏徽标（总数，口径不变）+ 状态栏三色圆形计数，点击跳到该状态的会话。
+   * 三态口径与会话列表 statusOf（第十四批）一致、计数单位为会话数：回答中（含待批准，运行集 ∪ 审批集）
+   * 优先，其次有错误条目为出错，其余（含新会话）为回答完成。跳转目标沿用 activityTarget（取第一个，
+   * 现行无轮换）；红圆特殊：有其它出错会话时优先跳转，无处可跳且当前会话有错误条目时改为开关错误日志层。
    */
   const renderActivity = () => {
     const cur = store.state.current;
@@ -353,21 +397,50 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     railView.session.title = total
       ? `${VIEW_TITLES.session}：${activityLabels(act).join(' · ')}（点击查看）`
       : VIEW_TITLES.session;
-    // 状态栏：分段可点击
+    // 状态栏：三色圆形计数（红出错 / 黄回答中 / 绿回答完成），按会话三态计数（口径见上方注释）
+    const approvalIds = new Set(input.approvalSessionIds);
+    const answering = (id: string) => store.state.running.has(id) || approvalIds.has(id);
+    const errored = (id: string) => store.errorsOf(id).length > 0;
+    let nErr = 0;
+    let nRun = 0;
+    let nDone = 0;
+    for (const s of store.state.sessions) {
+      if (answering(s.id)) nRun++;
+      else if (errored(s.id)) nErr++;
+      else nDone++;
+    }
     clear(statusAct);
-    const seg = (kind: ActivityKind, label: string, n: number) => {
-      if (!n) return;
-      const target = activityTarget(kind, input);
-      const el = h('span', { class: `act act-${kind}`, title: target ? `点击跳转到「${target}」` : '当前会话' }, label);
-      if (target) {
-        el.classList.add('clickable');
-        el.addEventListener('click', () => hooks.onJumpToSession(target));
-      }
+    const dot = (cls: string, n: number, label: string, onClick: (() => void) | null) => {
+      const el = h('button', { class: `st-dot ${cls}${n ? '' : ' zero'}`, title: `${label}会话 ${n}`, attrs: { type: 'button' } }, String(n));
+      if (n && onClick) el.addEventListener('click', (ev) => { ev.stopPropagation(); onClick(); });
       statusAct.append(el);
+      return el;
     };
-    seg('running', `${act.running} 运行中`, act.running);
-    seg('pending', `${act.pending} 待批准`, act.pending);
-    seg('errors', `${act.errors} 错误`, act.errors);
+    redDotEl = dot('r', nErr, '出错', () => {
+      // 优先跳到其它出错会话；无处可跳且当前会话有错误条目时开关错误日志层
+      const other = store.state.sessions.find((s) => s.id !== input.currentSessionId && !answering(s.id) && errored(s.id));
+      if (other) {
+        closeErrPop();
+        hooks.onJumpToSession(other.id);
+      } else if (input.currentSessionId && errored(input.currentSessionId)) {
+        toggleErrPop();
+      }
+    });
+    dot('y', nRun, '回答中', () => {
+      const target = activityTarget('running', input) ?? activityTarget('pending', input);
+      if (target) {
+        closeErrPop();
+        hooks.onJumpToSession(target);
+      }
+    });
+    dot('g', nDone, '回答完成', () => {
+      const target = store.state.sessions.find((s) => !answering(s.id) && !errored(s.id));
+      if (target) {
+        closeErrPop();
+        hooks.onJumpToSession(target.id);
+      }
+    });
+    refreshErrPop();
   };
 
   /**
@@ -498,8 +571,8 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   };
 
   store.on('workspace', renderChrome);
-  // P1-3：活动徽标 / 状态栏计数随运行态、审批与消息实时更新
-  for (const t of ['running', 'approvals', 'current', 'messages'] as const) store.on(t, renderActivity);
+  // P1-3：活动徽标 / 状态栏计数随运行态、审批与消息实时更新；三色圆与错误层另随会话增删与错误条目变化刷新
+  for (const t of ['running', 'approvals', 'current', 'messages', 'sessions', 'errors'] as const) store.on(t, renderActivity);
   // P1-8：窗口获得焦点时刷新工作区快照（看板 / Git 可能已被外部改动）
   window.addEventListener('focus', () => void refreshWorkspace());
   store.on('project', () => {

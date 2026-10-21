@@ -13,7 +13,6 @@ import { insertBlock } from '../lib/context-send.ts';
 import { hm } from '../lib/board-format.ts';
 import { avatarText, hasPendingApproval, thinkCountText, thinkStatusText } from '../lib/chat-turn.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
-import { errorSectionTitle } from '../lib/error-log.ts';
 import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
@@ -353,17 +352,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       n.afterMessageId = lastId ?? null;
       logIn.append(noticeEl(n.text, n.kind));
     }
-    // P1-6：错误 / 日志分区——把错误集中到一处，便于追溯（不再淹没在消息流里）
-    const errEntries = s ? store.errorsOf(s.id) : [];
-    if (errEntries.length) {
-      const box = h('details', { class: 'errlog' },
-        h('summary', {}, h('b', { class: 'b600' }, errorSectionTitle(errEntries))),
-        h('div', { class: 'list' }, ...errEntries.map((e) => h('div', { class: 'e' },
-          h('div', { class: 'h' }, h('span', { class: `chip ${e.kind === 'tool' ? 'amb' : 'acc'}` }, e.kind === 'tool' ? '工具失败' : 'Agent 错误'), h('span', { class: 't' }, e.text), h('span', { class: 'mute mono' }, hm(e.at))),
-          e.detail ? h('pre', {}, e.detail) : null))));
-      box.open = true;
-      logIn.append(box);
-    }
+    // 错误明细已移出对话流：当前会话的错误条目改由状态栏红圆上方的错误日志层呈现（shell.ts errPop，数据同为 store.errorsOf）。
     // 「正在思考…」提示永远挂在末尾；流式正文末尾另有一个光标。
     logIn.append(liveEl);
     updateLive();
