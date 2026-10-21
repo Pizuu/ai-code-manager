@@ -35,9 +35,15 @@ button{font:inherit;color:inherit}
 .rail .sp{flex:1}
 /* explorer */
 .explorer{width:220px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
-.psel{height:80px;display:flex;align-items:center;gap:10px;padding:0 18px}
-.mono-badge{width:32px;height:32px;border-radius:8px;background:var(--asoft);color:var(--accent);display:grid;place-items:center;font-weight:600;font-size:12px;flex:none}
+.brand{height:76px;flex:none;display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid var(--line)}
+.brand .app-logo{flex:none;display:block}
+.brand-tx{min-width:0}.brand-tx b{display:block;font-weight:600;font-size:15px;white-space:nowrap}.brand-tx span{display:block;color:var(--mute);font-size:11px;margin-top:2px;white-space:nowrap}
+.psel{height:80px;display:flex;align-items:center;gap:10px;padding:0 18px;margin-top:auto;border-top:1px solid var(--line)}
 .pid{flex:1;min-width:0}.pid b{display:block;font-weight:600;font-size:12px}.pid span{display:block;color:var(--mute);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* psel 右侧 caret：文件树折叠入口，字形恒定旋转 180° 朝上（不随折叠状态翻转） */
+.psel-caret{flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:6px;cursor:pointer}
+.psel-caret svg{transform:rotate(180deg)}
+.psel-caret:hover{background:var(--chip);color:var(--ink)}
 .navloc{padding:0 18px;color:var(--accent);font-size:11px;height:23px}
 .nav a{display:flex;align-items:center;gap:14px;height:44px;padding:0 24px;font-size:15px;color:var(--ink2);position:relative}
 .nav a:hover{background:var(--chip)}
@@ -468,9 +474,10 @@ b,strong,.b600{font-weight:var(--font-weight-semibold)}
 .rail .ri{width:32px;height:32px;border-radius:var(--border-radius-md);color:var(--color-text-tertiary)}
 .rail .ri:hover{color:var(--color-text-primary);background:var(--color-background-secondary)}
 .explorer{width:240px;border-right:0}
+.brand{height:72px;padding:0 14px}
+.brand-tx span{font-size:var(--font-caption)}
 .psel{height:56px;padding:0 14px;gap:10px}
 .psel:hover{background:var(--color-background-secondary)}
-.mono-badge{width:28px;height:28px;border-radius:var(--border-radius-md);font-size:var(--font-caption)}
 .pid b{font-size:var(--font-heading-sm)}.pid span{font-size:var(--font-caption)}
 .navloc{display:none}
 .nav{padding:4px 8px}
