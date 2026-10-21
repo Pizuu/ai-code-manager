@@ -21,8 +21,12 @@
  *  6. 错误路径（无模型 Key）：剥离提供方密钥类环境变量并指向空 HOME 后，两个用例各自
  *     独立记账（一例失败不吞另一例）：两例都必须非 0 退出、不得挂死或假成功，且输出须有
  *     明确错误载体——(a) 不存在的 provider/model 以结构化错误或 provider/auth/model 字样
- *     为判据（1.19.3 实测走通用服务器错误面，见 STRUCTURED_ERROR_RE 处注释）；(b) 无凭据
- *     默认运行以 provider / auth / credential 类关键词为判据。
+ *     为判据（1.19.3 实测走通用服务器错误面，见 STRUCTURED_ERROR_RE 处注释）；(b) 显式指定
+ *     必须凭据的提供方 openai（-m openai/gpt-4o-mini）且 OPENAI_API_KEY 被剥离：1.19.3 无
+ *     Key 时该 provider 根本不加载，run 解析模型即报错，以凭据类关键词或结构化错误载体
+ *     为判据（实测依据见 CREDENTIAL_ERROR_RE 处注释）。原 (b) 例「无凭据默认运行必失败」
+ *     的前提已被 CI 二跑（run 39606053411）证伪：opencode 自带免 Key 的免费模型，空 HOME
+ *     无任何 Key 时默认 `opencode run` 以退出码 0 结束——那不是可验的保证，故换靶。
  *
  * 非 Windows 平台打印 SKIP 并退出 0（同 smoke-exe.ts 的口径：平台不符不假装通过）；
  * 本脚本的断言只能在 windows-latest / Windows 实机上见分晓。
@@ -303,7 +307,15 @@ function checkPlatformEnvDetect(): string {
  * provider/auth/model 关键词任一命中；退出码与超时断言不放宽，静默成功与无输出挂死仍抓得住。
  */
 const STRUCTURED_ERROR_RE = /Error:\s*\{|"name"\s*:\s*"[A-Za-z]*Error"|UnknownError|Unexpected server error/i;
-/** (b) 例「报错明确」的判据：无凭据默认运行时应指向提供方 / 凭据类错误（沿用原关键词集）。 */
+/**
+ * (b) 例「报错明确」的判据：提供方 / 凭据类关键词（沿用原关键词集）。实测依据（Linux 侧
+ * 旁证，opencode 1.19.3，空 HOME + 剥离全部 Key 类环境变量）：`opencode models openai`
+ * 以退出码 1 输出 `Error: Provider not found: openai`——无 OPENAI_API_KEY 时 openai
+ * provider 不被加载（设假 Key 对照则模型列表正常列出，含 openai/gpt-4o-mini）；run 以
+ * -m openai/gpt-4o-mini 解析同一 provider，错误面同源。若 Windows 侧该例改走通用服务
+ * 器错误面，(b) 例亦接受 STRUCTURED_ERROR_RE 命中（与 (a) 同口径）；两判据都不命中
+ * 才算失败——不放宽成只看退出码，静默成功与无输出仍抓得住。
+ */
 const CREDENTIAL_ERROR_RE = /provider|auth|api[- ]?key|credential|model/i;
 
 async function checkNoKeyErrorPath(): Promise<string> {
@@ -321,7 +333,14 @@ async function checkNoKeyErrorPath(): Promise<string> {
 
   // 两例各自独立记账：一例断言失败不中断另一例；本项成败与每例的实际输出都写进结果行，
   // 便于按 CI 日志逐例定案（首跑时 (a) 例抛错中断、(b) 例根本没跑到，就是这个教训）。
-  const cases: Array<{ label: string; args: string[]; explicitError: (out: string) => boolean; missingHint: string }> = [
+  const cases: Array<{
+    label: string;
+    args: string[];
+    /** 在共享剥离环境之上再加工（如逐例显式删除某个 provider 的 Key）；缺省用共享环境。 */
+    env?: (base: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
+    explicitError: (out: string) => boolean;
+    missingHint: string;
+  }> = [
     {
       label: '不存在的提供方/模型',
       args: ['run', '-m', 'acm-nonexistent-provider/model-zzz', 'ping'],
@@ -329,17 +348,26 @@ async function checkNoKeyErrorPath(): Promise<string> {
       missingHint: '未见结构化错误载体或 provider/auth/model 字样',
     },
     {
-      label: '无任何凭据的默认运行',
-      args: ['run', 'ping'],
-      explicitError: (out) => CREDENTIAL_ERROR_RE.test(out),
-      missingHint: '未指向 provider/auth/credential 类错误',
+      // 换靶（二跑 run 39606053411 定案）：默认运行有 opencode 自家免 Key 免费模型兜底、
+      // 无凭据也能成功，原「默认运行必失败」前提作废。改为显式点名必须凭据的 openai：
+      // 其 Key 被剥离时 provider 不加载（Linux 旁证见 CREDENTIAL_ERROR_RE 处注释），
+      // run 解析 openai/gpt-4o-mini 必然报错——这才是无 Key 环境下可验的保证。
+      label: '需凭据的提供方（openai）且 Key 被剥离',
+      args: ['run', '-m', 'openai/gpt-4o-mini', 'ping'],
+      env: (base) => {
+        const e = { ...base };
+        delete e.OPENAI_API_KEY;
+        return e;
+      },
+      explicitError: (out) => CREDENTIAL_ERROR_RE.test(out) || STRUCTURED_ERROR_RE.test(out),
+      missingHint: '未见 provider/auth/credential 类关键词或结构化错误载体',
     },
   ];
   const outcomes: string[] = [];
   let failed = 0;
   for (const c of cases) {
     try {
-      const r = await runCapture(exe, c.args, { cwd: home, env: scrubbed, timeoutMs: 90_000 });
+      const r = await runCapture(exe, c.args, { cwd: home, env: c.env ? c.env(scrubbed) : scrubbed, timeoutMs: 90_000 });
       assert(!r.timedOut, `90s 未退出（疑似挂死或等待交互输入）`);
       assert(r.code !== 0 && r.code !== null, `无 Key 却以退出码 ${String(r.code)} 结束（假成功？）输出尾：${r.out.trim().slice(-300)}`);
       assert(c.explicitError(r.out), `输出${c.missingHint}：${r.out.trim().slice(-300)}`);
