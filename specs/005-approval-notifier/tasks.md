@@ -17,8 +17,8 @@ description: "Task list for 005-approval-notifier"
 
 ## Phase 1: Setup（规格与契约）
 
-- [ ] T501 [lane:contracts] Spec Kit 制品 specs/005-approval-notifier/（spec、checklists、tasks；随立项提交完成，plan 阶段补 plan.md）
-- [ ] T502 [lane:contracts] 契约 v1.13 增量 contracts/ipc.ts：提醒事项形状（级别 / 来源 / 状态 / 跳转目标）、主进程→渲染进程的提醒激活事件（携带 sessionId + approvalId 或 cardId）、Settings 提醒偏好字段（按级别系统通知开关、声音开关、稍后时长）；contracts/README.md 登记与 fixtures 样例
+- [x] T501 [lane:contracts] Spec Kit 制品 specs/005-approval-notifier/（spec、checklists、tasks；随立项提交完成，plan 阶段补 plan.md）
+- [x] T502 [lane:contracts] 契约 v1.13 增量 contracts/ipc.ts：提醒事项形状（级别 / 来源 / 状态 / 跳转目标）、主进程→渲染进程的提醒激活事件（携带 sessionId + approvalId 或 cardId）、Settings 提醒偏好字段（按级别系统通知开关、声音开关、稍后时长）；contracts/README.md 登记与 fixtures 样例
 
 ## Phase 2: Foundational（主进程通知能力）
 
@@ -26,7 +26,7 @@ description: "Task list for 005-approval-notifier"
 
 ## Phase 3: User Story 1 — 审批请求不漏看（P1）
 
-- [ ] T504 [US1] [lane:frontend] 提醒弹窗栈与待办收件箱 src/frontend/views/notify-inbox.ts（或并入 shell）：消费 agent:event 审批请求 / 解决与激活事件，P0 弹窗栈（完整内容、命令不截断）、查看跳转（切会话 + 定位高亮审批卡，复用既有 focus 机制）、弹窗内直批 / 直拒（复用既有审批通道）、正在看该审批时不弹窗、已解决自动撤下；纯逻辑（分级 / 去重 / 排队）抽 lib 并单测
+- [ ] T504 [US1] [lane:frontend] 提醒弹窗栈与待办收件箱 src/frontend/views/notify-inbox.ts（或并入 shell）：消费 agent:event 审批请求 / 解决与激活事件，P0 弹窗栈（完整内容、命令不截断）、查看跳转（切会话 + 定位高亮审批卡，复用既有 focus 机制）、弹窗内直批 / 直拒（复用既有审批通道）、正在看该审批时不弹窗、已解决自动撤下；收件箱入口定版（FR-511）：shell rail 底部组、主题按钮上方的收件箱按钮 + 未消解角标，点击开弹层含「待处理 / 历史」两页签，历史页签按 FR-515 记录已决审批（结果 / 时间 / 会话 / 摘要，来自解决事件，重启后从会话持久化重建）；纯逻辑（分级 / 去重 / 排队）抽 lib 并单测
 - [ ] T505 [US1] [lane:frontend] Web 预览降级：无系统通知能力时仅应用内弹窗与收件箱，通知服务状态在前端可判读、不报错（与 T503 的能力标记对齐）
 
 ## Phase 4: User Story 2 — 受阻与出错主动报信（P2）
