@@ -14,7 +14,7 @@ function field(label: string, control: HTMLElement, help?: string): HTMLElement 
   return h('div', { class: 'field' }, h('label', {}, label), control, help ? h('div', { class: 'help' }, help) : null);
 }
 
-export function mountAgentCliSettings(container: HTMLElement): void {
+export function mountAgentCliSettings(container: HTMLElement, headerSlot?: HTMLElement): void {
   let editing: AgentCliForm | null = null;
 
   const renderList = () => {
@@ -53,9 +53,10 @@ export function mountAgentCliSettings(container: HTMLElement): void {
           err.textContent = errorText(e);
         }
       });
+      const inUse = st?.defaultAgent === `cli:${c.id}`;
       list.append(h('div', {},
         h('div', { class: 'cli-item' },
-          h('div', { class: 'grow0' }, h('b', {}, c.name), h('div', { class: 'mono' }, previewCommand(configToForm(c), { session: true }))),
+          h('div', { class: 'grow0' }, h('div', { class: 'fx8' }, h('b', {}, c.name), inUse ? h('span', { class: 'chip grn' }, '使用中') : null), h('div', { class: 'mono' }, previewCommand(configToForm(c), { session: true }))),
           check,
           h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => { editing = configToForm(c); renderEdit(); } } }, '编辑'),
           del),
@@ -95,19 +96,30 @@ export function mountAgentCliSettings(container: HTMLElement): void {
         detect.textContent = '自动检测';
       }
     });
-    container.append(list,
-      h('div', { class: 'fx8' },
-        h('span', { class: 'flex1' }),
-        detect),
-      detectOut,
-      h('div', { class: 'help' }, '外部 CLI 以当前项目根为工作目录、以参数数组启动（不经 shell）。权限：仅规划 = 禁止编辑与命令；自动批准编辑 = 允许编辑、禁止命令；每次询问 = 每轮先批准命令行（ADR 0006）。'),
-      err);
+    if (headerSlot) {
+      // 有标题行空位时「自动检测」按钮放标题行右端（与 h3「设置」同行两端对齐），列表下方不再放按钮行。
+      clear(headerSlot);
+      headerSlot.append(detect);
+      container.append(list,
+        detectOut,
+        h('div', { class: 'help' }, '外部 CLI 以当前项目根为工作目录、以参数数组启动（不经 shell）。权限：仅规划 = 禁止编辑与命令；自动批准编辑 = 允许编辑、禁止命令；每次询问 = 每轮先批准命令行（ADR 0006）。'),
+        err);
+    } else {
+      container.append(list,
+        h('div', { class: 'fx8' },
+          h('span', { class: 'flex1' }),
+          detect),
+        detectOut,
+        h('div', { class: 'help' }, '外部 CLI 以当前项目根为工作目录、以参数数组启动（不经 shell）。权限：仅规划 = 禁止编辑与命令；自动批准编辑 = 允许编辑、禁止命令；每次询问 = 每轮先批准命令行（ADR 0006）。'),
+        err);
+    }
   };
 
   const renderEdit = () => {
     if (!editing) return renderList();
     const f = editing;
     clear(container);
+    if (headerSlot) clear(headerSlot); // 编辑态标题行不显示「自动检测」
     const isOc = f.preset === 'opencode';
     const ex = (k: keyof typeof OPENCODE_FORM_EXAMPLE) => (isOc ? `例：${OPENCODE_FORM_EXAMPLE[k].split('\n').join(' ')}` : '');
     const input = (value: string, placeholder = '', type = 'text') => h('input', { attrs: { type, value, spellcheck: 'false', placeholder } });

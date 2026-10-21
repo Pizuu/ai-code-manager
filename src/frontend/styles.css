@@ -118,8 +118,6 @@ select.chip{border:0;outline:none;cursor:pointer;font-family:var(--sans);appeara
 .si.on .a .who,.si.on .a .st{color:var(--accent)}
 .si .b{margin:6px 0 4px}.si .c{color:var(--mute);padding-right:44px}
 .chat{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line)}
-.ctop{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex:none}
-.ctop .md{font-size:17px;font-weight:600}
 .circ{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;box-shadow:0 1px 6px rgba(0,0,0,.08);background:var(--bg)}
 .thd{padding:6px 24px 12px;border-bottom:1px solid var(--line);flex:none}
 .thd .r{display:flex;justify-content:space-between;align-items:center;font-size:12px}
@@ -266,13 +264,7 @@ input,select,textarea{font:inherit;color:inherit}
 .errlog .e .h{display:flex;gap:8px;align-items:center;font-size:var(--font-caption);margin-bottom:2px}
 .errlog .e .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-text-primary)}
 .errlog .e pre{margin:4px 0 0;padding:6px 8px;border-radius:var(--border-radius-sm);background:var(--code-bg);color:var(--color-text-secondary);font:11px/1.5 var(--mono);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:auto}
-.running-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 1s infinite alternate;margin-left:8px;vertical-align:middle}
-@keyframes pulse{from{opacity:.3}to{opacity:1}}
 .circ{border:0;cursor:pointer;color:var(--ink2)}
-.ctop .md-sel{display:flex;align-items:center;gap:4px;font-size:17px;font-weight:600;border:0;background:transparent;color:var(--ink);appearance:none;text-align:center;cursor:pointer;padding:4px 6px;border-radius:8px}
-.ctop .md-sel:hover{background:var(--chip)}
-.ctop .agent-pick{position:relative;display:flex;align-items:center}
-.ctop .agent-pick select{position:absolute;inset:0;opacity:0;cursor:pointer}
 .comp .stop{height:32px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-weight:600;color:var(--err);margin-right:8px}
 .comp .bar .right{display:flex;align-items:center}
 .comp .mode{border:0;background:transparent;color:var(--mute);font-size:12px;cursor:pointer}
@@ -312,6 +304,7 @@ input,select,textarea{font:inherit;color:inherit}
 .dialog::backdrop{background:rgb(0 0 0 / .35)}
 .dialog form{display:flex;flex-direction:column;gap:12px;padding:20px 22px}
 .dialog h3{margin:0;font-size:15px;font-weight:600}
+.dialog .dhead{display:flex;align-items:center;justify-content:space-between}
 .dialog .dtabs{display:flex;gap:8px}
 .dialog .dtabs button{border:0}
 .field{display:flex;flex-direction:column;gap:4px}
@@ -520,15 +513,13 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .si .b .ttl{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chat{border-right:var(--border-width-regular) solid var(--color-border-tertiary)}
 .mid{border-right:var(--border-width-regular) solid var(--color-border-tertiary)}
-.ctop{height:52px;padding:0 12px}
-.ctop .md,.ctop .md-sel{font-size:var(--font-heading-md)}
 .circ{width:32px;height:32px;box-shadow:none;border:var(--border-width-regular) solid var(--color-border-secondary)}
 .circ:hover{background:var(--color-background-secondary)}
 .thd{padding:4px 24px 12px;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary)}
 .thd .r{font-size:var(--font-caption)}
 .thd .r:first-child{font-size:var(--font-heading-sm);font-weight:var(--font-weight-semibold)}
 .thd .r:first-child{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;min-width:0}
-.thd .th-title{justify-self:center;text-align:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thd .th-title{justify-self:center;text-align:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--font-heading-md)}
 .thd .r:first-child>:not(.th-title){flex:none}
 .thd .r:first-child>.circ{justify-self:start}
 .thd .r:first-child>.fx8{justify-self:end}

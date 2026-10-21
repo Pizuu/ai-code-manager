@@ -1,6 +1,6 @@
 /**
  * 任务会话 · 中列对话（FR-004/005/011、FR-109、FR-111）：DOM 与类名对应 HTML 原型 renderSession() 的
- * .ctop / .thd / .log / .comp；消息、工具卡片、审批、斜杠命令、停止与 agent 选择器为真实功能。
+ * .thd / .log / .comp；消息、工具卡片、审批、斜杠命令、停止与 agent 选择器为真实功能。
  *
  * v1.8：改为主流对话样式（回合制）——用户消息为右侧气泡，助手消息为「头部（头像 / 名称 / 时间 / 操作）+
  * 正文」的回合；工具调用收进可折叠的「思考」区（默认折叠，有待批准时自动展开，见 lib/chat-turn.ts）。
@@ -55,9 +55,6 @@ function fmtTokens(n: number): string {
 
 export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   clear(container);
-  // ── .ctop：仅运行指示（菜单按钮与新建按钮都在 .thd 标题行）──
-  const runningDot = h('span', { class: 'running-dot', title: 'Agent 运行中' });
-  const ctop = h('div', { class: 'ctop' }, runningDot);
   // ── .thd ──
   const menuBtn = h('button', { class: 'circ', title: '会话列表', on: { click: hooks.onToggleList } }, icon('menu'));
   const newBtn = h('button', { class: 'circ acc', title: '新建会话', on: { click: hooks.onNewSession } }, icon('plus'));
@@ -114,7 +111,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     slashMenu,
     h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, h('span', { class: 'mute plus', title: '插入 @文件：在左侧项目结构中点击文件' }, '+'), h('span', { class: 'right' }, stopBtn, sendBtn))),
     h('div', { class: 'ft' }, h('span', {}, 'Enter 发送 · Shift + Enter 换行'), modelPick, modeSel));
-  container.append(ctop, thd, log, comp);
+  container.append(thd, log, comp);
 
   const pendingDeltas = new Set<string>();
   let frame = 0;
@@ -262,7 +259,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const agent = s?.agent ?? st?.defaultAgent ?? 'builtin';
     const cli = isCli(agent, st);
     const running = store.isRunning();
-    runningDot.hidden = !running;
+    // 新建按钮 title 标注当前使用中的默认 agent（settings 未加载时退回 plain 文案）；
+    // renderHeader 随 'settings' 订阅（经 renderAll）刷新，切换默认 agent 后自动更新。
+    newBtn.title = st ? `新建会话（使用中：${agentName(undefined, st)}）` : '新建会话';
     stopBtn.hidden = !running;
     sendBtn.disabled = running || !s;
     thTitle.textContent = s ? s.title : '';

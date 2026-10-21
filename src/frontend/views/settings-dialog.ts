@@ -36,15 +36,19 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   const s = store.state.settings;
   if (!s) return;
   clear(dialog);
-  const tabBtn = (id: SettingsTab, label: string) => h('button', { class: `chip${id === tab ? ' acc' : ''}`, attrs: { type: 'button' }, on: { click: () => openSettings(id) } }, label);
-  const tabs = h('div', { class: 'dtabs' }, tabBtn('model', '内置 agent（API）'), tabBtn('cli', 'Agent CLI'));
+  // 「使用中」= 当前默认 agent（defaultAgent，缺省 'builtin'）：种类与标签匹配的 chip 在文案后追加「使用中」标记。
+  const da = s.defaultAgent ?? 'builtin';
+  const tabBtn = (id: SettingsTab, label: string, inUse: boolean) => h('button', { class: `chip${id === tab ? ' acc' : ''}`, attrs: { type: 'button' }, on: { click: () => openSettings(id) } }, label, inUse ? h('span', { class: 'chip grn' }, '使用中') : null);
+  const tabs = h('div', { class: 'dtabs' }, tabBtn('model', '内置 agent（API）', da === 'builtin'), tabBtn('cli', 'Agent CLI', da.startsWith('cli:')));
   if (tab === 'cli') {
     const body = h('div', { class: 'field' });
-    const form = h('form', { attrs: { method: 'dialog' } }, h('h3', {}, '设置'), tabs, body,
+    // 标题行：左 h3「设置」+ 右 headerSlot 空位，Agent CLI 分区把「自动检测」按钮填进去（同行两端对齐）。
+    const headerSlot = h('span', {});
+    const form = h('form', { attrs: { method: 'dialog' } }, h('div', { class: 'dhead' }, h('h3', {}, '设置'), headerSlot), tabs, body,
       h('div', { class: 'actions' }, h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => dialog.close() } }, '关闭')));
     form.addEventListener('submit', (ev) => ev.preventDefault());
     dialog.append(form);
-    mountAgentCliSettings(body);
+    mountAgentCliSettings(body, headerSlot);
     if (!dialog.open) dialog.showModal();
     return;
   }
