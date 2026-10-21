@@ -1,16 +1,16 @@
 /**
- * 全局右键菜单（FR-304，ADR 0008，contracts/ui.ts）：应用任意位置右键 →「发送到任务会话」/「复制」。
+ * 全局右键菜单（FR-304，ADR 0008，contracts/ui.ts）：应用任意位置右键 →「新建会话窗口」/「复制」。
  * 来源优先级：代码查看器选区 → 任意选中文本 → 最近的 data-send-* 元素（代码行 / 文件 / 任务卡 / 提交 / 分支）。
- * 无可发送内容时不拦截（保留默认行为）。只组装文本并交给 hooks.send，不自动发送。
+ * 无可发送内容时不拦截（保留默认行为）。只组装文本并交给 hooks.sendNew（新建会话后插入其输入框），不自动发送。
  */
 import type { SendSource } from '../../../contracts/ui.ts';
-import { SEND_ATTR, SEND_TO_SESSION_LABEL } from '../../../contracts/ui.ts';
+import { NEW_SESSION_LABEL, SEND_ATTR } from '../../../contracts/ui.ts';
 import { describeSource, formatSendText, sourceFromAttrs } from '../lib/context-send.ts';
 import { h } from '../lib/dom.ts';
 
 export interface ContextMenuHooks {
-  /** 把格式化后的文本插入任务会话输入框并切到任务会话。 */
-  send(text: string): void;
+  /** 新建会话并切换过去，再把格式化后的文本插入新会话输入框（不自动发送）；无法新建时由接线层回退插入当前会话。 */
+  sendNew(text: string): Promise<void>;
   /** 元素所在区域的中文名（用于选中文本的来源标注）。 */
   originOf(el: Element): string;
 }
@@ -69,7 +69,7 @@ export function installContextMenu(hooks: ContextMenuHooks): void {
     ev.preventDefault();
     const text = formatSendText(r.source);
     const item = (label: string, sub: string, fn: () => void) => h('button', { class: 'mi', attrs: { type: 'button', role: 'menuitem' }, on: { click: () => { close(); fn(); } } }, h('span', {}, label), sub ? h('span', { class: 'mute' }, sub) : null);
-    const items: HTMLElement[] = [item(SEND_TO_SESSION_LABEL, describeSource(r.source), () => hooks.send(text))];
+    const items: HTMLElement[] = [item(NEW_SESSION_LABEL, describeSource(r.source), () => void hooks.sendNew(text))];
     if (r.selected) items.push(item('复制', '', () => void navigator.clipboard.writeText(r.selected).catch(() => undefined)));
     menu.replaceChildren(...items);
     menu.hidden = false;

@@ -28,6 +28,13 @@ function sendToSession(text: string): void {
   chat.insertBlock(text);
 }
 
+/** 003：右键「新建会话窗口」——有项目时先新建会话并切换过去（复用 newSession 全流程），再把内容插入新会话输入框（不自动发送）。
+ *  兜底不吞内容：无项目时跳过新建；newSession 失败时其内部已 notify 且当前会话不变——两种情况下都回退 sendToSession 插入当前会话。 */
+async function sendToNewSession(text: string): Promise<void> {
+  if (store.state.project) await newSession();
+  sendToSession(text);
+}
+
 /** Spec Kit 向导：把向导生成的对话指令真实发送到任务会话（无当前会话时先新建，失败处理沿用 newSession 现状），发送成功后切到任务会话；发送失败抛给向导就地提示、不切视图。 */
 async function sendInstruction(text: string): Promise<void> {
   if (!store.state.current) await newSession();
@@ -239,7 +246,7 @@ async function bootstrap(): Promise<void> {
     sendFile: (rel) => sendToSession(formatSendText({ kind: 'file', path: rel, dir: false })),
   });
   chat = sessionView.chat;
-  installContextMenu({ send: sendToSession, originOf });
+  installContextMenu({ sendNew: sendToNewSession, originOf });
   mountBoard(shell.views.board, { openGit: () => shell.setView('git'), openProject: () => void pickProject(), openCard: (c) => void openCard(c) });
   mountGit(shell.views.git, { openBoard: () => shell.setView('board'), openAgents: () => shell.setView('agents'), openProject: () => void pickProject(), notify: (t) => chat.notify(t, 'info') });
   mountAgents(shell.views.agents, {

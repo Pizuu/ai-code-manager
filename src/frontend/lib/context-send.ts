@@ -1,5 +1,5 @@
 /**
- * 全局右键「发送到任务会话」的内容组装（FR-304，contracts/ui.ts）。纯函数，便于单测。
+ * 全局右键「新建会话窗口」的内容组装（FR-304，contracts/ui.ts）。纯函数，便于单测。
  * DOM 只通过 getter 读取 data-send-* 属性，不直接依赖 document。
  */
 import type { SendSource } from '../../../contracts/ui.ts';

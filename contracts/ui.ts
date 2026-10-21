@@ -7,8 +7,8 @@
 
 export const UI_CONTRACT_VERSION = 'v1' as const;
 
-/** 右键菜单项文案。 */
-export const SEND_TO_SESSION_LABEL = '发送到任务会话' as const;
+/** 右键菜单项文案（点击后新建会话窗口并把内容插入新会话输入框）。 */
+export const NEW_SESSION_LABEL = '新建会话窗口' as const;
 
 /**
  * 可发送元素上的 data 属性。渲染层在元素上声明 `data-send-kind` 与对应字段，
