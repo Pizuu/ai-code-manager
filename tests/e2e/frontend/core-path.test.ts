@@ -283,8 +283,9 @@ test('Electron 核心路径：选目录 → 提问 → 批准/拒绝编辑 → �
     let page: PwPage;
     ({ app, page } = await launch(pw, bin, userData, projectDir));
 
-    // ── 首次打开：未配置 → 设置对话框自动弹出，填写 Base URL / 模型 / Key ──
+    // ── 首次打开：未配置 → 经 rail 齿轮打开设置（启动自动弹已取消），填写 Base URL / 模型 / Key ──
     const dlg = page.locator('#settings-dialog');
+    await page.locator('.rail a[title="设置"]').click();
     await dlg.locator('input[type="url"]').waitFor({ state: 'visible', timeout: 15_000 });
     await dlg.locator('input[type="url"]').fill(fake.baseUrl);
     await dlg.locator('input[type="text"]').fill('fake-model');
