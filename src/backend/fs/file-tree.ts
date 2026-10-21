@@ -16,7 +16,11 @@ export const MAX_DIR_ENTRIES = 2000;
 
 export async function listTree(root: string, relDir: string): Promise<FileNode[]> {
   const abs = await resolveSafe(root, relDir);
-  const entries = await fs.readdir(abs, { withFileTypes: true });
+  // 目录不存在（如可选的 .specify/bugs）或路径是文件：视为空目录，不抛错打断界面
+  const entries = await fs.readdir(abs, { withFileTypes: true }).catch((err: NodeJS.ErrnoException) => {
+    if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return [] as Awaited<ReturnType<typeof fs.readdir>>;
+    throw err;
+  });
   return entries
     .filter((e) => !(e.isDirectory() && IGNORED_DIRS.has(e.name)))
     .map((e): FileNode => ({

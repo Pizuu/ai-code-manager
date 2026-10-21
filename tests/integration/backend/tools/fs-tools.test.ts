@@ -13,6 +13,12 @@ test('list_dir shows dirs first with a trailing slash and hides ignored dirs', a
   assert.deepEqual(tree, [{ name: 'x.ts', relPath: 'a/x.ts', kind: 'file' }]);
 });
 
+test('listTree returns [] for a missing directory instead of throwing ENOENT', async (t) => {
+  const root = await tempProject(t, { 'a/x.ts': '' });
+  assert.deepEqual(await listTree(root, '.specify/bugs'), []);
+  assert.deepEqual(await listTree(root, 'a/x.ts'), []); // 路径指向文件（ENOTDIR）同样按空目录处理
+});
+
 test('read_file numbers lines and pages with offset/limit', async (t) => {
   const root = await tempProject(t, { 'f.txt': 'l1\nl2\nl3\nl4\n' });
   const out = await readFile(root, { path: 'f.txt', offset: 2, limit: 2 });
