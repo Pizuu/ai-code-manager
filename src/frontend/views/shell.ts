@@ -158,7 +158,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   featCaret.hidden = true;
   const crumbChip = h('span', { class: 'chip' });
   const header = h('header', { class: 'wh' },
-    h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, '/', crumbFeature, featCaret, crumbChip)),
+    h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, h('span', { class: 'crumb-sep', attrs: { 'aria-hidden': 'true' } }, '/'), crumbFeature, featCaret, crumbChip)),
     h('div', { class: 'wact' }));
 
   // ── 功能下拉：点击面包屑规格名（crumbFeature / caret）展开规格列表，选中走 board:setFeature 切换并全量同步 ──

@@ -161,31 +161,25 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     const integ = snap.integrationBranch;
     const activeC = cards.filter((c) => c.status === 'active' || c.status === 'review');
     const workers = activeC.filter((c) => c.lane !== '@shared');
-    const allMerged = cards.length > 0 && cards.every((c) => c.status === 'merged');
+    // 功能状态 chip：按当前所选功能自身的真实进度推导（F.tasksDone / F.tasksTotal，源自该功能 tasks.md 勾选），
+    // 不再取全项目任务卡的合入情况——旧口径下切功能时 chip 不随功能变、与标题/stages/tasks 计数不同源。
+    const featureDone = F !== null && F.tasksTotal > 0 && F.tasksDone >= F.tasksTotal;
 
     const pad = h('div', { class: 'pad' });
     // 功能概览
     pad.append(h('div', { class: 'fo' },
       h('div', {},
-        h('div', { class: 't' }, h('span', {}, F ? F.title : '未找到 specs/NNN-*'), h('span', { class: `chip ${allMerged ? 'grn' : 'acc'}` }, allMerged ? '已全部合入' : '实施中'))),
+        h('div', { class: 't' }, h('span', {}, F ? F.title : '未找到 specs/NNN-*'), h('span', { class: `chip ${featureDone ? 'grn' : 'acc'}` }, featureDone ? '已完成' : '实施中'))),
       h('button', { class: 'btn', on: { click: hooks.openGit } }, '查看集成队列')));
     // 规格进度行（原 .prog）已移至 shell 底部状态栏右端常驻，见 shell.ts renderProg
-    // 「显示已完成」开关：挂在容量条右端（原在 .ctl 控制行，本批按用户定位反馈移入 .cap）
+    // 「显示已完成」开关：挂在容量条最右端（原在 .ctl 控制行，第十一批移入 .cap）
     const tog = h('span', { class: `tog${f.done ? ' on' : ''}` }, '显示已完成 ', h('i'));
     tog.addEventListener('click', () => {
       f.done = !f.done;
       tog.classList.toggle('on', f.done);
       renderMatrix(snap);
     });
-    // 容量
-    pad.append(h('div', { class: 'cap' },
-      h('span', {}, 'Worker 容量'), h('b', { class: 'b600' }, `${workers.length} / ${snap.maxParallel ?? '?'}`),
-      h('span', { class: 'mute' }, activeC.length ? activeC.map((c) => `${c.assignee} ${c.id} ${STATUS_META[c.status].label}`).join(' · ') : '暂无执行中'),
-      h('span', { class: 'sep' }),
-      h('span', { class: 'mute' }, `${countBy(cards, 'ready')} 张可派工\u3000·\u3000${countBy(cards, 'blocked')} 张等待依赖\u3000·\u3000${countBy(cards, 'review')} 张待审查\u3000·\u3000${countBy(cards, 'merged')} 张已合入`),
-      h('span', { class: 'flex1' }),
-      tog));
-    // 控件
+    // 控件（搜索 / 泳道 / Agent 筛选）：原独立 .ctl 控制行，本批按用户定位反馈并入 .cap 右端、「显示已完成」开关左侧；事件绑定与筛选逻辑不变
     const q = h('input', { class: 'inp', attrs: { placeholder: '搜索任务 / FR / 分支', value: f.q } });
     q.addEventListener('input', () => {
       f.q = q.value;
@@ -209,7 +203,14 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       f.agent = agentSel.value;
       renderMatrix(snap);
     });
-    pad.append(h('div', { class: 'ctl' }, q, selWrap(laneSel), selWrap(agentSel)));
+    // 容量（右端依次：搜索 / 泳道筛选 / Agent 筛选 / 显示已完成开关）
+    pad.append(h('div', { class: 'cap' },
+      h('span', {}, 'Worker 容量'), h('b', { class: 'b600' }, `${workers.length} / ${snap.maxParallel ?? '?'}`),
+      h('span', { class: 'mute' }, activeC.length ? activeC.map((c) => `${c.assignee} ${c.id} ${STATUS_META[c.status].label}`).join(' · ') : '暂无执行中'),
+      h('span', { class: 'sep' }),
+      h('span', { class: 'mute' }, `${countBy(cards, 'ready')} 张可派工\u3000·\u3000${countBy(cards, 'blocked')} 张等待依赖\u3000·\u3000${countBy(cards, 'review')} 张待审查\u3000·\u3000${countBy(cards, 'merged')} 张已合入`),
+      h('span', { class: 'flex1' }),
+      q, selWrap(laneSel), selWrap(agentSel), tog));
     // 根因提示（P0-1）：集成分支本地缺失 / 已回退远端时，先说清「为什么」，再看逐条冲突
     if (snap.integrationMissing) {
       pad.append(h('div', { class: 'rootcause' },
