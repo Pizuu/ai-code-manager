@@ -867,15 +867,16 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .gq.has-hl .q:not(.hl){opacity:.55}
 .gq .q .br{font-size:11px;color:var(--color-text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
 /* Worktree 与 Agent 视图 */
-.agx{grid-template-columns:minmax(0,1fr) 340px}
+.agx{grid-template-columns:minmax(0,1fr) 560px}
 .agx .sec.first{margin-top:16px}
 .agx .cfgcol>.sec:first-child{margin:16px 0 0}
 .agx .wts+.panel.cfg{margin-top:16px}
 .lanes{border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);overflow:hidden}
-.lr{display:grid;grid-template-columns:88px 104px minmax(0,1.1fr) minmax(0,1fr);gap:12px;padding:9px 12px;align-items:center;font-size:var(--font-body);border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
+.lr{display:grid;grid-template-columns:88px 112px minmax(0,1.1fr) minmax(0,1fr);gap:12px;padding:9px 12px;align-items:center;font-size:var(--font-body);border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
+.lanes .lr>span{white-space:nowrap}
 .lr.lh{border-top:0;background:var(--color-background-secondary);font-size:var(--font-caption);color:var(--color-text-secondary);padding:7px 12px}
-.lr .tasks{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
-.lr .globs{font-size:11px;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lr .tasks{display:flex;flex-wrap:nowrap;gap:6px;align-items:center;min-width:0;overflow:hidden}
+.lr .globs{font-size:11px;color:var(--color-text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cfgcol{display:flex;flex-direction:column;gap:12px;min-width:0}
 .panel.cfg .h .mono{font-size:11px}
 .kv{display:grid;grid-template-columns:108px minmax(0,1fr);column-gap:12px;row-gap:2px;padding:8px 0;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary);font-size:var(--font-body)}
