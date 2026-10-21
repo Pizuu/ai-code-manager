@@ -9,6 +9,7 @@ import type { AgentEvent, IpcInvokeChannel } from '../../contracts/ipc.ts';
 import { AGENT_EVENT_CHANNEL } from '../../contracts/ipc.ts';
 import { AppState } from './app-state.ts';
 import { createHandlers } from './ipc/handlers.ts';
+import { ActivateGate } from './notify/activate-gate.ts';
 import { createElectronNotifier } from './notify/electron-notifier.ts';
 import { NotifyService } from './notify/notify-service.ts';
 import { AcpProcessManager } from './agent-cli/acp-runner.ts';
@@ -39,6 +40,10 @@ const safeStorageCipher: KeyCipher = {
 
 let mainWindow: BrowserWindow | null = null;
 
+/** T-053：通知激活就绪门（bootstrap 内构造）。通知点击的 notify-activate 经它出口：
+ *  渲染层未就绪时暂存最新一次、就绪后补发，避免冷启动 / 页面重载窗口期内点击丢失。 */
+let activateGate: ActivateGate | null = null;
+
 function emit(event: AgentEvent): void {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(AGENT_EVENT_CHANNEL, event);
 }
@@ -61,6 +66,9 @@ function registerAppProtocol(): void {
 }
 
 function createWindow(): BrowserWindow {
+  // T-053：新窗口（含 macOS activate 重建）的渲染层必然未就绪，先同步复位就绪门；
+  // 同一窗口的页面重载走 did-start-loading 复位（初始加载时复位是无害的空操作）。
+  activateGate?.reset();
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -91,6 +99,7 @@ function createWindow(): BrowserWindow {
   // 进入全屏后才禁止改变窗口大小：全屏本身无边框不可拖拽，锁定后即使退出全屏也保持不可缩放；
   // 若在进入全屏前就锁定（resizable:false），Windows 会因缺少 WS_THICKFRAME 而拒绝全屏。
   win.on('enter-full-screen', () => win.setResizable(false));
+  win.webContents.on('did-start-loading', () => activateGate?.reset());
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== ENTRY_URL) e.preventDefault();
   });
@@ -143,6 +152,10 @@ async function bootstrap(): Promise<void> {
   app.on('will-quit', () => terminalManager.closeAll());
   // 功能 005（T-047）：主进程通知服务。窗口聚焦判定 / 聚焦走既有 mainWindow 管理（闭包懒读，
   // handlers 在窗口创建前注册也不受影响）；点击通知只聚焦 + 回传 notify-activate，不带审批动作。
+  // T-053：服务的 emit 只发 notify-activate，统一经就绪门出口（未就绪暂存、就绪补发一次）；
+  // handlers 与其余 agent:event 不经此门，保持即发即弃。
+  const gate = new ActivateGate(emit);
+  activateGate = gate;
   const notifyService = new NotifyService({
     notifier: createElectronNotifier(),
     isWindowFocused: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
@@ -152,7 +165,7 @@ async function bootstrap(): Promise<void> {
       mainWindow.show();
       mainWindow.focus();
     },
-    emit,
+    emit: (event) => gate.activate(event),
     getSettings: () => settings.getNotifySettings(),
   });
   app.on('will-quit', () => notifyService.dispose());
@@ -185,6 +198,10 @@ async function bootstrap(): Promise<void> {
     ipcMain.handle(channel, (event, ...args: unknown[]) => {
       // 只接受来自本应用界面的调用
       if (!event.senderFrame?.url.startsWith(`${APP_ORIGIN}/`)) throw new Error('E_VALIDATION: 非法的调用来源');
+      // T-053 就绪信号：前端 bootstrap 在 api.onEvent 订阅注册之后必达 sessions:get（有会话时
+      // selectSession）或 sessions:create（无会话时）之一，且发出时首轮数据已加载完成——调用
+      // 到达即证明订阅已活，此时补发暂存的 notify-activate（论证见 notify/activate-gate.ts）。
+      if (channel === 'sessions:get' || channel === 'sessions:create') gate.markReady();
       return handler(...args);
     });
   }

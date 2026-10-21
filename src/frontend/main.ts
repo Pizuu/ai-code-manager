@@ -85,12 +85,21 @@ async function jumpToSession(sessionId: string): Promise<void> {
   }
 }
 
-/** T-048：切到审批所属会话并定位审批卡。切会话后对话要先完成一轮渲染，定位分两拍兜底重试。 */
+/** T-053：审批定位的等待上限与间隔。切会话是异步的（sessions:get 回来才重渲染对话），
+ *  冷启动时数据加载更慢，原 rAF + 80ms 两拍盖不住；改为轮询等卡片出现，超时静默放弃。 */
+const APPROVAL_FOCUS_TIMEOUT_MS = 3000;
+const APPROVAL_FOCUS_POLL_MS = 120;
+
+/** T-048 / T-053：切到审批所属会话并定位审批卡。focusApproval 找到卡片并滚动定位才返回 true，
+ *  未找到按间隔重试至上限；超时不弹错误（负责人已在应用里，可自行点开会话）。 */
 async function jumpToApproval(sessionId: string, approvalId: string): Promise<void> {
   await jumpToSession(sessionId);
-  const run = () => { chat.focusApproval(approvalId); };
-  requestAnimationFrame(run);
-  setTimeout(run, 80);
+  const deadline = Date.now() + APPROVAL_FOCUS_TIMEOUT_MS;
+  for (;;) {
+    if (chat.focusApproval(approvalId)) return;
+    if (Date.now() >= deadline) return;
+    await new Promise((r) => setTimeout(r, APPROVAL_FOCUS_POLL_MS));
+  }
 }
 
 async function newSession(): Promise<void> {
