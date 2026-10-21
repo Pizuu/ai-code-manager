@@ -52,6 +52,8 @@
 | 工具卡片文字整理 `lib/tool-card-text.ts`（工具名标签、目标抽取、参数键值与截断、结果 JSON 美化） | ✅ 6 条 | — | — | frontend |
 | 会话活动计数 `lib/session-activity.ts`（运行中 / 待批准 / 错误计数与跳转目标） | ✅ 7 条 | — | — | frontend |
 | 错误 / 日志分区 `lib/error-log.ts`（工具失败与 Agent 报错归集、去重排序、分区标题） | ✅ 6 条 | — | — | frontend |
+| 收藏保存 `lib/favorites.ts`（合并落盘、300 条上限裁剪、加载逐条校验、落盘失败保留待写重试） | ✅ 9 条 | — | — | frontend |
+| 会话保存合并 `sessions/session-store.ts`（调用时快照、按会话串行合并突发写 ≤2 次落盘、失败不卡队列） | — | ✅（含突发合并/快照语义/双会话并发/失败口径 4 条） | — | backend |
 | git 引用变化监听 `src/backend/workspace/refs-watcher.ts`（refs 摘要与变更触发） | ✅ 2 条 | — | — | backend |
 | 合并冲突预演 `src/backend/workspace/merge-preview.ts`（merge-tree 只读预演与冲突文件提取） | ✅ 1 条 | ✅ 3 条（临时仓库：干净 / 冲突 / 引用缺失） | — | backend |
 | 集成分支引用回退 `src/backend/workspace/git-overview.ts`（本地缺失 → `origin/<分支>`；看板据此合并冲突、给根因） | ✅ 3 条 | ✅ 3 条（临时仓库：本地缺失 / 仅远端 / 两处皆无） | — | backend |
