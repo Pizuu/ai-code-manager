@@ -164,12 +164,14 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     // 进度条（先构建暂存，最终位置在矩阵正上方，append 见下方矩阵宿主处）
     const stg = h('div', { class: 'stg' });
     for (const s of F?.stages ?? []) stg.append(h('span', { class: s.done ? 'ok' : '', title: s.detail }, `${s.label}${s.key === 'checklists' ? ` ${s.detail}` : ''} ${s.done ? '✓' : '○'}`));
+    // 当前阶段由真实 stages 推导：第一个未完成的阶段；七步全完成 = 规格准备结束、已进入实施（Implement）；无 stages 回退 '—'
+    const currentStage = (F?.stages ?? []).find((s) => !s.done)?.label ?? ((F?.stages ?? []).length ? 'Implement' : '—');
     const prog = h('div', { class: 'prog' },
       icon('check'),
       h('span', {}, `契约 IPC ${snap.contractVersion ?? '?'}${frozen ? ' 已冻结' : ' 未冻结'}`),
       h('span', { class: 'mute' }, contractCard ? `${contractCard.id} · ${contractCard.merge ? `merge ${contractCard.merge.short} 已合入 ${integ}` : '未合入'}` : ''),
       stg,
-      h('span', { class: 'chip acc', title: 'specs tasks.md 勾选数' }, `当前：Implement · tasks.md ${F?.tasksDone ?? 0}/${F?.tasksTotal ?? 0}`),
+      h('span', { class: 'chip acc', title: 'specs tasks.md 勾选数' }, `当前：${currentStage} · tasks.md ${F?.tasksDone ?? 0}/${F?.tasksTotal ?? 0}`),
       h('span', { class: 'mute' }, '按序合入 → Converge'));
     // 容量
     pad.append(h('div', { class: 'cap' },

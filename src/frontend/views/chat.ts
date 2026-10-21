@@ -50,19 +50,19 @@ export async function decideApproval(approvalId: string, approved: boolean): Pro
 
 export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   clear(container);
-  // ── .ctop：菜单 · 运行指示 · 新建 ──
+  // ── .ctop：运行指示 · 新建（菜单按钮在 .thd 标题行左侧）──
   const runningDot = h('span', { class: 'running-dot', title: 'Agent 运行中' });
   const ctop = h('div', { class: 'ctop' },
-    h('button', { class: 'circ', title: '会话列表', on: { click: hooks.onToggleList } }, icon('menu')),
     runningDot,
     h('button', { class: 'circ acc', title: '新建会话', on: { click: hooks.onNewSession } }, icon('plus')));
   // ── .thd ──
+  const menuBtn = h('button', { class: 'circ', title: '会话列表', on: { click: hooks.onToggleList } }, icon('menu'));
   const thTitle = h('span', { class: 'th-title' });
   const thRight = h('span', { class: 'mute' });
   const thChip = h('span', { class: 'chip acc' });
   const thDesc = h('span', { class: 'mute' });
   const thd = h('div', { class: 'thd' },
-    h('div', { class: 'r' }, thTitle, thRight),
+    h('div', { class: 'r' }, menuBtn, thTitle, thRight),
     h('div', { class: 'r' }, h('span', { class: 'fx8' }, thChip, thDesc)));
   const log = h('div', { class: 'log' });
   // v1.8：对话正文限宽居中（长文更好读）；「正在思考…」提示固定挂在末尾。

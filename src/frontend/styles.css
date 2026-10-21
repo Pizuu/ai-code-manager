@@ -143,7 +143,7 @@ select.chip{border:0;outline:none;cursor:pointer;font-family:var(--sans);appeara
 .box textarea{border:0;outline:none;resize:none;width:100%;height:42px;font:16px var(--sans);color:var(--ink);background:transparent}
 .box .bar{display:flex;justify-content:space-between;align-items:center}
 .send{width:32px;height:32px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff;border:0;cursor:pointer}
-.comp .ft{display:flex;gap:24px;color:var(--mute);margin-top:10px}
+.comp .ft{display:flex;align-items:center;gap:24px;color:var(--mute);margin-top:10px}
 .comp .ft .model-pick{display:inline-flex;cursor:pointer}
 .comp .ft .model-pick[hidden]{display:none}
 .comp .ft .md-sel{display:flex;align-items:center;gap:4px;color:var(--mute);font-size:12px;line-height:1.4;padding:2px 6px;border-radius:8px}
@@ -524,9 +524,11 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .thd{padding:4px 24px 12px;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary)}
 .thd .r{font-size:var(--font-caption)}
 .thd .r:first-child{font-size:var(--font-heading-sm);font-weight:var(--font-weight-semibold)}
-.thd .r:first-child{gap:8px;min-width:0}
-.thd .th-title{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thd .r:first-child{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;min-width:0}
+.thd .th-title{justify-self:center;text-align:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .thd .r:first-child>:not(.th-title){flex:none}
+.thd .r:first-child>.circ{justify-self:start}
+.thd .r:first-child>.mute{justify-self:end}
 .log{padding:16px 32px}
 .meta{margin:16px 0 6px;font-size:var(--font-caption)}
 .msg{padding-left:28px;font-size:var(--font-body);line-height:1.6}
@@ -825,14 +827,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 /* 分支背景联动：悬停某分支时，队列条目与左侧同分支行以该分支色（--hl）浅染背景；与 .hl 图形联动相互独立 */
 #wb-git .brhl{background:color-mix(in srgb, var(--hl) 14%, transparent)}
 
-/* ───────── v1.6（ADR 0010）：任务会话「对话 / 终端」双视图 ───────── */
-/* 模式条：对话 / 终端 分段切换（照 Orca 的 per-tab viewMode 切换） */
-.modebar{display:flex;align-items:center;gap:12px;padding:6px 12px;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary);background:var(--color-background-primary);flex:none}
-.modebar .seg{display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:var(--border-radius-md);background:var(--color-background-secondary);flex:none}
-.modebar .seg-b{height:26px;padding:0 12px;border:0;border-radius:var(--border-radius-sm);background:transparent;color:var(--color-text-secondary);font-size:var(--font-caption);font-weight:var(--font-weight-normal);cursor:pointer}
-.modebar .seg-b:hover{color:var(--color-text-primary)}
-.modebar .seg-b.on{background:var(--color-background-primary);color:var(--color-text-primary);font-weight:var(--font-weight-semibold);box-shadow:var(--shadow-hairline)}
-.modebar .mode-hint{font-size:var(--font-caption);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* ───────── v1.6（ADR 0010）：任务会话终端面板（模式切换条已删除，界面恒为对话模式） ───────── */
 /* 终端面板 */
 .termv-wrap{flex:1 1 0;min-width:320px;min-height:0;display:flex;flex-direction:column;background:var(--color-background-primary)}
 .termv-wrap[hidden]{display:none}
