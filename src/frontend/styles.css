@@ -470,7 +470,7 @@ b,strong,.b600{font-weight:var(--font-weight-semibold)}
 .nav a:hover{background:var(--color-background-secondary)}
 .nav a.on{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:var(--font-weight-semibold)}
 .nav a.on svg{color:var(--accent)}
-.exh{padding:16px 18px 6px;font-size:var(--font-caption)}
+.exh{padding:16px 18px 6px;font-size:var(--font-body)}
 .tree{padding:0 8px}
 .te{height:26px;padding:0 6px;border-radius:var(--border-radius-sm);gap:6px;font-size:var(--font-caption)}
 .te.kid{padding-left:20px}
@@ -877,6 +877,8 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .agx .cfgcol>.sec:not(:first-child){margin:8px 0 0}
 .lanes.agents .lr{grid-template-columns:minmax(0,1.1fr) minmax(0,1.4fr) 84px 60px}
 .lanes.agents .lr .who{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.agx .lanes.agents{max-height:340px;overflow-y:auto}
+.agx .lanes.agents .lr.lh{position:sticky;top:0;z-index:1}
 .lanes{border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);overflow:hidden}
 .lr{display:grid;grid-template-columns:88px 112px minmax(0,1.1fr) minmax(0,1fr);gap:12px;padding:9px 12px;align-items:center;font-size:var(--font-body);border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
 .lanes .lr>span{white-space:nowrap}

@@ -273,10 +273,23 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
     }
     const history = listApprovalHistory();
     const progress = feed.progressRows();
+    // 页签计数与下方列表渲染同源（同一批数组的长度）：角标数字与实际条目数恒一致。
+    const tabCounts: Readonly<Record<'pending' | 'history' | 'progress', number>> = {
+      pending: approvals.length + extras.length,
+      history: history.length,
+      progress: progress.length,
+    };
     const tabBtn = (id: 'pending' | 'history' | 'progress', label: string) => h('button', {
       class: `notify-tab${activeTab === id ? ' on' : ''}`,
       attrs: { type: 'button', role: 'tab', 'aria-selected': String(activeTab === id) },
-      on: { click: () => { activeTab = id; render(); } },
+      on: {
+        click: () => {
+          // 目标页签没有数据时不切空页签：直接关闭弹层（负责人定版口径），activeTab 不变。
+          if (tabCounts[id] === 0) { closeInbox(); return; }
+          activeTab = id;
+          render();
+        },
+      },
     }, label);
     const body = h('div', { class: 'notify-list' });
     if (activeTab === 'progress') {
@@ -306,12 +319,12 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
           class: 'notify-x',
           title: '关闭',
           attrs: { type: 'button', 'aria-label': '关闭收件箱' },
-          on: { click: () => { inboxOpen = false; render(); } },
+          on: { click: () => closeInbox() },
         }, '×')),
       h('div', { class: 'notify-tabs', attrs: { role: 'tablist' } },
-        tabBtn('pending', `待处理 ${approvals.length + extras.length}`),
-        tabBtn('history', `历史 ${history.length}`),
-        tabBtn('progress', `进度 ${progress.length}`)),
+        tabBtn('pending', `待处理 ${tabCounts.pending}`),
+        tabBtn('history', `历史 ${tabCounts.history}`),
+        tabBtn('progress', `进度 ${tabCounts.progress}`)),
       body);
     positionInbox();
   };
@@ -369,18 +382,22 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
     render();
   }
 
+  /** 弹层唯一的关闭入口：标题栏 ×、点外关闭、Esc 与「空页签点击关闭」都走这里。 */
+  function closeInbox(): void {
+    inboxOpen = false;
+    render();
+  }
+
   document.addEventListener('click', (ev) => {
     if (!inboxOpen) return;
     const t = ev.target as Node;
     if (!popover.contains(t) && !button.contains(t)) {
-      inboxOpen = false;
-      render();
+      closeInbox();
     }
   });
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && inboxOpen) {
-      inboxOpen = false;
-      render();
+      closeInbox();
     }
   });
   // 审批卡可见性会随滚动变化（FR-507 是动态判定）：滚动 / 缩放后按帧重推导弹窗集合。
