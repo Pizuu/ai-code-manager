@@ -16,9 +16,10 @@ import {
   listApprovalHistory,
   onNotifyHistoryChanged,
   selectPopupReminderItems,
-  unresolvedReminderCount,
 } from '../lib/notify.ts';
+import { pendingBadgeCount, PROGRESS_STAGES, type CardProgressRow } from '../lib/notify-diff.ts';
 import { store } from '../store.ts';
+import { createNotifyFeed } from './notify-feed.ts';
 
 export interface NotifyViewHooks {
   /** 弹窗 / 收件箱内直批：必须复用既有审批决定通路（chat.ts 的 decideApproval）。 */
@@ -55,9 +56,15 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
   badge.hidden = true;
   const button = h('a', { class: 'ri', title: '收件箱', on: { click: (ev) => { ev.stopPropagation(); toggleInbox(); } } }, icon('inbox'), badge);
   const stack = h('div', { class: 'notify-stack', attrs: { 'aria-live': 'polite' } });
+  const toasts = h('div', { class: 'notify-toasts', attrs: { 'aria-live': 'polite' } });
   const popover = h('section', { class: 'notify-pop', attrs: { role: 'dialog', 'aria-label': '待办收件箱' } });
   popover.hidden = true;
-  const root = h('div', { class: 'notify-root' }, stack, popover);
+  const root = h('div', { class: 'notify-root' }, toasts, stack, popover);
+
+  /* T-049：P1–P3 事项喂数器（看板差分 + 会话出错）；本视图是其唯一消费者。 */
+  const feed = createNotifyFeed();
+  /** 最新一次渲染时 feed 事项的 id 集合（区分外部 extras：只有 feed 事项可标已读 / 稍后）。 */
+  let feedIds = new Set<string>();
 
   /** 首次观察到某审批的时间，保证重渲时事项 createdAt 与排队顺序稳定。 */
   const firstSeenAt = new Map<string, string>();
@@ -66,7 +73,7 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
   /** 决定提交中的审批：禁用其按钮防双击，决定事件回来前不重复发。 */
   const deciding = new Set<string>();
   let inboxOpen = false;
-  let activeTab: 'pending' | 'history' = 'pending';
+  let activeTab: 'pending' | 'history' | 'progress' = 'pending';
 
   const sessionTitle = (sessionId: string): string =>
     store.state.sessions.find((s) => s.id === sessionId)?.title
@@ -143,19 +150,120 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
       actionRow(req));
   };
 
-  const pendingRow = (item: ReminderItem): HTMLElement => h('article', { class: 'notify-row', attrs: { 'data-item-id': item.id } },
-    h('div', { class: 'notify-hd' },
-      h('span', { class: 'chip' }, item.level),
-      h('span', { class: 'notify-kind' }, item.title),
-      h('span', { class: 'notify-time' }, hm(item.createdAt))),
-    ...(item.body ? [h('div', { class: 'notify-row-body' }, item.body)] : []),
-    ...(hooks.viewItem
-      ? [h('div', { class: 'notify-actions' }, h('button', {
+  const LEVEL_CHIP: Readonly<Record<string, string>> = { P1: 'amb', P2: 'blu', P3: '' };
+
+  const pendingRow = (item: ReminderItem): HTMLElement => {
+    const fromFeed = feedIds.has(item.id);
+    const canRead = fromFeed && (item.level === 'P2' || item.level === 'P3') && item.state !== 'read';
+    const actions: HTMLElement[] = [];
+    if (hooks.viewItem) {
+      actions.push(h('button', {
         class: 'btn sm',
         attrs: { type: 'button' },
-        on: { click: () => { inboxOpen = false; hooks.viewItem?.(item); } },
-      }, '查看'))]
-      : []));
+        on: {
+          click: () => {
+            if (canRead) feed.markRead(item.id);
+            inboxOpen = false;
+            hooks.viewItem?.(item);
+          },
+        },
+      }, '查看'));
+    }
+    if (canRead) {
+      actions.push(h('button', {
+        class: 'btn sm',
+        attrs: { type: 'button' },
+        on: { click: () => feed.markRead(item.id) },
+      }, '标已读'));
+    }
+    return h('article', { class: 'notify-row', attrs: { 'data-item-id': item.id } },
+      h('div', { class: 'notify-hd' },
+        h('span', { class: `chip ${LEVEL_CHIP[item.level] ?? ''}`.trim() }, item.level),
+        h('span', { class: 'notify-kind' }, item.title),
+        ...(item.state === 'read' ? [h('span', { class: 'chip' }, '已读')] : []),
+        ...(item.state === 'snoozed' ? [h('span', { class: 'chip' }, '已稍后')] : []),
+        h('span', { class: 'notify-time' }, hm(item.createdAt))),
+      ...(item.body ? [h('div', { class: 'notify-row-body' }, item.body)] : []),
+      ...(actions.length ? [h('div', { class: 'notify-actions' }, ...actions)] : []));
+  };
+
+  /* ── T-049：P1 弹窗卡（复用弹窗栈形态；无审批类按钮，「稍后」只收起弹窗） ── */
+  const extraPopupCard = (item: ReminderItem): HTMLElement => h('article', { class: 'notify-card popup', attrs: { 'data-item-id': item.id } },
+    h('div', { class: 'notify-hd' },
+      h('span', { class: 'chip amb' }, item.source === 'card' ? 'P1 受阻' : 'P1 出错'),
+      h('span', { class: 'notify-time' }, hm(item.createdAt)),
+      h('button', {
+        class: 'notify-x',
+        title: '稍后（事项仍留在收件箱待处理中）',
+        attrs: { type: 'button', 'aria-label': '稍后处理此提醒' },
+        on: { click: () => feed.snooze(item.id) },
+      }, '×')),
+    h('div', { class: 'notify-title' }, item.title),
+    ...(item.body ? [h('div', { class: 'notify-content' }, h('div', { class: 'notify-lines' }, item.body))] : []),
+    h('div', { class: 'notify-actions' },
+      ...(hooks.viewItem
+        ? [h('button', {
+          class: 'btn sm pri',
+          attrs: { type: 'button' },
+          on: { click: () => hooks.viewItem?.(item) },
+        }, '查看')]
+        : []),
+      h('button', {
+        class: 'btn sm',
+        attrs: { type: 'button' },
+        on: { click: () => feed.snooze(item.id) },
+      }, '稍后')));
+
+  /* ── T-049：P2 轻提示（非模态小条，数秒自动消失；点击打开收件箱） ── */
+  const showToast = (item: ReminderItem): void => {
+    const el = h('div', { class: 'notify-toast', attrs: { role: 'status', 'data-item-id': item.id } },
+      h('span', { class: 'chip blu' }, 'P2'),
+      h('span', { class: 'notify-toast-text' }, item.title));
+    el.addEventListener('click', () => {
+      el.remove();
+      activeTab = 'pending';
+      inboxOpen = true;
+      render();
+    });
+    toasts.append(el);
+    while (toasts.children.length > 3) toasts.firstElementChild?.remove();
+    setTimeout(() => el.remove(), 6000);
+  };
+
+  /* ── FR-516「进度」页签行：在途卡 + 五段进度指示 + 状态时间戳；点击走 viewItem 的 card 路由 ── */
+  const progressRow = (row: CardProgressRow): HTMLElement => {
+    const segs = PROGRESS_STAGES.map((s, i) => h('span', {
+      class: `notify-prog-seg${row.blocked ? ' blocked' : i <= row.stageIndex ? ' on' : ''}`,
+      attrs: { title: s.label },
+    }));
+    const timeText = row.statusSinceKind === 'preexisting'
+      ? '本应用打开前已处于此状态'
+      : `${row.statusSinceKind === 'merge' ? '合入于 ' : '进入此状态 '}${ymdhm(row.statusSince)}`;
+    const el = h('article', { class: 'notify-row notify-prog-row', attrs: { 'data-card-id': row.cardId, role: 'button', tabindex: '0' } },
+      h('div', { class: 'notify-hd' },
+        h('span', { class: 'notify-kind' }, row.cardId),
+        h('span', { class: 'notify-sess', title: row.title }, row.title),
+        ...(row.blocked ? [h('span', { class: 'chip amb' }, '受阻')] : [])),
+      h('div', { class: 'notify-prog-track' }, ...segs),
+      h('div', { class: 'notify-prog-meta' },
+        `${row.assignee} · ${row.lane}${row.ahead ? ` · 领先 ${row.ahead} 提交` : ''} · ${timeText}`));
+    const go = (): void => {
+      if (!hooks.viewItem) return;
+      inboxOpen = false;
+      hooks.viewItem({
+        id: `card:${row.cardId}:${row.status}`,
+        level: row.blocked ? 'P1' : row.status === 'review' ? 'P2' : 'P3',
+        source: 'card',
+        title: row.title,
+        createdAt: new Date().toISOString(),
+        state: 'active',
+        cardId: row.cardId,
+      });
+    };
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } });
+    return el;
+  };
 
   const renderInbox = (approvals: ApprovalRequest[], extras: readonly ReminderItem[]): void => {
     popover.hidden = !inboxOpen;
@@ -164,13 +272,17 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
       return;
     }
     const history = listApprovalHistory();
-    const tabBtn = (id: 'pending' | 'history', label: string) => h('button', {
+    const progress = feed.progressRows();
+    const tabBtn = (id: 'pending' | 'history' | 'progress', label: string) => h('button', {
       class: `notify-tab${activeTab === id ? ' on' : ''}`,
       attrs: { type: 'button', role: 'tab', 'aria-selected': String(activeTab === id) },
       on: { click: () => { activeTab = id; render(); } },
     }, label);
     const body = h('div', { class: 'notify-list' });
-    if (activeTab === 'pending') {
+    if (activeTab === 'progress') {
+      if (!progress.length) body.append(h('div', { class: 'notify-empty' }, '暂无在途任务卡。'));
+      for (const row of progress) body.append(progressRow(row));
+    } else if (activeTab === 'pending') {
       if (!approvals.length && !extras.length) body.append(h('div', { class: 'notify-empty' }, '暂无待处理事项。'));
       for (const req of approvals) body.append(approvalCard(req, 'inbox'));
       for (const item of extras) body.append(pendingRow(item));
@@ -198,7 +310,8 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
         }, '×')),
       h('div', { class: 'notify-tabs', attrs: { role: 'tablist' } },
         tabBtn('pending', `待处理 ${approvals.length + extras.length}`),
-        tabBtn('history', `历史 ${history.length}`)),
+        tabBtn('history', `历史 ${history.length}`),
+        tabBtn('progress', `进度 ${progress.length}`)),
       body);
     positionInbox();
   };
@@ -219,8 +332,11 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
     for (const a of approvals) if (!firstSeenAt.has(a.id)) firstSeenAt.set(a.id, new Date().toISOString());
 
     const items = buildApprovalReminderItems(approvals, { firstSeenAt });
-    const extras = hooks.extraPendingItems?.() ?? [];
-    const count = unresolvedReminderCount(items) + unresolvedReminderCount(extras);
+    const feedItems = feed.items();
+    feedIds = new Set(feedItems.map((i) => i.id));
+    const extras: readonly ReminderItem[] = [...feedItems, ...(hooks.extraPendingItems?.() ?? [])];
+    // 角标口径（FR-511）：P0 待批 + P1 活动（含稍后）+ P2/P3 未读——统一走 lib 的 pendingBadgeCount。
+    const count = pendingBadgeCount(items, extras);
     badge.hidden = count === 0;
     badge.textContent = count > 99 ? '99+' : String(count);
     button.title = count ? `收件箱（${count} 条待处理）` : '收件箱';
@@ -240,7 +356,10 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
         on: { click: () => { activeTab = 'pending'; inboxOpen = true; render(); } },
       }, `还有 ${picked.overflow.length} 条待批准 · 打开收件箱`));
     }
+    // T-049：P1 弹窗跟在 P0 之后（优先级低一档）；P2 只轻提示、P3 不出声（FR-501）。
+    for (const item of feed.popupItems()) cards.push(extraPopupCard(item));
     stack.replaceChildren(...cards);
+    for (const item of feed.takeToasts()) showToast(item);
     renderInbox(approvals, extras);
   };
 
@@ -279,6 +398,7 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
 
   for (const t of ['approvals', 'sessions', 'current', 'view'] as const) store.on(t, render);
   onNotifyHistoryChanged(render);
+  feed.onChanged(render);
   render();
 
   return { button, root };

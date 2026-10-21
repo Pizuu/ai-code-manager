@@ -1103,3 +1103,15 @@ a.sk-row:hover{background:var(--chip)}
 .notify-empty{color:var(--mute);padding:18px 8px;text-align:center;line-height:1.7}
 /* 审批卡定位高亮（chat.ts focusApproval，与看板 .card.flash 同口径） */
 .appr-flash{outline:2px solid var(--accent);outline-offset:2px}
+/* P2 轻提示（T-049）：非模态小条，右上角短暂出现后自动消失，点击打开收件箱 */
+.notify-toasts{position:absolute;top:64px;right:16px;display:flex;flex-direction:column;gap:8px;width:min(360px,calc(100vw - 76px))}
+.notify-toast{pointer-events:auto;display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:var(--border-radius-md);box-shadow:var(--shadow-md);padding:8px 12px;color:var(--ink);cursor:pointer;font-size:var(--font-caption)}
+.notify-toast-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 「进度」页签（FR-516 / T-049）：在途卡五段进度指示；受阻整轨异常态（红） */
+.notify-prog-row{cursor:pointer}
+.notify-prog-row:hover{border-color:var(--accent)}
+.notify-prog-track{display:flex;gap:4px;margin-top:8px}
+.notify-prog-seg{flex:1;height:6px;border-radius:99px;background:var(--chip)}
+.notify-prog-seg.on{background:var(--green)}
+.notify-prog-seg.blocked{background:var(--err)}
+.notify-prog-meta{margin-top:6px;color:var(--mute);font-size:var(--font-caption);line-height:1.6;overflow-wrap:anywhere}

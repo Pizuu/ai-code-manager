@@ -2,7 +2,7 @@
  * 渲染进程入口：加载初始状态，挂载工作台外框与三个板块（泳道看板 / 任务会话 / Git 分支与集成），
  * 把 agent:event 分发到状态与视图。
  */
-import type { AgentEvent, BoardCard, ChatMessage, Session } from '../../contracts/ipc.ts';
+import type { AgentEvent, BoardCard, ChatMessage, ReminderItem, Session } from '../../contracts/ipc.ts';
 import { api, errorText } from './api.ts';
 import { agentError, sessionErrorEntries, toolCallError } from './lib/error-log.ts';
 import { recordApprovalResolution } from './lib/notify.ts';
@@ -283,6 +283,15 @@ async function bootstrap(): Promise<void> {
       if (req) void jumpToApproval(req.sessionId, approvalId);
     },
     isApprovalCardVisible: (approvalId) => chat.isApprovalCardVisible(approvalId),
+    // T-049：收件箱 P1–P3 事项查看——卡片事项跳看板定位，会话事项切到该会话。
+    notifyViewItem: (item: ReminderItem) => {
+      if (item.source === 'card' && item.cardId) {
+        shell.setView('board');
+        focusBoardCard(item.cardId);
+      } else if (item.sessionId) {
+        void jumpToSession(item.sessionId);
+      }
+    },
   });
   sessionView = mountSessionView(shell.views.session, {
     selectSession,

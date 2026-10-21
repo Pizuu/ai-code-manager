@@ -2,7 +2,7 @@
  * 工作台外框（FR-101–FR-103，ADR 0005）：图标栏 .rail、项目栏 .explorer、页头 .wh、状态栏 .status，
  * DOM 结构与类名逐一对应 HTML 原型的 rail() / explorer() / header() / statusbar()。三个导航项 = 三个板块。
  */
-import type { FileNode } from '../../../contracts/ipc.ts';
+import type { FileNode, ReminderItem } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
@@ -34,6 +34,8 @@ export interface ShellHooks {
   notifyView(approvalId: string): void;
   /** T-048：FR-507 抑制判定（chat.ts 的审批卡可见性查询）。 */
   isApprovalCardVisible(approvalId: string): boolean;
+  /** T-049：收件箱非审批事项（P1–P3）的查看跳转（main 组合看板定位 / 切会话）。 */
+  notifyViewItem?: (item: ReminderItem) => void;
 }
 
 export interface ShellView {
@@ -94,6 +96,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     decide: hooks.notifyDecide,
     view: hooks.notifyView,
     isApprovalCardVisible: hooks.isApprovalCardVisible,
+    ...(hooks.notifyViewItem ? { viewItem: hooks.notifyViewItem } : {}),
   });
   const rail = h('nav', { class: 'rail' },
     railBtn('side', '侧栏', () => explorer.toggleAttribute('hidden')),
