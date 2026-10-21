@@ -27,6 +27,8 @@ export interface SessionHooks {
   selectSession(id: string): Promise<void>;
   newSession(): Promise<void>;
   openBoard(): void;
+  /** 在看板中定位并高亮指定任务卡（任务上下文头部任务号点击）。 */
+  focusCard(id: string): void;
   /** 代码查看器「发送到任务会话」（整个文件引用）。 */
   sendFile(relPath: string): void;
 }
@@ -193,7 +195,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       // 回答状态圆点：出错红 / 回答中黄 / 回答完成绿（与 statusOf 三态同步）
       const dotCls = status === '出错' ? 'r' : status === '回答中' ? 'y' : 'g';
       const el = h('a', { class: `si${s.id === cur ? ' on' : ''}${isPinned ? ' pinned' : ''}` },
-        h('div', { class: 'a' }, h('span', { class: 'st' }, status), h('span', { class: 'tm' }, hm(s.updatedAt) || '—'), pin, del),
+        h('div', { class: 'a' }, h('span', { class: 'tm' }, hm(s.updatedAt) || '—'), pin, del),
         h('div', { class: 'b' }, h('span', { class: `dot ${dotCls}`, title: status }), h('span', { class: 'ttl' }, s.title)),
         h('div', { class: 'c' }, `${s.messageCount} 条消息`));
       el.addEventListener('click', () => void hooks.selectSession(s.id).catch((e: unknown) => chat.notify(errorText(e))));
@@ -233,8 +235,8 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     const byId = new Map((snap?.cards ?? []).map((x) => [x.id, x]));
     const down = (snap?.cards ?? []).filter((x) => x.deps.includes(c.id));
     return [
-      h('div', { class: 'h' }, h('span', {}, '任务上下文'), h('span', { class: 'mute' }, `${c.id} ↗`)),
-      h('div', { class: 'chips' }, h('span', { class: `chip ${STATUS_META[c.status].cls}` }, STATUS_META[c.status].label), ...c.frs.slice(0, 2).map((f) => h('span', { class: 'chip' }, f)), c.frs.length > 2 ? h('span', { class: 'chip' }, `+${c.frs.length - 2}`) : null),
+      h('div', { class: 'h' }, h('span', {}, '任务上下文'), h('span', { class: 'mute lk', title: '在看板中定位此卡', on: { click: () => hooks.focusCard(c.id) } }, `${c.id} ↗`)),
+      h('div', { class: 'chips' }, h('span', { class: `chip ${STATUS_META[c.status].cls}` }, STATUS_META[c.status].label), ...c.frs.slice(0, 2).map((f) => h('span', { class: 'chip fr' }, f)), c.frs.length > 2 ? h('span', { class: 'chip fr' }, `+${c.frs.length - 2}`) : null),
       ...kv('执行 / 协调 / 审查', `${c.assignee} / coordinator / 暂无指派审查者`),
       ...kv('Feature', snap?.feature ? `${snap.feature.id} · ${snap.feature.title}` : '—'),
       h('hr'),
@@ -269,7 +271,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     const cliId = agent !== 'builtin' ? agent.slice(4) : null;
     ctxp.append(
       h('div', { class: card ? 'h mt20' : 'h' }, h('span', {}, '会话上下文'), h('span', { class: 'mute' }, s?.id ?? '')),
-      h('div', { class: 'chips' }, h('span', { class: `chip ${running ? 'acc' : 'grn'}` }, running ? '运行中' : '空闲'), h('span', { class: 'chip' }, isCli(agent, st) ? '外部 CLI' : '内置 agent'), h('span', { class: 'chip' }, MODE_LABELS[st?.permissionMode ?? 'ask'])),
+      h('div', { class: 'chips' }, h('span', { class: `chip ${running ? 'acc' : 'grn'}` }, running ? '运行中' : '空闲'), h('span', { class: 'chip' }, isCli(agent, st) ? '外部 CLI' : '内置 agent'), h('span', { class: 'chip perm' }, MODE_LABELS[st?.permissionMode ?? 'ask'])),
       ...kv('Agent', agentName(agent, st)),
       ...kv('工作目录', store.state.project?.root ?? '未打开项目', true),
       ...(cliId ? kv('CLI 会话（续接）', s?.cliSessions?.[cliId] ?? '首轮后建立', true) : []),

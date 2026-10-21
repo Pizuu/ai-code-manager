@@ -399,6 +399,32 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     modelMenu.style.top = `${above >= 4 ? above : Math.max(4, Math.min(r.bottom + 4, H - rect.height - 4))}px`;
   };
 
+  /** 候选模型下拉：加载中 / 有候选 / 无候选三态；选中非空值即应用（applySessionModel 内部关菜单）。 */
+  const buildModelSelect = (loading: boolean, cfgModel: string | undefined, override: string | undefined): HTMLSelectElement => {
+    const sel = h('select', { class: 'mi-select', attrs: { 'aria-label': '选择 CLI 模型' } });
+    // 隔离菜单的全局关闭逻辑（点外 / Esc）：下拉展开与键盘选择只作用于下拉本身，不关菜单。
+    sel.addEventListener('click', (ev) => ev.stopPropagation());
+    sel.addEventListener('keydown', (ev) => ev.stopPropagation());
+    sel.addEventListener('change', () => {
+      if (sel.value) void applySessionModel(sel.value);
+    });
+    if (loading) {
+      sel.append(h('option', { attrs: { value: '' } }, '加载模型…'));
+      sel.disabled = true;
+      return sel;
+    }
+    const candidates = (modelCandidates ?? []).filter((m) => m !== cfgModel);
+    if (!candidates.length) {
+      sel.append(h('option', { attrs: { value: '' } }, '无可用模型列表'));
+      sel.disabled = true;
+      return sel;
+    }
+    sel.append(h('option', { attrs: { value: '' } }, '选择模型…'));
+    for (const m of candidates) sel.append(h('option', { attrs: { value: m } }, m));
+    if (override && candidates.includes(override)) sel.value = override;
+    return sel;
+  };
+
   const buildModelMenu = (loading: boolean) => {
     const s = store.state.current;
     const target = modelMenuFor;
@@ -411,14 +437,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       modelMenuItem('CLI 默认', cfgModel ? `解析为配置模型 ${cfgModel}` : '使用 CLI 自身默认模型', !override, () => void applySessionModel(null)),
     ];
     if (cfgModel) items.push(modelMenuItem(cfgModel, '配置', override === cfgModel, () => void applySessionModel(cfgModel)));
-    if (loading) {
-      items.push(h('div', { class: 'mi dis' }, '加载模型…'));
-    } else {
-      for (const m of modelCandidates ?? []) {
-        if (m === cfgModel) continue;
-        items.push(modelMenuItem(m, '', override === m, () => void applySessionModel(m)));
-      }
-    }
+    items.push(buildModelSelect(loading, cfgModel, override));
     const customCurrent = override && override !== cfgModel && !(modelCandidates ?? []).includes(override) ? `当前：${override}` : '';
     items.push(modelMenuItem('自定义…', customCurrent, false, showCustomModelForm));
     modelMenu.replaceChildren(...items);

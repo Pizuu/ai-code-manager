@@ -6,7 +6,7 @@ import type { AgentEvent, BoardCard, ChatMessage, Session } from '../../contract
 import { api, errorText } from './api.ts';
 import { agentError, sessionErrorEntries, toolCallError } from './lib/error-log.ts';
 import { store } from './store.ts';
-import { mountBoard } from './views/board-view.ts';
+import { focusBoardCard, mountBoard } from './views/board-view.ts';
 import type { ChatView } from './views/chat.ts';
 import { mountAgents } from './views/agents-view.ts';
 import { mountGit } from './views/git-view.ts';
@@ -220,6 +220,8 @@ async function bootstrap(): Promise<void> {
     selectSession,
     newSession,
     openBoard: () => shell.setView('board'),
+    // 先切到看板（视图以 hidden 显隐，隐藏态下 scrollIntoView 无效），再登记定位：看板已挂载，applier 立即消费
+    focusCard: (id: string) => { shell.setView('board'); focusBoardCard(id); },
     sendFile: (rel) => sendToSession(formatSendText({ kind: 'file', path: rel, dir: false })),
   });
   chat = sessionView.chat;

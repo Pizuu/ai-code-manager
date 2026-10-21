@@ -16,6 +16,16 @@ export interface BoardHooks {
   openCard(card: BoardCard): void;
 }
 
+/** 待定位的卡片（会话上下文面板点任务号 → 跳转看板并定位该卡）：focusBoardCard 先登记，看板挂载后消费。 */
+let pendingFocusId: string | null = null;
+let applyPendingFocus: (() => void) | null = null;
+
+/** 登记「定位到指定卡片」：看板已挂载则立即定位；未挂载时由挂载后的首次渲染消费。 */
+export function focusBoardCard(id: string): void {
+  pendingFocusId = id;
+  applyPendingFocus?.();
+}
+
 /** 矩阵状态列顺序：仅本机界面偏好，存 localStorage（不经 IPC）。 */
 const COL_ORDER_KEY = 'acm.board.colOrder';
 
@@ -241,7 +251,27 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     renderMatrix(snap);
   };
 
+  /** 消费待定位卡片：筛到该卡（搜索词设为卡片 id，并清掉泳道 / Agent 筛选、显示已完成），全量重渲染后滚动居中并短暂高亮；找不到卡片时静默。 */
+  const focusPending = () => {
+    const id = pendingFocusId;
+    if (!id) return;
+    pendingFocusId = null;
+    f.q = id;
+    f.lane = '';
+    f.agent = '';
+    f.done = true;
+    render();
+    // 卡片元素经 sendAttrs 带 data-send-id（值即卡片 id），据此定位
+    const el = matrixHost?.querySelector(`.card[data-send-id="${id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 1600);
+  };
+  applyPendingFocus = focusPending;
+
   store.on('workspace', render);
   store.on('project', render);
   render();
+  focusPending();
 }
