@@ -8,7 +8,7 @@
 import type { BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
-import { agentName, agentOptions, agentWho, isCli } from '../lib/agent-label.ts';
+import { agentName, agentWho, isCli } from '../lib/agent-label.ts';
 import { insertBlock } from '../lib/context-send.ts';
 import { hm } from '../lib/board-format.ts';
 import { avatarText, hasPendingApproval, thinkCountText, thinkLastAction, thinkStatusText } from '../lib/chat-turn.ts';
@@ -50,13 +50,11 @@ export async function decideApproval(approvalId: string, approved: boolean): Pro
 
 export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   clear(container);
-  // ── .ctop：菜单 · agent 选择器 · 新建 ──
-  const agentLabel = h('span');
-  const agentSel = h('select', { title: '选择本会话使用的 agent' });
+  // ── .ctop：菜单 · 运行指示 · 新建 ──
   const runningDot = h('span', { class: 'running-dot', title: 'Agent 运行中' });
   const ctop = h('div', { class: 'ctop' },
     h('button', { class: 'circ', title: '会话列表', on: { click: hooks.onToggleList } }, icon('menu')),
-    h('span', { class: 'agent-pick' }, h('span', { class: 'md-sel' }, agentLabel, h('span', { class: 'mute vmid' }, icon('caret'))), agentSel, runningDot),
+    runningDot,
     h('button', { class: 'circ acc', title: '新建会话', on: { click: hooks.onNewSession } }, icon('plus')));
   // ── .thd ──
   const thTitle = h('span', { class: 'th-title' });
@@ -84,8 +82,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const sendBtn = h('button', { class: 'send', title: '发送' }, icon('up'));
   const modeSel = h('select', { class: 'mode', title: '权限模式' });
   for (const [v, l] of Object.entries(MODE_LABELS)) modeSel.append(h('option', { attrs: { value: v } }, `权限：${l}`));
-  const hint = h('span');
-  // CLI 模型切换器：占用 hint 的位置（.ft 第二个元素），仅 CLI 会话显示（内置 agent 会话仍用 hint 文案）。
+  // CLI 模型切换器：.ft 第二个元素，仅 CLI 会话显示。
   // 生效模型 = session.cliModel（会话覆盖）?? 该 CLI 配置的 model ?? 'CLI 默认'。
   const modelLabel = h('span');
   const modelPick = h('span', { class: 'model-pick', title: '本会话的 CLI 模型（点击切换，下一轮生效）', attrs: { role: 'button', tabindex: '0' } },
@@ -107,7 +104,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     h('div', { class: 'ctx' }, ctxChip, ctxText),
     slashMenu,
     h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, h('span', { class: 'mute plus', title: '插入 @文件：在左侧项目结构中点击文件' }, '+'), h('span', { class: 'right' }, stopBtn, sendBtn))),
-    h('div', { class: 'ft' }, h('span', {}, 'Enter 发送 · Shift + Enter 换行'), hint, modelPick, modeSel));
+    h('div', { class: 'ft' }, h('span', {}, 'Enter 发送 · Shift + Enter 换行'), modelPick, modeSel));
   container.append(ctop, thd, log, comp);
 
   const pendingDeltas = new Set<string>();
@@ -255,13 +252,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const st = settings();
     const agent = s?.agent ?? st?.defaultAgent ?? 'builtin';
     const cli = isCli(agent, st);
-    agentLabel.textContent = agentName(agent, st);
-    clear(agentSel);
-    for (const o of agentOptions(st)) agentSel.append(h('option', { attrs: { value: o.ref } }, o.label));
-    agentSel.value = agent;
     const running = store.isRunning();
     runningDot.hidden = !running;
-    agentSel.disabled = running;
     stopBtn.hidden = !running;
     sendBtn.disabled = running || !s;
     thTitle.textContent = s ? s.title : '';
@@ -274,17 +266,14 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     ctxText.textContent = `上下文：${card ? `${card.id} · ` : ''}${store.state.project ? `${store.state.project.name} · AGENTS.md` : '无项目'}`;
     textarea.placeholder = `回复 ${agentName(agent, st)}…（Enter 发送，Shift+Enter 换行，/ 查看命令）`;
     if (st) modeSel.value = st.permissionMode;
-    // CLI 会话：底栏 hint 位置换成模型切换器；内置 agent 会话保持原 hint 文案。
+    // CLI 会话：底栏显示模型切换器；内置 agent 会话不显示。
     if (cli && s) {
-      hint.hidden = true;
       modelPick.hidden = false;
       const override = s.cliModel?.trim() ? s.cliModel : undefined;
       const cfgModel = st?.agentClis?.find((x) => x.id === agent.slice(4))?.model;
       modelLabel.textContent = `模型：${override ?? (cfgModel ? cfgModel : 'CLI 默认')}`;
     } else {
       modelPick.hidden = true;
-      hint.hidden = false;
-      hint.textContent = cli ? '外部 CLI：每次询问 = 每轮批准命令行；仅规划 = 禁止编辑与命令' : agentSetupHint(agent, st) ? '请先在设置中配置 agent（左侧齿轮「设置」）' : '写入与命令执行前会请求批准';
     }
     // 菜单锚定的会话已切换（或不再是 CLI 会话）时关掉，避免对旧会话写模型。
     if (modelMenuFor && (modelMenuFor.sessionId !== s?.id || !cli)) closeModelMenu();
@@ -363,7 +352,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   };
 
   // ── CLI 模型切换（agent:setSessionModel 写会话覆盖；agentCli:models 拉候选，仅 opencode 有） ──
-  /** 切换只影响下一轮，不打断运行中的一轮（与 agentSel 切换 agent 的写回方式一致）。 */
+  /** 切换只影响下一轮，不打断运行中的一轮。 */
   const applySessionModel = async (model: string | null) => {
     const s = store.state.current;
     if (!s) return;
@@ -581,17 +570,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   stopBtn.addEventListener('click', () => {
     const s = store.state.current;
     if (s) void api.invoke('agent:stop', s.id).catch((e: unknown) => notify(errorText(e)));
-  });
-  agentSel.addEventListener('change', async () => {
-    const s = store.state.current;
-    if (!s) return;
-    try {
-      store.state.current = await api.invoke('sessions:setAgent', s.id, agentSel.value as 'builtin');
-      store.emit('current');
-    } catch (e) {
-      notify(errorText(e));
-      renderHeader();
-    }
   });
   modeSel.addEventListener('change', async () => {
     try {

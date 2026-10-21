@@ -10,7 +10,6 @@ import { mountBoard } from './views/board-view.ts';
 import type { ChatView } from './views/chat.ts';
 import { mountAgents } from './views/agents-view.ts';
 import { mountGit } from './views/git-view.ts';
-import { builtinMissing } from './lib/agent-config.ts';
 import { formatSendText } from './lib/context-send.ts';
 import { installContextMenu } from './views/context-menu.ts';
 import { mountSessionView, type SessionView } from './views/session-view.ts';
@@ -249,9 +248,6 @@ async function bootstrap(): Promise<void> {
   store.emit('settings', 'sessions');
   shell.setView(project ? 'board' : 'session');
   void shell.refreshWorkspace();
-  const usesCli = (settings.defaultAgent ?? 'builtin') !== 'builtin';
-  // 003：配置默认空白，内置 agent 未配置时打开设置
-  if (!usesCli && builtinMissing(settings).length) openSettings();
 }
 
 bootstrap().catch((e: unknown) => {

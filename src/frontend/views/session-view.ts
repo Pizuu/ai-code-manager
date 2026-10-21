@@ -323,7 +323,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     const cliId = agent !== 'builtin' ? agent.slice(4) : null;
     ctxp.append(
       h('div', { class: card ? 'h mt20' : 'h' }, h('span', {}, '会话上下文'), h('span', { class: 'mute' }, s?.id ?? '')),
-      h('div', { class: 'chips' }, h('span', { class: `chip ${running ? 'acc' : ''}` }, running ? '运行中' : '空闲'), h('span', { class: 'chip' }, isCli(agent, st) ? '外部 CLI' : '内置 agent'), h('span', { class: 'chip' }, MODE_LABELS[st?.permissionMode ?? 'ask'])),
+      h('div', { class: 'chips' }, h('span', { class: `chip ${running ? 'acc' : 'grn'}` }, running ? '运行中' : '空闲'), h('span', { class: 'chip' }, isCli(agent, st) ? '外部 CLI' : '内置 agent'), h('span', { class: 'chip' }, MODE_LABELS[st?.permissionMode ?? 'ask'])),
       ...kv('Agent', agentName(agent, st)),
       ...kv('工作目录', store.state.project?.root ?? '未打开项目', true),
       ...(cliId ? kv('CLI 会话（续接）', s?.cliSessions?.[cliId] ?? '首轮后建立', true) : []),
@@ -331,8 +331,10 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       h('div', { class: 'k acc' }, `待办 · ${(s?.todos ?? []).filter((t) => t.status === 'completed').length} / ${(s?.todos ?? []).length}`),
       todoList(s?.todos ?? []));
 
-    // 文件修改（原 Diff 面板）
-    const diffs = store.state.diffs;
+    // 文件修改（原 Diff 面板）：同一文件多次修改只留最新一条，按首次出现排列（Map 覆盖值不改键序）
+    const byPath = new Map<string, (typeof store.state.diffs)[number]>();
+    for (const d of store.state.diffs) byPath.set(d.path, d);
+    const diffs = [...byPath.values()];
     const dl = h('div', { class: 'dlist' });
     for (const d of diffs.slice(0, 12)) {
       const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === d.toolCallId);

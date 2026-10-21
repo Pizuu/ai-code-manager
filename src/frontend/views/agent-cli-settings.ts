@@ -97,7 +97,6 @@ export function mountAgentCliSettings(container: HTMLElement): void {
     });
     container.append(list,
       h('div', { class: 'fx8' },
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => { editing = { name: '', preset: 'custom', command: '', args: '{prompt}', resumeArgs: '', modelArgs: '', model: '', outputFormat: 'text', env: [] }; renderEdit(); } } }, '添加自定义 CLI'),
         h('span', { class: 'flex1' }),
         detect),
       detectOut,

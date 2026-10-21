@@ -4,7 +4,6 @@
  */
 import type { FileNode } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
-import { ymdhm } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
@@ -159,10 +158,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const featCaret = h('span', { class: 'feat-caret', title: '切换功能规格' }, icon('caret', 12));
   featCaret.hidden = true;
   const crumbChip = h('span', { class: 'chip' });
-  const snapTime = h('span');
   const header = h('header', { class: 'wh' },
     h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, '/', crumbFeature, featCaret, crumbChip)),
-    h('div', { class: 'wact' }, snapTime));
+    h('div', { class: 'wact' }));
 
   // ── 功能下拉：点击面包屑规格名（crumbFeature / caret）展开规格列表，选中走 board:setFeature 切换并全量同步 ──
   const featMenu = h('div', { class: 'ctxmenu featmenu', attrs: { role: 'menu' } });
@@ -250,8 +248,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     const crumbBranch = g?.currentBranch ?? b?.integrationBranch ?? g?.integrationBranch ?? '';
     crumbChip.textContent = crumbBranch;
     crumbChip.hidden = crumbBranch === '';
-    snapTime.textContent = b ? `快照 · ${ymdhm(b.generatedAt)}（本地时间）` : '快照 · —';
-    snapTime.title = b?.generatedAt ?? '';
     readRef.textContent = g?.currentBranch ?? '';
     const canSwitchBranch = Boolean(g?.available && g.branches.length > 0);
     brCaret.hidden = !canSwitchBranch;
