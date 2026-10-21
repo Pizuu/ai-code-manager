@@ -1,6 +1,8 @@
 /**
  * 泳道看板快照（FR-104–FR-106、US2）。状态以 git 为准（research R2）：
- * 合并记录 → merged；分支存在 → review（领先 > 0）/ active；否则看前置 → ready / blocked。
+ * 合并记录 → merged；无在途分支且集成分支上有引用该卡的直提提交 → merged（第二证据，
+ * 协调者直提流水线从不建卡上声明的分支，只有 merge 记录会把已完成卡永久误报未合入）；
+ * 分支存在 → review（领先 > 0）/ active；否则看前置 → ready / blocked。
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,6 +10,7 @@ import type { BoardCard, BoardCardStatus, BoardFeature, BoardSnapshot, GitSnapsh
 import { parseTasksMarkdown } from '../specs/tasks-parser.ts';
 import { countChecklist, featureStages, parseBoardRows, parseSpec, parseTaskCard, type ParsedCard } from './cards.ts';
 import { gitOut, mapLimit, type GitRunner } from './git.ts';
+import { readIntegrationCommits, type IntegrationCommit } from './git-overview.ts';
 import { laneCheck, parseAgentsConfig, parseLaneOwners, parseLanesConf, type AgentsConfig, type LanesConfig } from './lanes.ts';
 import { previewMerge } from './merge-preview.ts';
 
@@ -99,14 +102,35 @@ interface GitFacts {
   /** 分支名 → 合并记录 */
   merged: Map<string, { sha: string; short: string; time: string }>;
   branches: Map<string, { ahead: number; behind: number; worktree: string | null; time: string; mergedIntoIntegration: boolean }>;
+  /** 卡号 → 集成分支上引用该卡的直提提交记录（第二证据，见 directRefsFromCommits）。 */
+  directRefs: Map<string, { sha: string; short: string; time: string }>;
 }
 
-function gitFacts(g: GitSnapshot): GitFacts {
+/**
+ * 纯函数：从集成分支提交标题提取直提证据（单测友好）。
+ * 标题含 `T-\d{3}` 即记为该卡的证据（一笔标题可同时引用多卡，逐个登记）；
+ * 只认标题不认正文——正文里讨论别卡太常见，会放水。
+ * 同一卡多笔取**最新**一笔：入参为 git log 新 → 旧序，先到者胜。
+ * merge 记录代表合入时刻；直提模式下实现提交与收尾提交都落在集成分支上，
+ * 引用该卡的最后一笔（通常是「T-xxx 收尾」文书提交）时间最接近完成时刻，
+ * 卡片的 merge 时间 / lastActivity 取它才与 branch-merge 口径可比。
+ */
+export function directRefsFromCommits(commits: readonly IntegrationCommit[]): Map<string, { sha: string; short: string; time: string }> {
+  const out = new Map<string, { sha: string; short: string; time: string }>();
+  for (const c of commits) {
+    for (const m of c.subject.matchAll(/\bT-\d{3}\b/g)) {
+      if (!out.has(m[0])) out.set(m[0], { sha: c.sha, short: c.short, time: c.time });
+    }
+  }
+  return out;
+}
+
+function gitFacts(g: GitSnapshot, integrationCommits: readonly IntegrationCommit[] = []): GitFacts {
   const merged = new Map<string, { sha: string; short: string; time: string }>();
   for (const m of g.merges) if (m.branch) merged.set(m.branch, { sha: m.sha, short: m.short, time: m.time });
   const branches = new Map<string, { ahead: number; behind: number; worktree: string | null; time: string; mergedIntoIntegration: boolean }>();
   for (const b of g.branches) branches.set(b.name, { ahead: b.ahead, behind: b.behind, worktree: b.worktree, time: b.time, mergedIntoIntegration: b.mergedIntoIntegration });
-  return { merged, branches };
+  return { merged, branches, directRefs: directRefsFromCommits(integrationCommits) };
 }
 
 /** 纯函数：由解析结果与 git 事实推导状态（单测友好）。 */
@@ -116,6 +140,9 @@ export function deriveStatuses(cards: ParsedCard[], facts: GitFacts): Map<string
     const br = c.branch ? facts.branches.get(c.branch) : undefined;
     if (c.branch && facts.merged.has(c.branch)) out.set(c.id, { status: 'merged', unmet: [] });
     else if (br) out.set(c.id, { status: br.ahead > 0 ? 'review' : 'active', unmet: [] });
+    // 第二证据（直提提交引用）：只在无在途分支时生效——分支在途走上一行口径优先，
+    // 防一笔仅「提及」该卡的提交把在途卡误升 merged。
+    else if (facts.directRefs.has(c.id)) out.set(c.id, { status: 'merged', unmet: [] });
   }
   // 前置可能链式依赖：迭代到稳定
   for (let pass = 0; pass < cards.length + 1; pass++) {
@@ -160,14 +187,17 @@ export async function buildBoard(root: string, git: GitRunner, gitSnap: GitSnaps
     if (c) parsed.push(c);
   }
   parsed.sort((a, b) => Number(a.id.slice(2)) - Number(b.id.slice(2)));
-  const facts = gitFacts(gitSnap);
-  const statuses = deriveStatuses(parsed, facts);
-  const conflicts: string[] = [];
   // 集成分支的实际引用（本地缺失时回退 origin/<分支>）；本地与远端都没有则为 null（P0-1）
   const integRef = gitSnap.integrationRefRemote ? gitSnap.integrationRef : cfg.integrationBranch;
   const integMissing = gitSnap.available && !gitSnap.integrationRefRemote && !gitSnap.branches.some((b) => b.name === cfg.integrationBranch)
     ? `集成分支 ${cfg.integrationBranch} 在本地与 origin 均不存在：无法据此判定任务卡是否已合入（请先 git fetch 并创建该分支）。`
     : null;
+  // 第二证据（直提提交引用）：有界采集集成分支上的提交标题引用；快照不可用时跳过、
+  // 采集失败时 readIntegrationCommits 退化为空集（行为回到仅 merge/分支口径，看板不挂）。
+  const integCommits = gitSnap.available ? await readIntegrationCommits(git, integRef) : [];
+  const facts = gitFacts(gitSnap, integCommits);
+  const statuses = deriveStatuses(parsed, facts);
+  const conflicts: string[] = [];
   const changed = gitSnap.available ? await mapLimit(parsed, 8, (c) => changedFiles(git, c, facts, integRef)) : parsed.map(() => []);
   const cards: BoardCard[] = [];
   /** 声明 done 但 git 未确认合入的卡（P0-1：集成分支缺失时全部同因，合并为一条）。 */
@@ -177,8 +207,10 @@ export async function buildBoard(root: string, git: GitRunner, gitSnap: GitSnaps
     const lane = c.lane ?? row?.lane ?? '';
     const st = statuses.get(c.id) ?? { status: 'ready' as const, unmet: [] };
     const declared = c.declaredStatus || row?.declaredStatus || '';
-    const merge = c.branch ? (facts.merged.get(c.branch) ?? null) : null;
     const br = c.branch ? facts.branches.get(c.branch) : undefined;
+    // merge 记录：分支合入记录优先；无在途分支时回退直提证据（与 deriveStatuses 同口径——
+    // 在途分支不拿一笔提及记录冒充它自己的合入，卡片 merge/lastActivity 仍按分支走）。
+    const merge = (c.branch ? facts.merged.get(c.branch) : undefined) ?? (br ? null : (facts.directRefs.get(c.id) ?? null));
     const files = changed[ci] ?? [];
     const workerLane = lanesCfg.lanes.some((l) => l.name === lane);
     // 文书豁免（仅看板判定口径，不改 lanes.ts 的通用 laneCheck 语义）：任务分支更新自己任务卡的

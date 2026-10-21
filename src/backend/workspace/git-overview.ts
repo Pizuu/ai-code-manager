@@ -82,6 +82,36 @@ async function firstParentMerges(git: GitRunner, ref: string): Promise<GitMergeI
   return list.reverse();
 }
 
+/** 集成分支提交采集上限：覆盖协调者直提流水线的近期历史，又不把全量历史拉进快照/看板计算。 */
+export const MAX_INTEGRATION_COMMITS = 1000;
+
+/** 集成分支上的一条提交（看板「直提证据」的来源，只取判定需要的字段）。 */
+export interface IntegrationCommit {
+  sha: string;
+  short: string;
+  /** ISO 8601（%cI）。 */
+  time: string;
+  subject: string;
+}
+
+export function parseIntegrationLog(text: string): IntegrationCommit[] {
+  return text.split('\n').filter((l) => l.trim()).map((l) => {
+    const [sha = '', time = '', subject = ''] = l.split(SEP);
+    return { sha, short: sha.slice(0, 7), time, subject };
+  }).filter((c) => c.sha !== '');
+}
+
+/**
+ * 采集集成分支实际引用上的提交（新 → 旧，最多 MAX_INTEGRATION_COMMITS 条）。
+ * 注意不能用快照的 commits（`--branches` 全分支图）：未合入的 worker 分支提交也会混入，
+ * 拿它当「已在集成分支上」的证据会误报；这里只认从集成分支引用可达的提交。
+ * 只读；失败（引用不存在、git 异常）经 gitOut 退化为空集——看板据此回退为仅 merge/分支口径，整体不挂。
+ */
+export async function readIntegrationCommits(git: GitRunner, ref: string): Promise<IntegrationCommit[]> {
+  const out = await gitOut(git, ['log', `--max-count=${MAX_INTEGRATION_COMMITS}`, `--format=%H${SEP}%cI${SEP}%s`, ref, '--']);
+  return parseIntegrationLog(out);
+}
+
 async function dirtyCount(git: GitRunner): Promise<number> {
   return (await gitOut(git, ['status', '--porcelain', '--untracked-files=normal'])).split('\n').filter((l) => l.trim()).length;
 }
