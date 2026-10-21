@@ -7,7 +7,7 @@ import { api, errorText } from '../api.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon, type IconName } from '../lib/icons.ts';
-import { activityTarget, sessionStateCounts } from '../lib/session-activity.ts';
+import { sessionStateCounts } from '../lib/session-activity.ts';
 import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
 import { mountTourButton } from '../lib/tour.ts';
 import { store, type ViewId } from '../store.ts';
@@ -283,11 +283,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     speckit: h('div', { class: 'ws-view wb', attrs: { id: 'wb-speckit' } }),
   };
   const statusL = h('span');
-  /** P0-3：活动指示——黄/绿圆形计数（黄回答中 / 绿回答完成），可点击跳转到对应会话；红点（出错）已迁入对话区 .ctx 条（chat.ts）。 */
-  const statusAct = h('span', { class: 'st-act' });
   /** 规格进度行（原看板 .prog 移入）：状态栏最右端常驻，类名沿用 .prog，布局覆盖在 styles.css 的 .status .prog。 */
   const statusProg = h('span', { class: 'prog' });
-  const status = h('footer', { class: 'status' }, statusL, statusAct, statusProg);
+  const status = h('footer', { class: 'status' }, statusL, statusProg);
   const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, views.speckit, status);
   app.append(rail, explorer, ws);
 
@@ -329,30 +327,21 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     renderProject();
   };
 
-  // 当前会话错误日志层（errPop）与出错红点已整体迁入对话区 .ctx 条（chat.ts），此处不再持有；
-  // 三态计数改由 lib/session-activity.ts 的 sessionStateCounts 提供，徽标 / 黄绿点 / 红点共用同一口径。
+  // 当前会话错误日志层（errPop）与三色计数圆点（红出错 / 黄回答中 / 绿回答完成）已整体迁入
+  // 对话区 .ctx 条（chat.ts），此处不再持有；三态计数改由 lib/session-activity.ts 的
+  // sessionStateCounts 提供，徽标与三点共用同一口径。
 
   /**
-   * P0-3：活动指示——图标栏徽标（需要关注的会话数 = 出错 + 回答中）+ 状态栏黄/绿圆形计数，
-   * 点击跳到该状态的会话。两处数字同出 sessionStateCounts、同批计算一起写，不存在一处已变
-   * 另一处未变的中间态。跳转目标沿用 activityTarget（取第一个，现行无轮换）。
+   * P0-3：活动指示——图标栏徽标（需要关注的会话数 = 出错 + 回答中）。数字出自
+   * sessionStateCounts，与对话区 .ctx 条三点同一口径；三点的渲染与点击跳转已迁入 chat.ts。
    */
   const renderActivity = () => {
-    const cur = store.state.current;
-    const toolCalls = (cur?.messages ?? []).flatMap((m) => m.toolCalls ?? []);
     const approvals = [...store.state.approvals.values()];
-    const input = {
-      running: store.state.running,
-      pending: approvals.length,
-      toolCalls,
-      currentSessionId: cur?.id ?? null,
-      approvalSessionIds: approvals.map((a) => a.sessionId),
-    };
     // 图标栏徽标：需要关注的会话数 = 出错（红）+ 回答中（黄）；回答完成不计入，为 0 时隐藏
-    const { nErr, nRun, nDone, isAnswering, isErrored } = sessionStateCounts({
+    const { nErr, nRun } = sessionStateCounts({
       sessions: store.state.sessions,
       running: store.state.running,
-      approvalSessionIds: input.approvalSessionIds,
+      approvalSessionIds: approvals.map((a) => a.sessionId),
       errorsOf: (id) => store.errorsOf(id),
     });
     const total = nErr + nRun;
@@ -362,23 +351,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     railView.session.title = total
       ? `${VIEW_TITLES.session}：${total} 个会话需要关注（出错 ${nErr} · 回答中 ${nRun}）（点击查看）`
       : VIEW_TITLES.session;
-    // 状态栏：黄/绿圆形计数（黄回答中 / 绿回答完成），与徽标同一批计数（口径见上方注释）；
-    // 红点（出错）已迁入对话区 .ctx 条（chat.ts），连同错误日志层一起由 chat 渲染。
-    clear(statusAct);
-    const dot = (cls: string, n: number, label: string, onClick: (() => void) | null) => {
-      const el = h('button', { class: `st-dot ${cls}${n ? '' : ' zero'}`, title: `${label}会话 ${n}`, attrs: { type: 'button' } }, String(n));
-      if (n && onClick) el.addEventListener('click', (ev) => { ev.stopPropagation(); onClick(); });
-      statusAct.append(el);
-      return el;
-    };
-    dot('y', nRun, '回答中', () => {
-      const target = activityTarget('running', input) ?? activityTarget('pending', input);
-      if (target) hooks.onJumpToSession(target);
-    });
-    dot('g', nDone, '回答完成', () => {
-      const target = store.state.sessions.find((s) => !isAnswering(s.id) && !isErrored(s.id));
-      if (target) hooks.onJumpToSession(target.id);
-    });
   };
 
   /**

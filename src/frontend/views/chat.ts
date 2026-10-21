@@ -5,7 +5,7 @@
  * v1.8：改为主流对话样式（回合制）——用户消息为右侧气泡，助手消息为「头部（头像 / 名称 / 时间 / 操作）+
  * 正文」的回合；工具调用收进可折叠的「思考」区（默认折叠，有待批准时自动展开，见 lib/chat-turn.ts）。
  */
-import type { BoardCard, ChatMessage, FileNode, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
+import type { BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
 import { agentName, agentWho, isCli } from '../lib/agent-label.ts';
@@ -17,7 +17,7 @@ import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../l
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
 import { errorSectionTitle } from '../lib/error-log.ts';
-import { sessionStateCounts } from '../lib/session-activity.ts';
+import { activityTarget, sessionStateCounts } from '../lib/session-activity.ts';
 import { parseSlashCommand, suggestCommands } from '../lib/slash-commands.ts';
 import { store } from '../store.ts';
 import { renderToolCard, type DiffRenderer } from './tool-card.ts';
@@ -63,10 +63,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   clear(container);
   // ── .thd ──
   const menuBtn = h('button', { class: 'circ', title: '会话列表', on: { click: hooks.onToggleList } }, icon('menu'));
-  const newBtn = h('button', { class: 'circ acc', title: '新建会话', on: { click: hooks.onNewSession } }, icon('plus'));
   const thTitle = h('span', { class: 'th-title' });
-  // 标题行三列 grid：左端菜单按钮 · 中间标题 · 右端容器（新建按钮，整体靠右）
-  const thRightBox = h('span', { class: 'fx8' }, newBtn);
+  // 标题行三列 grid：左端菜单按钮 · 中间标题 · 右端空占位（新建按钮已迁到会话列表 .hd；保留空格维持标题真居中）
+  const thRightBox = h('span', { class: 'fx8' });
   const thd = h('div', { class: 'thd' },
     h('div', { class: 'r' }, menuBtn, thTitle, thRightBox));
   const log = h('div', { class: 'log' });
@@ -81,9 +80,13 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   /** 当前会话累计 token 数（Session.usage，opencode 聚合；无数据时隐藏）。 */
   const ctxUsage = h('span', { class: 'chip' });
   ctxUsage.hidden = true;
-  /** 出错会话计数红点（原状态栏三色圆之红，本批迁入 .ctx 条靠右）：计数与显隐口径与状态栏时期一致
-   *（0 时淡显 .zero 且无点击行为）；点击优先跳其它出错会话，无处可跳且当前会话有错误条目时开关错误日志层。 */
+  /** 会话三态计数圆点组（原状态栏三色圆，红 / 黄 / 绿依次为出错 / 回答中 / 回答完成，本批全数迁入 .ctx 条靠右成组）：
+   * 计数与显隐口径与状态栏时期一致（0 时淡显 .zero 且无点击行为）；红点点击优先跳其它出错会话，
+   * 无处可跳且当前会话有错误条目时开关错误日志层；黄 / 绿点点击跳到该状态的第一个会话（经 hooks.onJumpToSession）。 */
   const errDot = h('button', { class: 'st-dot r zero', attrs: { type: 'button' } }, '0');
+  const runDot = h('button', { class: 'st-dot y zero', attrs: { type: 'button' } }, '0');
+  const doneDot = h('button', { class: 'st-dot g zero', attrs: { type: 'button' } }, '0');
+  const stDots = h('span', { class: 'st-dots' }, errDot, runDot, doneDot);
   const slashMenu = h('div', { class: 'slash-menu' });
   slashMenu.hidden = true;
   const textarea = h('textarea', { attrs: { placeholder: '回复…（Enter 发送，Shift+Enter 换行，/ 查看命令）' } });
@@ -92,7 +95,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     textarea.style.height = 'auto';
     textarea.style.height = `${textarea.scrollHeight}px`;
   };
-  /** 在光标处插入文本并触发 autoGrow、回焦（ChatView.insertText 的实现体，附件选择器共用）。 */
+  /** 在光标处插入文本并触发 autoGrow、回焦（ChatView.insertText 的实现体，系统文件选择共用）。 */
   const insertAtCursor = (text: string) => {
     textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, 'end');
     autoGrow();
@@ -100,7 +103,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   };
   const stopBtn = h('button', { class: 'stop' }, '停止');
   const sendBtn = h('button', { class: 'send', title: '发送' }, icon('up'));
-  const attachBtn = h('button', { class: 'plus', title: '添加附件（项目文件）', attrs: { type: 'button' } }, '+');
+  const attachBtn = h('button', { class: 'plus', title: '添加文件', attrs: { type: 'button' } }, '+');
   const modeSel = h('select', { class: 'mode', title: '权限模式' });
   for (const [v, l] of Object.entries(MODE_LABELS)) modeSel.append(h('option', { attrs: { value: v } }, `权限：${l}`));
   // CLI 模型切换器：.ft 第二个元素，仅 CLI 会话显示。
@@ -122,7 +125,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     modelMenuFor = null;
   };
   const comp = h('div', { class: 'comp' },
-    h('div', { class: 'ctx' }, ctxUsage, errDot),
+    h('div', { class: 'ctx' }, ctxUsage, stDots),
     slashMenu,
     h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
     h('div', { class: 'ft' }, modelPick, modeSel));
@@ -130,7 +133,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
 
   // ── 当前会话错误日志层：原对话流内的 .errlog 聚合块移出，改挂 .ctx 条红点上方弹出 ──
   // 条目呈现沿用 .errlog 内部结构（chip + 文本 + 时间 + detail pre）；开关口径与全站浮层一致
-  //（锚点 stopPropagation + 点层外 / Esc 关闭）。renderErrDot 每次重渲时经 refreshErrPop 同步：
+  //（锚点 stopPropagation + 点层外 / Esc 关闭）。renderStatusDots 每次重渲时经 refreshErrPop 同步：
   // 层开着就重渲内容，当前会话错误清空则自动关。（本块与红点原在 shell.ts 状态栏，本批整体迁入。）
   const errPop = h('div', { class: 'errpop errlog', attrs: { role: 'dialog', 'aria-label': '当前会话错误日志' } });
   errPop.hidden = true;
@@ -167,23 +170,41 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   document.addEventListener('click', (ev) => { if (!errPop.hidden && !errPop.contains(ev.target as Node) && !errDot.contains(ev.target as Node)) closeErrPop(); });
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeErrPop(); });
 
-  /** 红点计数：与图标栏徽标、状态栏黄/绿点共用 lib 的 sessionStateCounts，口径永不漂移。 */
-  const errCounts = () => sessionStateCounts({
+  /** 三点计数：与图标栏徽标共用 lib 的 sessionStateCounts，口径永不漂移。 */
+  const dotCounts = () => sessionStateCounts({
     sessions: store.state.sessions,
     running: store.state.running,
     approvalSessionIds: [...store.state.approvals.values()].map((a) => a.sessionId),
     errorsOf: (id) => store.errorsOf(id),
   });
-  const renderErrDot = () => {
-    const { nErr } = errCounts();
+  /** 黄点跳转目标的活动入参（与状态栏时期 renderActivity 传给 activityTarget 的入参构造逐字一致）。 */
+  const activityInput = () => {
+    const cur = store.state.current;
+    const approvals = [...store.state.approvals.values()];
+    return {
+      running: store.state.running,
+      pending: approvals.length,
+      toolCalls: (cur?.messages ?? []).flatMap((m) => m.toolCalls ?? []),
+      currentSessionId: cur?.id ?? null,
+      approvalSessionIds: approvals.map((a) => a.sessionId),
+    };
+  };
+  const renderStatusDots = () => {
+    const { nErr, nRun, nDone } = dotCounts();
     errDot.textContent = String(nErr);
     errDot.className = `st-dot r${nErr ? '' : ' zero'}`;
     errDot.title = `出错会话 ${nErr}`;
+    runDot.textContent = String(nRun);
+    runDot.className = `st-dot y${nRun ? '' : ' zero'}`;
+    runDot.title = `回答中会话 ${nRun}`;
+    doneDot.textContent = String(nDone);
+    doneDot.className = `st-dot g${nDone ? '' : ' zero'}`;
+    doneDot.title = `回答完成会话 ${nDone}`;
     refreshErrPop();
   };
   errDot.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    const { nErr, isAnswering, isErrored } = errCounts();
+    const { nErr, isAnswering, isErrored } = dotCounts();
     if (!nErr) return; // 计数为 0 时无点击行为（与状态栏时期「0 不挂监听」等效）
     // 优先跳到其它出错会话；无处可跳且当前会话有错误条目时开关错误日志层
     const curId = store.state.current?.id ?? null;
@@ -195,155 +216,47 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       toggleErrPop();
     }
   });
+  runDot.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const { nRun } = dotCounts();
+    if (!nRun) return; // 计数为 0 时无点击行为（与红点一致）
+    // 跳到第一个回答中的会话（运行中优先、其次待批准），口径与状态栏时期一致
+    const input = activityInput();
+    const target = activityTarget('running', input) ?? activityTarget('pending', input);
+    if (target) hooks.onJumpToSession?.(target);
+  });
+  doneDot.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const { nDone, isAnswering, isErrored } = dotCounts();
+    if (!nDone) return; // 计数为 0 时无点击行为（与红点一致）
+    // 跳到第一个回答完成的会话（非回答中、非出错），口径与状态栏时期一致
+    const target = store.state.sessions.find((s) => !isAnswering(s.id) && !isErrored(s.id));
+    if (target) hooks.onJumpToSession?.(target.id);
+  });
 
-  // ── 附件添加（+）：选中项目文件后以 @引用 插入输入框光标处，文本格式与左侧结构树 /
-  // 右键 sendFile 完全一致（同一 formatSendText({ kind:'file', path, dir:false }) → `@<相对路径>`）。──
-  const fattFilter = h('input', { class: 'fatt-filter', attrs: { type: 'text', placeholder: '过滤文件路径…', 'aria-label': '过滤文件路径' } });
-  const fattList = h('div', { class: 'fatt-list' });
-  const fattPop = h('div', { class: 'fatt-pop' }, fattFilter, fattList);
-  fattPop.hidden = true;
-  document.body.append(fattPop);
-  /** 递归收集时不进入的重目录。 */
-  const FATT_SKIP: ReadonlySet<string> = new Set(['node_modules', '.git', 'dist', 'out', 'build', 'coverage', '.cache', '.next']);
-  const FATT_MAX_DEPTH = 6;
-  const FATT_MAX_FILES = 400;
-  /** 收集结果按项目根缓存；切项目（root 变化）自动失效，下次打开时重新拉取。 */
-  let fattCache: { root: string; files: string[] } | null = null;
-  /** 浮层内的完整文件表 / 过滤后列表 / 键盘选中下标。 */
-  let fattAll: string[] = [];
-  let fattShown: string[] = [];
-  let fattSel = 0;
-
-  const closeFatt = () => {
-    fattPop.hidden = true;
-  };
-  /** 与模型菜单同款定位：横向钳制在视口内；输入区在窗口底部，浮层锚在 + 上方展开。 */
-  const positionFatt = () => {
-    const r = attachBtn.getBoundingClientRect();
-    const { innerWidth: W } = window;
-    const rect = fattPop.getBoundingClientRect();
-    fattPop.style.left = `${Math.max(4, Math.min(r.left, W - rect.width - 4))}px`;
-    fattPop.style.top = `${Math.max(4, r.top - rect.height - 6)}px`;
-  };
-  /** 从项目根递归收集文件相对路径（只收文件、不收目录）；单目录拉取失败静默跳过。 */
-  const collectFiles = async (): Promise<string[]> => {
-    const proj = store.state.project;
-    if (!proj) return [];
-    if (fattCache?.root === proj.root) return fattCache.files;
-    const files: string[] = [];
-    const walk = async (rel: string, depth: number): Promise<void> => {
-      if (files.length >= FATT_MAX_FILES) return;
-      let nodes: FileNode[];
-      try {
-        nodes = await api.invoke('fs:tree', rel);
-      } catch {
-        return;
-      }
-      nodes.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-      for (const n of nodes) {
-        if (files.length >= FATT_MAX_FILES) break;
-        if (n.kind === 'file') files.push(n.relPath);
-        else if (depth < FATT_MAX_DEPTH && !FATT_SKIP.has(n.name)) await walk(n.relPath, depth + 1);
-      }
-    };
-    await walk('', 0);
-    fattCache = { root: proj.root, files };
-    return files;
-  };
-  const markFattSel = () => {
-    fattList.querySelectorAll<HTMLElement>('.fatt-item').forEach((el, i) => el.classList.toggle('sel', i === fattSel));
-  };
-  /** 选中文件：关浮层，把与 sendFile 同格式的 @引用插入光标处（insertAtCursor 内部回焦输入框）。 */
-  const pickFile = (rel: string) => {
-    closeFatt();
-    insertAtCursor(formatSendText({ kind: 'file', path: rel, dir: false }));
-  };
-  const renderFattList = () => {
-    const q = fattFilter.value.trim().toLowerCase();
-    fattShown = q ? fattAll.filter((p) => p.toLowerCase().includes(q)) : fattAll;
-    if (fattSel >= fattShown.length) fattSel = Math.max(0, fattShown.length - 1);
-    if (!fattAll.length) {
-      fattList.replaceChildren(h('div', { class: 'fatt-empty' }, store.state.project ? '项目里没有可添加的文件。' : '先打开一个项目，再添加附件。'));
+  // ── 附件添加（+）：弹系统文件选择框（契约 v1.12 files:pick），选中路径逐个插入输入框光标处。
+  // 项目内文件与点文件树发送同格式（formatSendText({ kind:'file', path, dir:false }) → `@<相对路径>`，
+  // 相对路径按正斜杠）；项目外 / 无项目时插绝对路径原文（带空格时双引号包裹）。多个文件空格分隔、末尾留一空格。──
+  const pickSystemFiles = async () => {
+    let paths: string[];
+    try {
+      paths = await api.invoke('files:pick');
+    } catch (e) {
+      notify(errorText(e));
       return;
     }
-    if (!fattShown.length) {
-      fattList.replaceChildren(h('div', { class: 'fatt-empty' }, '没有匹配的文件。'));
-      return;
-    }
-    const rows: HTMLElement[] = fattShown.map((rel, i) => {
-      const item = h('button', { class: `fatt-item${i === fattSel ? ' sel' : ''}`, attrs: { type: 'button' } },
-        h('span', { class: 'fatt-name' }, rel.split('/').pop() ?? rel),
-        h('span', { class: 'fatt-path' }, rel));
-      item.addEventListener('click', () => pickFile(rel));
-      item.addEventListener('mousemove', () => {
-        if (fattSel !== i) {
-          fattSel = i;
-          markFattSel();
-        }
-      });
-      return item;
+    if (!paths.length) return; // 用户取消：什么都不做
+    const root = store.state.project?.root.replace(/\\/g, '/').replace(/\/$/, '') ?? null;
+    const parts = paths.map((abs) => {
+      const norm = abs.replace(/\\/g, '/');
+      if (root && norm.toLowerCase().startsWith(`${root.toLowerCase()}/`)) {
+        return formatSendText({ kind: 'file', path: norm.slice(root.length + 1), dir: false });
+      }
+      return abs.includes(' ') ? `"${abs}"` : abs;
     });
-    if (fattAll.length >= FATT_MAX_FILES) rows.push(h('div', { class: 'fatt-note' }, `仅显示前 ${FATT_MAX_FILES} 个文件，用过滤缩小范围。`));
-    fattList.replaceChildren(...rows);
+    insertAtCursor(`${parts.join(' ')} `);
   };
-  const openFatt = async () => {
-    const proj = store.state.project;
-    fattFilter.value = '';
-    fattSel = 0;
-    fattAll = fattCache && proj && fattCache.root === proj.root ? fattCache.files : [];
-    fattPop.hidden = false;
-    if (fattAll.length) renderFattList();
-    else fattList.replaceChildren(h('div', { class: 'fatt-empty' }, proj ? '加载文件列表…' : '先打开一个项目，再添加附件。'));
-    positionFatt();
-    fattFilter.focus();
-    if (!proj) return;
-    const files = await collectFiles();
-    // 拉取期间浮层被关、或项目被切走：丢弃本次结果，不覆盖新状态。
-    if (fattPop.hidden || store.state.project?.root !== proj.root) return;
-    fattAll = files;
-    fattSel = 0;
-    renderFattList();
-    positionFatt();
-  };
-  attachBtn.addEventListener('click', () => {
-    if (fattPop.hidden) void openFatt();
-    else closeFatt();
-  });
-  fattFilter.addEventListener('input', () => {
-    fattSel = 0;
-    renderFattList();
-  });
-  fattFilter.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      const rel = fattShown[fattSel];
-      if (rel) pickFile(rel);
-    } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
-      ev.preventDefault();
-      if (!fattShown.length) return;
-      fattSel = (fattSel + (ev.key === 'ArrowDown' ? 1 : -1) + fattShown.length) % fattShown.length;
-      markFattSel();
-      fattList.querySelectorAll<HTMLElement>('.fatt-item')[fattSel]?.scrollIntoView({ block: 'nearest' });
-    } else if (ev.key === 'Escape') {
-      ev.preventDefault();
-      ev.stopPropagation();
-      closeFatt();
-      textarea.focus();
-    }
-  });
-  // 与模型菜单同款的全局关闭口径：点外 / Esc / 失焦 / 缩放关闭（点 + 本身由其 click 切换，不在此关）。
-  document.addEventListener('mousedown', (ev) => {
-    if (!fattPop.hidden && ev.target instanceof Node && !fattPop.contains(ev.target) && !attachBtn.contains(ev.target)) closeFatt();
-  });
-  document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && !fattPop.hidden) {
-      closeFatt();
-      textarea.focus();
-    }
-  });
-  window.addEventListener('blur', closeFatt);
-  window.addEventListener('resize', closeFatt);
-  store.on('project', closeFatt);
+  attachBtn.addEventListener('click', () => void pickSystemFiles());
 
   const pendingDeltas = new Set<string>();
   let frame = 0;
@@ -562,9 +475,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const agent = s?.agent ?? st?.defaultAgent ?? 'builtin';
     const cli = isCli(agent, st);
     const running = store.isRunning();
-    // 新建按钮 title 标注当前使用中的默认 agent（settings 未加载时退回 plain 文案）；
-    // renderHeader 随 'settings' 订阅（经 renderAll）刷新，切换默认 agent 后自动更新。
-    newBtn.title = st ? `新建会话（使用中：${agentName(undefined, st)}）` : '新建会话';
     stopBtn.hidden = !running;
     sendBtn.disabled = running || !s;
     thTitle.textContent = s ? s.title : '';
@@ -590,8 +500,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
     // 菜单锚定的会话已切换（或不再是 CLI 会话）时关掉，避免对旧会话写模型。
     if (modelMenuFor && (modelMenuFor.sessionId !== s?.id || !cli)) closeModelMenu();
-    // .ctx 条红点随头部一并刷新（计数源含 current / sessions / approvals 等多路变化）。
-    renderErrDot();
+    // .ctx 条三点随头部一并刷新（计数源含 current / sessions / approvals 等多路变化）。
+    renderStatusDots();
   };
 
   const renderAll = () => {
@@ -929,8 +839,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   store.on('messages', renderAll);
   store.on('approvals', renderAll);
   store.on('workspace', renderAll);
-  // 错误条目变化（新增 / 清空）时头部未必重渲，红点计数与打开的错误层单独订阅刷新。
-  store.on('errors', renderErrDot);
+  // 错误条目变化（新增 / 清空）时头部未必重渲，三点计数与打开的错误层单独订阅刷新。
+  store.on('errors', renderStatusDots);
   // 运行状态变化：只更新头部与「正在思考…」提示 / 流式光标（不整体重渲染，避免打断流式输出）。
   store.on('running', () => {
     renderHeader();

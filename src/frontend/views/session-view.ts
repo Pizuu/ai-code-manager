@@ -79,8 +79,9 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const linkedCard = () => linkedCardFor(store.state.current?.title, store.state.board?.available ? store.state.board.cards : []);
 
   // ── 左列 ──
-  const count = h('span', { class: 'mute' });
   const search = h('input', { class: 'inp', attrs: { placeholder: '搜索会话' } });
+  // 新建会话按钮（原 chat 标题行迁入 .hd 右端）：.hd 为 flex 两端对齐，标题居左、本按钮靠右。
+  const newBtn = h('button', { class: 'circ acc', title: '新建会话', on: { click: () => void hooks.newSession() } }, icon('plus'));
   const pinned = loadPinned();
   const togglePin = (id: string) => {
     if (pinned.has(id)) pinned.delete(id);
@@ -90,7 +91,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   };
   const list = h('div');
   const slist = h('div', { class: 'slist' },
-    h('div', { class: 'hd' }, h('span', {}, '任务会话'), count), search, list);
+    h('div', { class: 'hd' }, h('span', {}, '任务会话'), newBtn), search, list);
 
   const chatCol = h('section', { class: 'chat' });
   const termCol = h('section', { class: 'termv-wrap' });
@@ -231,7 +232,10 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     const items = store.state.sessions.filter((s) => !q || s.title.toLowerCase().includes(q));
     // 置顶的排在前面，其余保持原顺序（sort 稳定）
     items.sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
-    count.textContent = String(store.state.sessions.length);
+    // 新建按钮 title 标注当前使用中的默认 agent（settings 未加载时退回 plain 文案）；
+    // renderList 的订阅含 'settings'，切换默认 agent 后随之刷新（口径与原 chat 标题行一致）。
+    const st = store.state.settings;
+    newBtn.title = st ? `新建会话（使用中：${agentName(undefined, st)}）` : '新建会话';
     // 各会话的收藏条数（favorites 库按 sessionId 聚合），底部行右下角展示
     const favCounts = new Map<string, number>();
     for (const f of listFavorites()) favCounts.set(f.sessionId, (favCounts.get(f.sessionId) ?? 0) + 1);
