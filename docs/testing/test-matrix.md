@@ -29,9 +29,10 @@
 | 任务卡 / BOARD / spec 解析 `workspace/cards.ts`，状态推导 `board.ts` | ✅ | ✅（临时 git 仓库：合入后删除分支、阻塞、声明冲突、越界） | — | backend |
 | Git 快照 `workspace/git-overview.ts`、git 运行器 `workspace/git.ts` | ✅ | ✅（ahead/behind、已删除分支的合并记录、worktree、非仓库） | — | backend |
 | Agent CLI 参数模板与权限映射 `agent-cli/invocation.ts` | ✅ | — | — | backend |
-| opencode 启动环境适配 `agent-cli/platform-env.ts`（question 禁用、win32 Git Bash 探测 / PowerShell 回退） | ✅（注入假探测，不依赖宿主平台） | — | ❌（Windows 真机待验） | backend |
+| opencode 启动环境适配 `agent-cli/platform-env.ts`（question 禁用、win32 Git Bash 探测 / PowerShell 回退） | ✅（注入假探测，不依赖宿主平台） | — | 🟡（CI `windows-opencode` 作业已建：windows-latest 跑 `scripts/verify-opencode-windows.ts` 第 4 / 5 项验探测 / 回退注入，T-021；待 CI 首跑见绿后转 ✅） | backend |
 | opencode 会话 token 用量采集（契约 v1.8：step_finish tokens 解析/合成 + `accumulateUsage` 累加落盘 `Session.usage`）与实时推送（契约 v1.10：`SessionSummary.usage` 随 session-updated 在回合结束前到达，sink 单测 + summarizeSession 单测） | ✅ | ✅（handlers-v11 假 opencode 回合后断言 usage 落盘 + 带 usage 的摘要先于 status(false)） | — | backend |
-| 可执行文件解析 `agent-cli/resolve.ts`（PATH/PATHEXT、npm .cmd 包装） | ✅（win32 以注入的文件系统模拟） | — | ❌（Windows 真机，T041 一并验证） | backend |
+| 可执行文件解析 `agent-cli/resolve.ts`（PATH/PATHEXT、npm .cmd 包装） | ✅（win32 以注入的文件系统模拟） | — | 🟡（同 `windows-opencode` 作业第 1 / 2 / 3 / 6 项：真实 npm 安装下 .cmd → .exe 解析、空格 / 中文路径、taskkill 停止、无 Key 错误路径，T-021；待 CI 首跑见绿后转 ✅） | backend |
+| Windows opencode 实机验证 `scripts/verify-opencode-windows.ts`（T-021） | — | — | 🟡（`ci.yml` 的 `windows-opencode` 作业，windows-latest + 真实 `opencode-ai@1.19.3`；待首跑） | infra |
 | opencode JSONL 解析 `agent-cli/opencode-events.ts` | ✅（opencode 1.19.3 真实输出样例） | — | — | backend |
 | CLI 运行器 `agent-cli/cli-runner.ts` 与 handlers 接线（首轮 / 续接 / 停止 / ask 拒绝 / plan / 错误 / 不可用 / 敏感值不外泄） | — | ✅（假 opencode 可执行文件，POSIX） | — | backend |
 | Agent CLI 设置存储（敏感 env 加密、safeStorage 不可用拒绝） | — | ✅ | — | backend |
@@ -67,6 +68,25 @@
 | 终端运行态 `src/frontend/store.ts`（按会话记录输出、重启时旧 terminalId 残事件忽略、清屏） | ✅ 3 条 | — | — | frontend |
 | 「全部允许（免审批）」权限模式（`decide` / `acpAutoDecision` / `serveRules` / `opencodePermission` 四条通道一致生效） | ✅ 4 条 | — | — | backend |
 | 对话回合与思考区摘要 `src/frontend/lib/chat-turn.ts`（工具调用状态计数、摘要文案、待批准判定、头像文字） | ✅ 6 条 | ✅ E2E 1 条（`core-path`：思考区默认折叠 → 点击展开 → 重启恢复后仍可展开） | — | frontend |
+| 主进程通知服务 `src/backend/notify/notify-service.ts`（功能 005：审批 P0 / 会话出错 P1 系统通知、approvalId 去重、3 分钟升级恰一次、偏好门控、聚焦不发但升级计时兜底、点击只聚焦 + 回传 `notify-activate`；通知器与时钟可注入替身） | ✅ 15 条（`tests/unit/backend/notify/notify-service.test.ts`，假通知器 + 假时钟） | — | ❌（Windows 真机系统通知待验） | backend |
+| 提醒偏好清洗与落盘 `src/backend/settings/settings-store.ts`（`sanitizeNotifySettings` 缺省回落 DEFAULT、snooze 夹取 1–120）与 `ipc/validate.ts` 的 notify 校验透传、`getPublic` 投影（偏好 + `notifyNativeAvailable`） | ✅ 5 条（`tests/unit/backend/settings/notify-settings.test.ts`） | — | — | backend |
+| 审批提醒纯逻辑 `src/frontend/lib/notify.ts`（功能 005：P0 事项构建 / 按 approvalId 去重 / 排队、弹窗选择 ≤3 + overflow 折叠与抑制、已决历史合并封顶 100 与 localStorage 落盘校验） | ✅ 9 条（`tests/unit/frontend/lib/notify.test.ts`） | — | — | frontend |
+| 看板 / 会话差分 `src/frontend/lib/notify-diff.ts`（功能 005：首次快照只建基线、进入 / 持续 / 离开 / 再入的 P1 / P2 / P3 产生与消解、呈现集合 P3 弹窗恒 0、FR-516 进度段映射与时间戳三口径、角标计数口径） | ✅ 14 条（`tests/unit/frontend/lib/notify-diff.test.ts`） | — | — | frontend |
+| 提醒设置纯逻辑 `src/frontend/lib/notify-settings.ts`（功能 005：缺省合并回 FR-512 默认值、稍后时长校验 1–120、原生通知能力判定） | ✅ 7 条（`tests/unit/frontend/lib/notify-settings.test.ts`） | — | — | frontend |
+| 提醒呈现视图 `src/frontend/views/notify-view.ts` / `notify-feed.ts`（弹窗栈、收件箱三页签、P2 轻提示）与设置「提醒」分区 `views/settings-dialog.ts` | — | — | 🟡 仓库外无头截图冒烟（同界面视图行口径；逻辑由上三行纯函数单测覆盖，纯 UI 部分按宪法 五） | frontend |
+
+### 功能 005（审批通知提醒器）SC 追溯
+
+| SC | 口径 | 验证落点（卡 / 测试） |
+|---|---|---|
+| SC-001 | 窗口不在前台时产生的审批请求，系统通知在事件后 2 秒内出现（样本内 100%） | T-047：`tests/unit/backend/notify/notify-service.test.ts`「P0：窗口不在前台时发一条系统通知…」——通知在审批事件处理内同步发出，无延时路径；真机时延待 Windows 真机复核（见上表通知服务行 E2E ❌） |
+| SC-002 | 重复投递同一审批事件产生的重复弹窗数为 0 | T-047：同文件「去重：同一 approvalId 重复投递只发一次（FR-504）」；T-048：`tests/unit/frontend/lib/notify.test.ts`「buildApprovalReminderItems：审批恒为 P0，按 approvalId 去重」 |
+| SC-003 | 点击通知 / 弹窗「查看」后落到正确会话与审批卡（样本内 100%） | T-047：同文件「点击审批通知：聚焦窗口 + notify-activate 载荷为 approval 目标（FR-503 / FR-508）」及 P1 点击回传 session 目标用例（载荷层断言）；T-048：前端 `notify-activate` 处理与审批卡定位（`src/frontend/main.ts` / `views/notify-view.ts` / `views/chat.ts`），呈现层走仓库外截图冒烟 |
+| SC-004 | P3 事项产生的弹窗与系统通知数为 0 | T-049：`tests/unit/frontend/lib/notify-diff.test.ts`「呈现集合：弹窗只有 P1；P2 只轻提示；P3 两边都不进（弹窗数恒 0）」；系统通知侧由契约默认值 P3 关（`DEFAULT_NOTIFY_SETTINGS`）+ T-047 偏好门控用例覆盖 |
+| SC-005 | 审批在别处被处理后，其弹窗残留超过 1 秒的次数为 0 | T-048：`tests/unit/frontend/lib/notify.test.ts`「已解决撤下：从待批集合移除后重建结果中不再出现，计数同步下降（FR-505/514）」；T-047：通知服务「解决后不再升级，且已发通知被关掉、定时器清净」 |
+| SC-006 | 从看到 P0 弹窗到完成批 / 拒 ≤2 次点击（弹窗内直批）或 ≤3 次（跳转后批） | T-048：弹窗内「批准 / 拒绝」按钮 1 次点击直达既有 `agent:approve` 通道（`views/notify-view.ts`），跳转路径为「查看 → 审批卡上批 / 拒」2 次操作后完成；呈现层走仓库外截图冒烟，审批通道本身由上表「执行器与审批闸门」行覆盖 |
+
+> 已知问题（与 005 无关，登记在案）：`tests/integration/backend/ipc/handlers-reask.test.ts` 的 `reaskLatest` 用例为计时型 flaky——2026-10-21 T-047 验收时在 pristine HEAD 上复跑 4 次失败 2 次。本节登记备查，待单独治理，不计入 005 覆盖缺口。
 
 > ❌ 行由 `specs/001-agent-desktop/tasks.md` 的 Convergence 任务 **T040 / T041** 跟踪（本仓库无远端 issue 系统，以任务号代替 issue）。
 > 界面视图已用无头 Chromium + 模拟 `window.api` 做过手工冒烟（001：亮/暗主题、待批准 diff、任务面板、斜杠提示；002：三板块 1680×1200 截图并与 HTML 原型并排对比，数据为本仓库真实 `board:get` / `git:get` 快照），但脚本未纳入仓库，故不计为 ✅。
