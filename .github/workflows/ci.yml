@@ -38,3 +38,26 @@ jobs:
       - run: npm ci
       - run: sudo apt-get update && sudo apt-get install -y xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libxcomposite1 libxdamage1 libatk-bridge2.0-0
       - run: xvfb-run -a npm run test:e2e
+
+  # Windows 实机验证 opencode 集成（T-021 / T124）：真实 npm 安装的 opencode，
+  # 验 .cmd → .exe 解析、含空格 / 中文路径、taskkill 停止 serve 进程树，
+  # 以及 platform-env 的 Git Bash 探测 / PowerShell 回退分支注入。
+  # 脚本逐步记账，失败看日志中 ✗ 的项名即可定位。
+  windows-opencode:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # 版本与项目实测口径对齐（presets.ts / opencode-serve.ts 均按 1.19.3 实测），
+      # 不浮动跟最新：升级 opencode 时先改此处并重跑本作业验证。
+      - name: Install opencode (pinned 1.19.3)
+        run: npm install -g opencode-ai@1.19.3
+      - name: Show opencode shim layout
+        run: where.exe opencode
+      # 验证脚本只 import src 源码与 node 内置模块（类型擦除直接运行），不依赖仓库 node_modules，
+      # 故本作业不跑 npm install；仓库自身的 lint / 类型 / 测试由 build-test 作业覆盖。
+      - name: Verify opencode Windows integration (T-021)
+        run: node scripts/verify-opencode-windows.ts
