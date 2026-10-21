@@ -126,7 +126,10 @@ export function mountSpeckit(container: HTMLElement, hooks: SpeckitHooks): void 
     const cur: BoardFeature | null = snap.feature;
     return Promise.all(snap.features.map(async (f) => {
       if (cur && f.id === cur.id) return { id: f.id, title: f.title, done: cur.tasksDone, total: cur.tasksTotal };
-      const md = await readTextOrNull(`specs/${f.id}/tasks.md`);
+      // tasks.md 是阶段性产物（停在 spec/plan 阶段的功能还没有）：先列目录确认存在再读，
+      // 避免盲读触发主进程 fs:read 的 E_NOT_FOUND 报错噪音（渲染层 catch 拦不住 handler 侧打印）。
+      const names = await listFiles(`specs/${f.id}`);
+      const md = names.includes('tasks.md') ? await readTextOrNull(`specs/${f.id}/tasks.md`) : null;
       const c = md !== null ? countTasksMd(md) : { done: 0, total: 0 };
       return { id: f.id, title: f.title, ...c };
     }));
