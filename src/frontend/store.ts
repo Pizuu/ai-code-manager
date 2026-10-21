@@ -120,6 +120,11 @@ class Store {
     this.listeners.set(topic, set);
   }
 
+  /** 与 on 对称的解绑：短生命周期订阅方（如对话框页）在销毁时调用，不留悬挂监听。 */
+  off(topic: Topic, fn: () => void): void {
+    this.listeners.get(topic)?.delete(fn);
+  }
+
   emit(...topics: Topic[]): void {
     for (const t of topics) for (const fn of this.listeners.get(t) ?? []) fn();
   }

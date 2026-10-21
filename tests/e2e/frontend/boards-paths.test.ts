@@ -493,8 +493,8 @@ test('FR-112 假 opencode 对话路径（自动检测注册 → run 通道两轮
     // 检测结果可能含其它候选 CLI：只点 opencode 那一项里的「添加」
     await page.locator('#settings-dialog .detect-out .cli-item').filter({ hasText: 'opencode' }).locator('.btn').filter({ hasText: '添加' }).first().click();
     await page.locator('#settings-dialog .cli-list .cli-item').filter({ hasText: 'opencode' }).waitFor({ state: 'visible', timeout: 15_000 });
-    // 用条目自带的「设为默认」切默认 agent（对话框底部「保存」的 disabled 在打开时按旧 settings 计算，
-    // 同一会话内新增第一条 CLI 后不会刷新——已记回报，本测试不依赖它）
+    // 用条目自带的「设为默认」切默认 agent（对话框底部「保存」的 disabled 已由 T-052 改为随 CLI 列表
+    // 实时刷新，新增第一条后即可点；本测试仍走「设为默认」路径，不依赖该按钮）
     await page.locator('#settings-dialog .cli-list .cli-item').filter({ hasText: 'opencode' }).locator('.btn').filter({ hasText: '设为默认' }).first().click();
     await page.locator('#settings-dialog .cli-list .cli-item .chip.grn').filter({ hasText: '使用中' }).waitFor({ state: 'visible', timeout: 10_000 });
     await dlg.press('Escape');

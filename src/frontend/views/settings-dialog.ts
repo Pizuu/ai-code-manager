@@ -4,6 +4,7 @@
  */
 import type { NotifySettings, PermissionMode, ProviderId, ReminderLevel, SettingsUpdate } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
+import { cliSaveState } from '../lib/cli-save-state.ts';
 import { clear, h } from '../lib/dom.ts';
 import {
   notifyNativeAvailable,
@@ -40,10 +41,23 @@ function options<T extends string>(labels: Readonly<Record<T, string>>, current:
 
 export type SettingsTab = 'model' | 'cli' | 'notify';
 
+/** T-052：CLI 页「保存」按钮刷新订阅的解绑函数。重渲染（切页签 / 重开）与对话框关闭时调用，不留悬挂监听。 */
+let unbindCliSaveRefresh: (() => void) | null = null;
+let settingsCloseHookInstalled = false;
+
 export function openSettings(tab: SettingsTab = 'model'): void {
   const dialog = document.getElementById('settings-dialog') as HTMLDialogElement;
   const s = store.state.settings;
   if (!s) return;
+  unbindCliSaveRefresh?.();
+  unbindCliSaveRefresh = null;
+  if (!settingsCloseHookInstalled) {
+    settingsCloseHookInstalled = true;
+    dialog.addEventListener('close', () => {
+      unbindCliSaveRefresh?.();
+      unbindCliSaveRefresh = null;
+    });
+  }
   clear(dialog);
   // 标签排序仍按「使用中在前」：使用中 = 当前默认 agent（defaultAgent，缺省 'builtin'）所属类排到最左。
   // acc 只表示当前打开的页，与默认 agent 所属类相互独立；标签上不再渲染「使用中」标记。
@@ -62,10 +76,17 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     const err = h('div', { class: 'error-text' });
     // 「保存」：确认使用 CLI——目标 CLI 在点击时按最新 settings 确定，当前默认已是某个仍存在的 CLI 则沿用它，否则取列表第一条。
     const saveCli = h('button', { class: 'btn pri', attrs: { type: 'button' } }, '保存');
-    if (!(s.agentClis ?? []).length) {
-      saveCli.disabled = true;
-      saveCli.title = '先添加一个 Agent CLI';
-    }
+    // T-052：按钮状态随 CLI 列表实时刷新——初始按当前状态算一次，再订阅 'settings' 在增删后重算；
+    // 解绑走 openSettings 开头的重渲染清理与对话框 close 钩子（见 unbindCliSaveRefresh）。
+    const refreshSaveCli = () => {
+      const st = cliSaveState(store.state.settings?.agentClis);
+      saveCli.disabled = st.disabled;
+      if (st.title) saveCli.title = st.title;
+      else saveCli.removeAttribute('title');
+    };
+    refreshSaveCli();
+    store.on('settings', refreshSaveCli);
+    unbindCliSaveRefresh = () => store.off('settings', refreshSaveCli);
     saveCli.addEventListener('click', async () => {
       const st = store.state.settings;
       const clis = st?.agentClis ?? [];
