@@ -6,7 +6,7 @@ import type { FileNode } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
-import { icon, svgEl, type IconName } from '../lib/icons.ts';
+import { icon, type IconName } from '../lib/icons.ts';
 import { sessionStateCounts } from '../lib/session-activity.ts';
 import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
 import { mountTourButton } from '../lib/tour.ts';
@@ -36,28 +36,8 @@ export interface ShellView {
   refreshWorkspace(): Promise<void>;
 }
 
-/**
- * 应用 Logo：圆角方形底（accent → 紫罗兰 #7c5cff 斜向渐变，底色自带、不依赖主题）内嵌白色
- * Git 分叉 + 节点字形——一条主干（上下两节点）自中段分出一支（右侧节点），寓意分支管理 + AI 节点。
- * 渐变 id 全局唯一（acm-logo-grad），不与页面其它 SVG 冲突。
- */
-function appLogo(): SVGElement {
-  const grad = svgEl('linearGradient', { id: 'acm-logo-grad', x1: '0', y1: '0', x2: '1', y2: '1' });
-  grad.append(
-    svgEl('stop', { offset: '0%', style: 'stop-color:var(--accent)' }),
-    svgEl('stop', { offset: '100%', style: 'stop-color:#7c5cff' }),
-  );
-  const defs = svgEl('defs');
-  defs.append(grad);
-  const node = (cx: number, cy: number) => svgEl('circle', { cx, cy, r: 2.7, fill: 'none', stroke: '#fff', 'stroke-width': 2 });
-  const svg = svgEl('svg', { class: 'app-logo', width: 30, height: 30, viewBox: '0 0 32 32', 'aria-hidden': 'true' });
-  svg.append(
-    defs,
-    svgEl('rect', { x: 0, y: 0, width: 32, height: 32, rx: 9, fill: 'url(#acm-logo-grad)' }),
-    svgEl('path', { d: 'M10 11.2v9.6M10 15c0 5.2 4.6 1 9.8 1', fill: 'none', stroke: '#fff', 'stroke-width': 2.2, 'stroke-linecap': 'round' }),
-    node(10, 8.5), node(10, 23.5), node(22.5, 16),
-  );
-  return svg;
+function monogram(name: string): string {
+  return ((name.match(/[A-Za-z]/g) ?? ['P']).slice(0, 2).join('') || 'P').toUpperCase();
 }
 
 export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
@@ -115,15 +95,12 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   rail.insertBefore(tourBtn, rail.lastElementChild);
 
   // ── explorer（原型 explorer()）──
+  const badge = h('div', { class: 'mono-badge' });
   const pname = h('b');
   const pdesc = h('span');
-  // psel 位于 explorer 底部（组装顺序最后 + margin-top:auto 贴底）：点击语义拆两半——
-  // 文字区（Logo + .pid）打开文件夹作为工程根目录（pickProject 在后段定义，闭包引用）；
-  // 右侧箭头按钮独立折叠 / 展开项目文件树（与「项目结构」exToggle 共用 setTreeCollapsed，在树一节接线）。
-  const pselMain = h('div', { class: 'psel-main', title: '点击打开文件夹作为工程根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
-    appLogo(), h('div', { class: 'pid' }, pname, pdesc));
-  const pselArrow = h('button', { class: 'psel-arrow', attrs: { type: 'button' } }, icon('caret', 14));
-  const psel = h('div', { class: 'psel' }, pselMain, pselArrow);
+  // 点击打开文件夹作为工程根目录（pickProject 在后段定义，闭包引用）
+  const psel = h('div', { class: 'psel', title: '点击打开文件夹作为工程根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
+    badge, h('div', { class: 'pid' }, pname, pdesc), h('span', { class: 'mute' }, icon('caret')));
   const navloc = h('div', { class: 'navloc' });
   const navItems = {} as Record<ViewId, HTMLAnchorElement>;
   const nav = h('div', { class: 'nav' });
@@ -138,22 +115,12 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const tree = h('div', { class: 'tree' });
   tree.hidden = localStorage.getItem(TREE_COLLAPSED_KEY) === '1';
   const exToggle = h('button', { class: `exh-t${tree.hidden ? '' : ' open'}`, title: '折叠 / 展开项目结构', attrs: { type: 'button', 'aria-expanded': String(!tree.hidden) } }, icon('caret', 12), h('span', {}, '项目结构'));
-  /** 树折叠状态的唯一写入口：「项目结构」exToggle 与 psel 箭头按钮共用——同步 tree、exToggle 的 open/aria、箭头方向/aria 与本地偏好（TREE_COLLAPSED_KEY 口径不变）。箭头语义：树展开时朝上（点击向上折叠），折叠时朝下。 */
-  const setTreeCollapsed = (collapsed: boolean) => {
-    tree.hidden = collapsed;
-    exToggle.classList.toggle('open', !collapsed);
-    exToggle.setAttribute('aria-expanded', String(!collapsed));
-    pselArrow.classList.toggle('up', !collapsed);
-    pselArrow.setAttribute('aria-expanded', String(!collapsed));
-    pselArrow.title = collapsed ? '展开项目文件' : '折叠项目文件';
-    localStorage.setItem(TREE_COLLAPSED_KEY, collapsed ? '1' : '0');
-  };
-  exToggle.addEventListener('click', () => setTreeCollapsed(!tree.hidden));
-  pselArrow.addEventListener('click', (ev) => { ev.stopPropagation(); setTreeCollapsed(!tree.hidden); });
-  // 箭头初始方向 / aria / 文案按已落盘的折叠状态同步（只同步表现，不再落盘）
-  pselArrow.classList.toggle('up', !tree.hidden);
-  pselArrow.setAttribute('aria-expanded', String(!tree.hidden));
-  pselArrow.title = tree.hidden ? '展开项目文件' : '折叠项目文件';
+  exToggle.addEventListener('click', () => {
+    tree.hidden = !tree.hidden;
+    exToggle.classList.toggle('open', !tree.hidden);
+    exToggle.setAttribute('aria-expanded', String(!tree.hidden));
+    localStorage.setItem(TREE_COLLAPSED_KEY, tree.hidden ? '1' : '0');
+  });
   const moreBtn = h('button', { class: 'exh-more', title: '更多操作', attrs: { type: 'button', 'aria-haspopup': 'menu' } }, icon('more', 14));
   // ── 收藏栏（项目结构之后）：默认折叠且不记偏好——每次启动都折叠（用户口径），展开 / 折叠复用 .exh-t 模式。
   // 数据来自 lib/favorites（与 chat 的收藏按钮共用），变更经 onFavoritesChanged 即时重渲染。
@@ -188,7 +155,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   };
   renderFavorites();
   onFavoritesChanged(renderFavorites); // shell 常驻，无需退订
-  const explorer = h('aside', { class: 'explorer' }, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, brCaret, moreBtn), tree, h('div', { class: 'exh' }, favToggle), favList, psel);
+  const explorer = h('aside', { class: 'explorer' }, psel, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, brCaret, moreBtn), tree, h('div', { class: 'exh' }, favToggle), favList);
 
   // 「⋯」菜单：当前只支持单项目根（无多文件夹工作区），「打开文件夹」= 切换项目（project:pick）
   const exMenu = h('div', { class: 'ctxmenu exmenu', attrs: { role: 'menu' } });
@@ -227,8 +194,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       hooks.onError(errorText(e));
     }
   };
-  /** 菜单锚点可参数化：默认落在 explorer 的 readRef 下方，面包屑分支 chip 调用时落在 chip 下方。 */
-  const toggleBrMenu = (ev: Event, anchor: HTMLElement = readRef) => {
+  const toggleBrMenu = (ev: Event) => {
     ev.stopPropagation();
     const g = store.state.git;
     if (!g?.available || g.branches.length === 0) return;
@@ -240,7 +206,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       attrs: { type: 'button', role: 'menuitem', ...(b.current ? { disabled: '' } : {}) },
       on: { click: () => { closeBrMenu(); void checkoutBranch(b.name); } },
     }, h('span', {}, b.current ? `✓ ${b.name}` : b.name))));
-    const r = anchor.getBoundingClientRect();
+    const r = readRef.getBoundingClientRect();
     brMenu.hidden = false;
     brMenu.style.left = `${Math.max(8, r.right - brMenu.offsetWidth)}px`;
     brMenu.style.top = `${r.bottom + 4}px`;
@@ -257,15 +223,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   /** 规格名旁的切换指示（caret）；可选规格不足 2 个时隐藏，菜单逻辑在下方功能下拉一节。 */
   const featCaret = h('span', { class: 'feat-caret', title: '切换功能规格' }, icon('caret', 12));
   featCaret.hidden = true;
-  /** 面包屑当前分支 chip：文案走内部 label（renderChrome 填充当前分支名），可切换时带 caret 指示，点击复用 explorer 的分支下拉（菜单锚点落在 chip 下方）。 */
-  const crumbChipLabel = h('span');
-  const crumbChipCaret = h('span', { class: 'br-chip-caret' }, icon('caret', 12));
-  crumbChipCaret.hidden = true;
-  const crumbChip = h('span', { class: 'chip br-chip', title: '切换分支' }, crumbChipLabel, crumbChipCaret);
-  crumbChip.addEventListener('click', (ev) => toggleBrMenu(ev, crumbChip));
-  crumbChip.addEventListener('keydown', (ev) => {
-    if ((ev.key === 'Enter' || ev.key === ' ') && crumbChip.classList.contains('br-on')) { ev.preventDefault(); toggleBrMenu(ev, crumbChip); }
-  });
+  const crumbChip = h('span', { class: 'chip' });
   const header = h('header', { class: 'wh' },
     h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, h('span', { class: 'crumb-sep', attrs: { 'aria-hidden': 'true' } }, '/'), crumbFeature, featCaret, crumbChip)),
     h('div', { class: 'wact' }));
@@ -334,6 +292,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const renderProject = () => {
     const p = store.state.project;
     const pkgDesc = store.state.board?.feature?.title ?? '';
+    badge.textContent = monogram(p?.name ?? '');
     pname.textContent = p?.name ?? '未打开项目';
     pdesc.textContent = p ? p.root : '点击选择项目文件夹';
     pdesc.title = p ? p.root : '';
@@ -351,17 +310,12 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     featCaret.hidden = !canSwitchFeature;
     crumbFeature.classList.toggle('feat-on', canSwitchFeature);
     const crumbBranch = g?.currentBranch ?? b?.integrationBranch ?? g?.integrationBranch ?? '';
-    crumbChipLabel.textContent = crumbBranch;
+    crumbChip.textContent = crumbBranch;
     crumbChip.hidden = crumbBranch === '';
     readRef.textContent = g?.currentBranch ?? '';
     const canSwitchBranch = Boolean(g?.available && g.branches.length > 0);
     brCaret.hidden = !canSwitchBranch;
     readRef.classList.toggle('br-on', canSwitchBranch);
-    // 分支 chip 的可切换态与 brCaret 同口径：无 Git 快照 / 无分支时隐藏 caret 且不可点（去掉 role/tabindex）
-    crumbChipCaret.hidden = !canSwitchBranch;
-    crumbChip.classList.toggle('br-on', canSwitchBranch);
-    if (canSwitchBranch) { crumbChip.setAttribute('role', 'button'); crumbChip.setAttribute('tabindex', '0'); }
-    else { crumbChip.removeAttribute('role'); crumbChip.removeAttribute('tabindex'); }
     if (g?.available) {
       statusL.replaceChildren(h('span', { class: 'dot grn' }), `本地工作区 ${g.currentBranch ?? ''}（${g.worktrees.length} 个 worktree · ${g.dirtyCount} 个未提交文件）`);
     } else {
