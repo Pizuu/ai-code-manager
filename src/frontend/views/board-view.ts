@@ -203,14 +203,13 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       f.agent = agentSel.value;
       renderMatrix(snap);
     });
-    // 容量（右端依次：搜索 / 泳道筛选 / Agent 筛选 / 显示已完成开关）
+    // 容量（两行：第一行容量与计数，第二行靠右依次：搜索 / 泳道筛选 / Agent 筛选 / 显示已完成开关）
     pad.append(h('div', { class: 'cap' },
       h('span', {}, 'Worker 容量'), h('b', { class: 'b600' }, `${workers.length} / ${snap.maxParallel ?? '?'}`),
       h('span', { class: 'mute' }, activeC.length ? activeC.map((c) => `${c.assignee} ${c.id} ${STATUS_META[c.status].label}`).join(' · ') : '暂无执行中'),
       h('span', { class: 'sep' }),
       h('span', { class: 'mute' }, `${countBy(cards, 'ready')} 张可派工\u3000·\u3000${countBy(cards, 'blocked')} 张等待依赖\u3000·\u3000${countBy(cards, 'review')} 张待审查\u3000·\u3000${countBy(cards, 'merged')} 张已合入`),
-      h('span', { class: 'flex1' }),
-      q, selWrap(laneSel), selWrap(agentSel), tog));
+      h('div', { class: 'cap-ctl' }, q, selWrap(laneSel), selWrap(agentSel), tog));
     // 根因提示（P0-1）：集成分支本地缺失 / 已回退远端时，先说清「为什么」，再看逐条冲突
     if (snap.integrationMissing) {
       pad.append(h('div', { class: 'rootcause' },
