@@ -699,12 +699,12 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .brmenu .mi[disabled]{cursor:default}
 .brmenu .mi[disabled]:hover{background:none}
 /* 功能规格下拉切换（面包屑）：规格名可点 + caret 指示 + 规格菜单（与分支下拉同族） */
-.crumb b.feat-on{cursor:pointer}
-.crumb b.feat-on:hover{color:var(--color-text-primary)}
+.crumb b.feat-on{cursor:pointer;font-size:var(--font-body);color:var(--accent)}
+.crumb b.feat-on:hover{color:var(--accent2)}
 .feat-caret{display:inline-flex;align-items:center;color:var(--color-text-tertiary);cursor:pointer;margin-left:-2px}
 .feat-caret[hidden]{display:none}
 .feat-caret:hover{color:var(--color-text-primary)}
-.featmenu{min-width:240px;max-height:320px;overflow-y:auto}
+.featmenu{min-width:240px}
 .featmenu .mi.on{color:var(--accent);font-weight:600}
 .featmenu .mi[disabled]{cursor:default}
 .featmenu .mi[disabled]:hover{background:none}
@@ -888,6 +888,13 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .lr .tasks{display:flex;flex-wrap:nowrap;gap:6px;align-items:center;min-width:0;overflow:hidden}
 .lr .globs{font-size:11px;color:var(--color-text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cfgcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+/* Agents 页填满高度：高度链断点在 .gx——它原是普通块级 grid，高度只随最高列内容，#wb-agents 的满高传不下来。
+   按 #wb-git 同款补齐：容器纵向 flex（:not([hidden]) 防压过视图隐藏），.gx 抢满剩余高度且单行 1fr 使两栏等高；
+   不照搬 git 的 overflow:hidden/min-height:0——左栏无内部滚动区，内容超高时仍由 .wb 整页滚动兜底。
+   .cfgcol 内最后的 Agent 工作情况列表 flex 只长不缩：以既有 340px 为基础高撑满多余空间，内部 overflow 滚动口径不变。 */
+#wb-agents:not([hidden]){display:flex;flex-direction:column}
+#wb-agents>.gx{flex:1;grid-template-rows:minmax(0,1fr)}
+.agx .cfgcol>.lanes.agents{flex:1 0 auto}
 .kv{display:grid;grid-template-columns:108px minmax(0,1fr);column-gap:12px;row-gap:2px;padding:8px 0;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary);font-size:var(--font-body)}
 .kv:first-of-type{margin-top:8px}
 .kv .k{color:var(--color-text-secondary)}
