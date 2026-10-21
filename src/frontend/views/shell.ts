@@ -6,7 +6,7 @@ import type { FileNode } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
-import { icon, svgEl, type IconName } from '../lib/icons.ts';
+import { icon, type IconName } from '../lib/icons.ts';
 import { sessionStateCounts } from '../lib/session-activity.ts';
 import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
 import { mountTourButton } from '../lib/tour.ts';
@@ -36,28 +36,8 @@ export interface ShellView {
   refreshWorkspace(): Promise<void>;
 }
 
-/**
- * 应用 Logo：圆角方形底（accent → 紫罗兰 #7c5cff 斜向渐变，底色自带、不依赖主题）内嵌白色
- * Git 分叉 + 节点字形——一条主干（上下两节点）自中段分出一支（右侧节点），寓意分支管理 + AI 节点。
- * 渐变 id 全局唯一（acm-logo-grad），不与页面其它 SVG 冲突。
- */
-function appLogo(): SVGElement {
-  const grad = svgEl('linearGradient', { id: 'acm-logo-grad', x1: '0', y1: '0', x2: '1', y2: '1' });
-  grad.append(
-    svgEl('stop', { offset: '0%', style: 'stop-color:var(--accent)' }),
-    svgEl('stop', { offset: '100%', style: 'stop-color:#7c5cff' }),
-  );
-  const defs = svgEl('defs');
-  defs.append(grad);
-  const node = (cx: number, cy: number) => svgEl('circle', { cx, cy, r: 2.7, fill: 'none', stroke: '#fff', 'stroke-width': 2 });
-  const svg = svgEl('svg', { class: 'app-logo', width: 30, height: 30, viewBox: '0 0 32 32', 'aria-hidden': 'true' });
-  svg.append(
-    defs,
-    svgEl('rect', { x: 0, y: 0, width: 32, height: 32, rx: 9, fill: 'url(#acm-logo-grad)' }),
-    svgEl('path', { d: 'M10 11.2v9.6M10 15c0 5.2 4.6 1 9.8 1', fill: 'none', stroke: '#fff', 'stroke-width': 2.2, 'stroke-linecap': 'round' }),
-    node(10, 8.5), node(10, 23.5), node(22.5, 16),
-  );
-  return svg;
+function monogram(name: string): string {
+  return ((name.match(/[A-Za-z]/g) ?? ['P']).slice(0, 2).join('') || 'P').toUpperCase();
 }
 
 export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
@@ -115,15 +95,12 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   rail.insertBefore(tourBtn, rail.lastElementChild);
 
   // ── explorer（原型 explorer()）──
+  const badge = h('div', { class: 'mono-badge' });
   const pname = h('b');
   const pdesc = h('span');
-  /** 文件树初始折叠态（localStorage 偏好）：tree 初值与 psel caret 的初始方向共用同一读数。 */
-  const treeCollapsedInit = localStorage.getItem(TREE_COLLAPSED_KEY) === '1';
-  // psel 右侧 caret 是文件树的折叠入口（展开时朝上、折叠时朝下）；折叠接线在 exToggle 一节（与「项目结构」行共用 setTreeCollapsed）。
-  const pselCaret = h('span', { class: `mute psel-caret${treeCollapsedInit ? '' : ' up'}`, title: '折叠 / 展开项目文件', attrs: { role: 'button', tabindex: '0', 'aria-expanded': String(!treeCollapsedInit) } }, icon('caret'));
   // 点击打开文件夹作为工程根目录（pickProject 在后段定义，闭包引用）
   const psel = h('div', { class: 'psel', title: '点击打开文件夹作为工程根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
-    appLogo(), h('div', { class: 'pid' }, pname, pdesc), pselCaret);
+    badge, h('div', { class: 'pid' }, pname, pdesc), h('span', { class: 'mute' }, icon('caret')));
   const navloc = h('div', { class: 'navloc' });
   const navItems = {} as Record<ViewId, HTMLAnchorElement>;
   const nav = h('div', { class: 'nav' });
@@ -136,22 +113,13 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const brCaret = h('span', { class: 'br-caret', title: '切换分支' }, icon('caret', 12));
   brCaret.hidden = true;
   const tree = h('div', { class: 'tree' });
-  tree.hidden = treeCollapsedInit;
-  const exToggle = h('button', { class: `exh-t${tree.hidden ? '' : ' open'}`, title: '折叠 / 展开项目结构', attrs: { type: 'button', 'aria-expanded': String(!tree.hidden) } }, icon('caret', 12));
-  /** 文件树折叠状态的共用同步点：「项目结构」行 exToggle 与 psel caret 同走此处（tree.hidden、双方 aria 与 caret 方向、localStorage）。 */
-  const setTreeCollapsed = (collapsed: boolean) => {
-    tree.hidden = collapsed;
-    exToggle.classList.toggle('open', !collapsed);
-    exToggle.setAttribute('aria-expanded', String(!collapsed));
-    pselCaret.classList.toggle('up', !collapsed);
-    pselCaret.setAttribute('aria-expanded', String(!collapsed));
-    localStorage.setItem(TREE_COLLAPSED_KEY, collapsed ? '1' : '0');
-  };
-  exToggle.addEventListener('click', () => setTreeCollapsed(!tree.hidden));
-  // psel caret 只管折叠：click 必须 stopPropagation，否则冒泡触发 psel 整块的打开文件夹；键盘口径与 psel 一致。
-  pselCaret.addEventListener('click', (ev) => { ev.stopPropagation(); setTreeCollapsed(!tree.hidden); });
-  pselCaret.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); setTreeCollapsed(!tree.hidden); }
+  tree.hidden = localStorage.getItem(TREE_COLLAPSED_KEY) === '1';
+  const exToggle = h('button', { class: `exh-t${tree.hidden ? '' : ' open'}`, title: '折叠 / 展开项目结构', attrs: { type: 'button', 'aria-expanded': String(!tree.hidden) } }, icon('caret', 12), h('span', {}, '项目结构'));
+  exToggle.addEventListener('click', () => {
+    tree.hidden = !tree.hidden;
+    exToggle.classList.toggle('open', !tree.hidden);
+    exToggle.setAttribute('aria-expanded', String(!tree.hidden));
+    localStorage.setItem(TREE_COLLAPSED_KEY, tree.hidden ? '1' : '0');
   });
   const moreBtn = h('button', { class: 'exh-more', title: '更多操作', attrs: { type: 'button', 'aria-haspopup': 'menu' } }, icon('more', 14));
   // ── 收藏栏（项目结构之后）：默认折叠且不记偏好——每次启动都折叠（用户口径），展开 / 折叠复用 .exh-t 模式。
@@ -187,7 +155,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   };
   renderFavorites();
   onFavoritesChanged(renderFavorites); // shell 常驻，无需退订
-  const explorer = h('aside', { class: 'explorer' }, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, brCaret, moreBtn), tree, h('div', { class: 'exh' }, favToggle), favList, psel);
+  const explorer = h('aside', { class: 'explorer' }, psel, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, brCaret, moreBtn), tree, h('div', { class: 'exh' }, favToggle), favList);
 
   // 「⋯」菜单：当前只支持单项目根（无多文件夹工作区），「打开文件夹」= 切换项目（project:pick）
   const exMenu = h('div', { class: 'ctxmenu exmenu', attrs: { role: 'menu' } });
@@ -324,6 +292,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const renderProject = () => {
     const p = store.state.project;
     const pkgDesc = store.state.board?.feature?.title ?? '';
+    badge.textContent = monogram(p?.name ?? '');
     pname.textContent = p?.name ?? '未打开项目';
     pdesc.textContent = p ? p.root : '点击选择项目文件夹';
     pdesc.title = p ? p.root : '';
