@@ -28,6 +28,14 @@ function sendToSession(text: string): void {
   chat.insertBlock(text);
 }
 
+/** Spec Kit 向导：把向导生成的对话指令真实发送到任务会话（无当前会话时先新建，失败处理沿用 newSession 现状），发送成功后切到任务会话；发送失败抛给向导就地提示、不切视图。 */
+async function sendInstruction(text: string): Promise<void> {
+  if (!store.state.current) await newSession();
+  await chat.sendText(text);
+  shell.setView('session');
+  sessionView.showChat();
+}
+
 /** 右键选中文本的来源区域中文名。 */
 function originOf(el: Element): string {
   if (el.closest('#settings-dialog')) return '设置';
@@ -245,7 +253,7 @@ async function bootstrap(): Promise<void> {
     notify: (t) => chat.notify(t, 'info'),
   });
   mountSpeckit(shell.views.speckit, {
-    send: sendToSession,
+    sendInstruction,
     openProject: () => void pickProject(),
     // 与顶栏规格下拉同款口径：setFeature 已返回完整快照，不再叠加 refreshWorkspace。
     setFeature: async (featureId) => {

@@ -1,21 +1,24 @@
 /**
- * SPEC KIT 视图：spec-kit 三个流程（规格驱动 SDD / 修 Bug / 评估想法）的整体状态面。
+ * Spec Kit 视图：spec-kit 三个流程（规格驱动 SDD / 修 Bug / 评估想法）的整体状态面。
  * 数据全部真实来源：SDD 走看板快照（store.state.board，与顶栏/看板同源）；Bug / 评估走
  * fs:tree / fs:read 直读 .specify/bugs、.specify/assessments 目录与报告文件，阶段与结论
- * 由 lib/speckit.ts 的纯函数从文件名与报告正文提取。动作按钮把斜杠命令插入任务会话
- * 输入框（不自动发送，与全站 sendToSession 同口径）。
+ * 由 lib/speckit.ts 的纯函数从文件名与报告正文提取。动作按钮打开页内「引导步进向导」
+ * （讲解 → 填写 → 生成指令，定义与拼装在 lib/speckit-wizard.ts），最后经
+ * hooks.sendInstruction 把拼好的对话指令真实发送到任务会话，不再是旧的
+ * 「插入输入框并跳走」。
  */
-import type { BoardFeature } from '../../../contracts/ipc.ts';
-import { api } from '../api.ts';
+import type { BoardFeature, BoardSnapshot } from '../../../contracts/ipc.ts';
+import { api, errorText } from '../api.ts';
 import { clear, h } from '../lib/dom.ts';
 import {
   ASSESS_STAGES, BUG_STAGES, assessStageCount, bugStageCount, extractAssessDecision, extractBugVerdict,
 } from '../lib/speckit.ts';
+import { buildInstruction, getSpeckitAction, type SpeckitActionId } from '../lib/speckit-wizard.ts';
 import { store } from '../store.ts';
 
 export interface SpeckitHooks {
-  /** 把命令插入任务会话输入框并切过去（不自动发送）。 */
-  send(text: string): void;
+  /** 把向导生成的对话指令真实发送到任务会话（确保有会话、走完整发送流程、成功后切过去）；失败抛错。 */
+  sendInstruction(text: string): Promise<void>;
   openProject(): void;
   /** 切换当前功能（board:setFeature），与顶栏规格下拉同款口径。 */
   setFeature(featureId: string): Promise<void>;
@@ -160,12 +163,187 @@ export function mountSpeckit(container: HTMLElement, hooks: SpeckitHooks): void 
   const panelHead = (title: string, sub: string) =>
     h('div', { class: 'sk-head' }, h('span', { class: 'sk-title' }, title), h('span', { class: 'mute' }, sub));
 
+  interface SddStep { label: string; done: boolean; detail: string }
+
+  /** SDD 步骤条数据：快照阶段 + 实施 + 收敛，与面板步骤条、向导状态行同源。 */
+  const sddStepsOf = (F: BoardFeature): SddStep[] => {
+    const tasksAll = featureDone({ done: F.tasksDone, total: F.tasksTotal });
+    const steps: SddStep[] = F.stages.map((s) => ({ label: s.label, done: s.done, detail: s.detail }));
+    steps.push({ label: '实施', done: tasksAll, detail: `tasks ${F.tasksDone}/${F.tasksTotal}` });
+    steps.push({ label: '收敛', done: tasksAll, detail: '按 tasks 完成度计（任务卡无功能归属）' });
+    return steps;
+  };
+
+  /** 向导步 1 的「当前流程真实状态」一行，数据与三个面板同源。 */
+  const wizardStatusLine = (id: SpeckitActionId): string => {
+    if (id === 'bug') {
+      const ok = bugs.filter((b) => b.verdict === 'verified').length;
+      return `当前状态：已有 bug 记录 ${bugs.length} 个（已验证 ${ok}）`;
+    }
+    if (id === 'assess') {
+      const go = assesses.filter((a) => a.decision === 'go').length;
+      return `当前状态：已有评估记录 ${assesses.length} 个（已决策 go ${go}）`;
+    }
+    const snap: BoardSnapshot | null = store.state.board;
+    if (!snap) return '当前状态：正在读取看板快照…';
+    if (!snap.available) return `当前状态：${snap.reason ?? '看板不可用'}`;
+    const F = snap.feature;
+    if (!F) return '当前状态：暂无功能规格（specs/ 下没有 NNN-* 目录）';
+    const steps = sddStepsOf(F);
+    const doneCount = steps.filter((s) => s.done).length;
+    return `当前功能：${F.id} · ${F.title} · 步骤进度 ${doneCount}/${steps.length} · tasks ${F.tasksDone}/${F.tasksTotal}`;
+  };
+
+  let wizard: HTMLDialogElement | null = null;
+
+  /**
+   * 引导步进向导（页内模态，打开不切换视图）：1 讲解 → 2 填写 → 3 生成并发送。
+   * 步 3 的指令由 buildInstruction 拼装、可再编辑，发送以编辑值为准；发送失败留在
+   * 向导内红字报错、不关闭。发送中禁止关闭（Esc / 遮罩 / 取消一律拦下），防重复发送。
+   */
+  const openWizard = (actionId: SpeckitActionId): void => {
+    if (wizard?.open) return;
+    const action = getSpeckitAction(actionId);
+    const values: Record<string, string> = {};
+    let step = 1;
+    let sending = false;
+
+    const dialog = h('dialog', { class: 'dialog skwiz', attrs: { 'aria-label': `${action.buttonText} 向导` } });
+    wizard = dialog;
+    const stepsBar = h('div', { class: 'skwiz-steps' });
+    const body = h('div', { class: 'skwiz-body' });
+    const err = h('div', { class: 'error-text' });
+    const cancelBtn = h('button', { class: 'btn', attrs: { type: 'button' } }, '取消');
+    const prevBtn = h('button', { class: 'btn', attrs: { type: 'button' } }, '上一步');
+    const nextBtn = h('button', { class: 'btn', attrs: { type: 'button' } }, '下一步');
+    const sendBtn = h('button', { class: 'btn pri', attrs: { type: 'button' } }, '生成并发送');
+    const form = h('form', { attrs: { method: 'dialog' } },
+      h('div', { class: 'dhead' }, h('h3', {}, action.buttonText), stepsBar),
+      body, err,
+      h('div', { class: 'actions' }, cancelBtn, prevBtn, nextBtn, sendBtn));
+    form.addEventListener('submit', (ev) => ev.preventDefault());
+    dialog.append(form);
+    document.body.append(dialog);
+
+    let inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement>();
+    let instructionBox: HTMLTextAreaElement | null = null;
+
+    const collect = (): void => {
+      for (const [k, el] of inputs) values[k] = el.value;
+    };
+
+    const renderStep = (): void => {
+      clear(stepsBar);
+      ['讲解', '填写', '生成并发送'].forEach((name, i) => {
+        stepsBar.append(h('span', { class: `chip${i + 1 === step ? ' acc' : ''}` }, `${i + 1} ${name}`));
+      });
+      clear(body);
+      err.textContent = '';
+      inputs = new Map();
+      instructionBox = null;
+      if (step === 1) {
+        const sec = (label: string, text: string) => h('div', { class: 'skwiz-sec' }, h('b', {}, label), h('span', {}, text));
+        body.append(
+          sec('场景', action.scene),
+          sec('参与者', action.actors),
+          sec('功能解释', action.explain),
+          h('div', { class: 'skwiz-status' }, wizardStatusLine(actionId)),
+        );
+      } else if (step === 2) {
+        for (const f of action.fields) {
+          const control = f.multiline
+            ? h('textarea', { attrs: { rows: '4', placeholder: f.placeholder, spellcheck: 'false' } })
+            : h('input', { attrs: { type: 'text', placeholder: f.placeholder, spellcheck: 'false' } });
+          control.value = values[f.key] ?? '';
+          inputs.set(f.key, control);
+          body.append(h('div', { class: 'field' },
+            h('label', {}, f.required ? `${f.label}（必填）` : f.label),
+            control));
+        }
+      } else {
+        const built = buildInstruction(actionId, values);
+        instructionBox = h('textarea', { attrs: { rows: '5', spellcheck: 'false' } });
+        instructionBox.value = built.ok ? built.text : '';
+        body.append(h('div', { class: 'field' },
+          h('label', {}, '将发送到任务会话的指令（可编辑，发送以此为准）'),
+          instructionBox,
+          h('div', { class: 'help' }, '点「生成并发送」后指令会真实发出，并切换到任务会话。')));
+      }
+      prevBtn.hidden = step === 1;
+      nextBtn.hidden = step === 3;
+      sendBtn.hidden = step !== 3;
+    };
+
+    nextBtn.addEventListener('click', () => {
+      if (step === 1) {
+        step = 2;
+        renderStep();
+        return;
+      }
+      if (step === 2) {
+        collect();
+        const built = buildInstruction(actionId, values);
+        if (!built.ok) {
+          err.textContent = built.error;
+          return;
+        }
+        step = 3;
+        renderStep();
+      }
+    });
+    prevBtn.addEventListener('click', () => {
+      if (step === 2) collect();
+      if (step > 1) {
+        step -= 1;
+        renderStep();
+      }
+    });
+    cancelBtn.addEventListener('click', () => dialog.close());
+    sendBtn.addEventListener('click', async () => {
+      if (sending || !instructionBox) return;
+      const text = instructionBox.value.trim();
+      if (!text) {
+        err.textContent = '指令不能为空';
+        return;
+      }
+      sending = true;
+      sendBtn.disabled = true;
+      cancelBtn.disabled = true;
+      prevBtn.disabled = true;
+      sendBtn.textContent = '发送中…';
+      err.textContent = '';
+      try {
+        await hooks.sendInstruction(text);
+        dialog.close();
+      } catch (e) {
+        err.textContent = errorText(e);
+        sending = false;
+        sendBtn.disabled = false;
+        cancelBtn.disabled = false;
+        prevBtn.disabled = false;
+        sendBtn.textContent = '生成并发送';
+      }
+    });
+    dialog.addEventListener('click', (ev) => {
+      if (ev.target === dialog && !sending) dialog.close();
+    });
+    dialog.addEventListener('cancel', (ev) => {
+      if (sending) ev.preventDefault();
+    });
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      if (wizard === dialog) wizard = null;
+    });
+    renderStep();
+    dialog.showModal();
+  };
+
   const renderOverview = (): HTMLElement => {
     const fDone = features.filter(featureDone).length;
     const bOk = bugs.filter((b) => b.verdict === 'verified').length;
     const aGo = assesses.filter((a) => a.decision === 'go').length;
     return h('div', { class: 'panel sk-overview' },
-      h('span', { class: 'sk-title' }, 'SPEC KIT 总览'),
+      h('span', { class: 'sk-title' }, 'Spec Kit 总览'),
       constitution ? chip('grn', '宪法已建立') : chip('', '未建立宪法'),
       h('span', { class: 'sk-sum' }, `功能 ${features.length}（完成 ${fDone}） · Bug ${bugs.length}（已验证 ${bOk}） · 评估 ${assesses.length}（已决策 go ${aGo}）`),
     );
@@ -189,10 +367,7 @@ export function mountSpeckit(container: HTMLElement, hooks: SpeckitHooks): void 
     }
     // 步骤条：快照七步 + 实施 + 收敛。任务卡（docs/tasks/T-*.md）是项目级、无功能归属字段，
     // 无法按功能判「全部合入」，故收敛步按本功能 tasks 完成度计（与实施同源），不编造合入数。
-    const tasksAll = featureDone({ done: F.tasksDone, total: F.tasksTotal });
-    const steps: { label: string; done: boolean; detail: string }[] = F.stages.map((s) => ({ label: s.label, done: s.done, detail: s.detail }));
-    steps.push({ label: '实施', done: tasksAll, detail: `tasks ${F.tasksDone}/${F.tasksTotal}` });
-    steps.push({ label: '收敛', done: tasksAll, detail: '按 tasks 完成度计（任务卡无功能归属）' });
+    const steps = sddStepsOf(F);
     const firstOpen = steps.findIndex((s) => !s.done);
     const stg = h('div', { class: 'sk-steps big' });
     steps.forEach((s, i) => {
@@ -202,10 +377,10 @@ export function mountSpeckit(container: HTMLElement, hooks: SpeckitHooks): void 
       h('div', { class: 'sk-cur' }, h('span', { class: 'sk-fname' }, `${F.id} · ${F.title}`), F.status ? chip('acc', F.status) : null),
       stg,
       h('div', { class: 'sk-actions' },
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => hooks.send('/specify ') } }, '写规格 /specify'),
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => hooks.send('/plan ') } }, '做计划 /plan'),
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => hooks.send('/tasks ') } }, '拆任务 /tasks'),
-        h('button', { class: 'btn pri', attrs: { type: 'button' }, on: { click: () => hooks.send('/implement ') } }, '实施 /implement'),
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => openWizard('specify') } }, '写规格 /specify'),
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => openWizard('plan') } }, '做计划 /plan'),
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => openWizard('tasks') } }, '拆任务 /tasks'),
+        h('button', { class: 'btn pri', attrs: { type: 'button' }, on: { click: () => openWizard('implement') } }, '实施 /implement'),
       ),
     );
     if (features.length > 0) {
@@ -242,7 +417,7 @@ export function mountSpeckit(container: HTMLElement, hooks: SpeckitHooks): void 
     if (bugs.length === 0) {
       panel.append(h('div', { class: 'sk-empty' },
         h('span', { class: 'mute' }, '暂无 bug 记录'),
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => hooks.send('/speckit-bug-assess ') } }, '发起 bug 评估'),
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => openWizard('bug') } }, '发起 bug 评估'),
       ));
       return panel;
     }
@@ -255,7 +430,9 @@ export function mountSpeckit(container: HTMLElement, hooks: SpeckitHooks): void 
         verdictChip(b.verdict),
       ));
     }
-    panel.append(list);
+    panel.append(list, h('div', { class: 'sk-actions' },
+      h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => openWizard('bug') } }, '发起 bug 评估'),
+    ));
     return panel;
   };
 
@@ -273,7 +450,7 @@ export function mountSpeckit(container: HTMLElement, hooks: SpeckitHooks): void 
     if (assesses.length === 0) {
       panel.append(h('div', { class: 'sk-empty' },
         h('span', { class: 'mute' }, '暂无评估记录'),
-        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => hooks.send('/speckit-assess-intake ') } }, '发起想法评估'),
+        h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => openWizard('assess') } }, '发起想法评估'),
       ));
       return panel;
     }
@@ -286,7 +463,9 @@ export function mountSpeckit(container: HTMLElement, hooks: SpeckitHooks): void 
         decisionChip(a.decision),
       ));
     }
-    panel.append(list);
+    panel.append(list, h('div', { class: 'sk-actions' },
+      h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => openWizard('assess') } }, '发起想法评估'),
+    ));
     return panel;
   };
 

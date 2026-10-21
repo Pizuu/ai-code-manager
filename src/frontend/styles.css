@@ -1032,4 +1032,11 @@ a.sk-row:hover{background:var(--chip)}
 .sk-rid{font-weight:600;white-space:nowrap;color:var(--ink)}
 .sk-rname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sk-empty{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+/* Spec Kit 引导步进向导（speckit-view 页内模态，复用 .dialog / .btn / .chip / .field 体系） */
+.dialog.skwiz{width:560px}
+.skwiz-steps{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.skwiz-body{display:flex;flex-direction:column;gap:12px;min-height:168px}
+.skwiz-sec{display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--ink)}
+.skwiz-sec b{font-size:12px;color:var(--mute);font-weight:600}
+.skwiz-status{border-top:1px solid var(--line);padding-top:10px;font-size:12px;color:var(--ink2)}
 .chip.bad{background:color-mix(in srgb,var(--err) 12%,transparent);color:var(--err)}

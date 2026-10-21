@@ -33,6 +33,8 @@ export interface ChatHooks {
 export interface ChatView {
   renderAll(): void;
   appendDelta(messageId: string): void;
+  /** 程序化发送（如 Spec Kit 向导）：与输入框发送同一路径（斜杠展开 → 配置校验 → 乐观追加 → agent:send，失败回滚）；无当前会话 / 配置未就绪 / 发送失败时抛错。不操作输入框 DOM。 */
+  sendText(text: string): Promise<void>;
   insertText(text: string): void;
   /** 003：在光标处插入一段带来源标注的内容（前后补换行），不发送。 */
   insertBlock(text: string): void;
@@ -600,28 +602,23 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
   };
 
-  const send = async () => {
-    const raw = textarea.value.trim();
+  /** 发送失败中应把原文恢复进输入框的一类（配置未就绪、agent:send 失败），message 即应展示的文案；runSlash 本地命令的失败不属此类（旧行为：不恢复原文）。 */
+  class RestoreInputError extends Error {}
+
+  /**
+   * 发送核心（输入框发送与 ChatView.sendText 共用）：斜杠展开 → 配置校验 → 乐观追加 → agent:send。
+   * 本地斜杠命令（/help、/clear、/model）在 runSlash 内消化（返回 null），不产生发送。
+   * 内容为空 / 无当前会话 / 配置未就绪 / 发送失败均抛错；不操作输入框 DOM，原文恢复与提示由调用方处理。
+   */
+  const sendText = async (rawText: string): Promise<void> => {
+    const raw = rawText.trim();
     const s = store.state.current;
-    if (!raw || !s) return;
-    textarea.value = '';
-    renderSlashMenu();
-    autoGrow();
-    let text: string | null;
-    try {
-      text = await runSlash(raw);
-    } catch (e) {
-      notify(errorText(e));
-      return;
-    }
+    if (!raw) throw new Error('发送内容为空');
+    if (!s) throw new Error('当前没有打开的会话');
+    const text = await runSlash(raw);
     if (text === null) return;
     const setup = agentSetupHint(s.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
-    if (setup) {
-      textarea.value = raw;
-      autoGrow();
-      notify(setup);
-      return;
-    }
+    if (setup) throw new RestoreInputError(setup);
     // 乐观追加用户消息（主进程会写入同样内容；切换会话时以持久化版本为准）
     const local: ChatMessage = { id: `local-${Date.now()}`, role: 'user', content: text, createdAt: new Date().toISOString() };
     s.messages.push(local);
@@ -630,9 +627,27 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       await api.invoke('agent:send', { sessionId: s.id, text });
     } catch (e) {
       s.messages.splice(s.messages.indexOf(local), 1);
-      textarea.value = raw;
-      autoGrow();
-      notify(errorText(e));
+      renderAll();
+      throw new RestoreInputError(errorText(e));
+    }
+  };
+
+  const send = async () => {
+    const raw = textarea.value.trim();
+    if (!raw || !store.state.current) return;
+    textarea.value = '';
+    renderSlashMenu();
+    autoGrow();
+    try {
+      await sendText(raw);
+    } catch (e) {
+      if (e instanceof RestoreInputError) {
+        textarea.value = raw;
+        autoGrow();
+        notify(e.message);
+      } else {
+        notify(errorText(e));
+      }
     }
   };
 
@@ -686,6 +701,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     renderAll,
     appendDelta,
     notify,
+    sendText,
     insertText: (text) => {
       textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, 'end');
       autoGrow();
