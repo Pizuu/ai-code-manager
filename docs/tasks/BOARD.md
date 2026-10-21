@@ -2,7 +2,7 @@
 
 > 由 coordinator 维护。前置任务全部合入的卡即为 **ready**；来自不同泳道的 ready 卡可以同时派发。
 > 集成分支：以 `.agents/config.sh` 的 `INTEGRATION_BRANCH` 为准，当前为 `manus`（历史名依次为 `dev` → `hark-dev`）。下方「003 / 002 记录」是当时的历史事实，保留原样。
-> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-031）、`specs/005-approval-notifier/`（T-046…T-051）。当前 ready：T-021（infra，CI 首跑 5/6、第 6 项断言修复中，待二跑见绿关单）。下一步候选：contracts v1.4 暴露 opencodeMode 设置；真实 opencode serve 联调。T-012 同时承担 003 的 T214（打包核对）。
+> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-031）、`specs/005-approval-notifier/`（T-046…T-051）。当前 ready：（无——在册卡全部 done）下一步候选：contracts v1.4 暴露 opencodeMode 设置；真实 opencode serve 联调。T-012 同时承担 003 的 T214（打包核对）。
 > 005 记录：审批通知提醒器由负责人提出、确认交互原型后立项（2026-10-21）：specs/005-approval-notifier/ 的 spec + checklists + tasks 随立项提交合入，FR 与规格内任务号统一 5xx 对齐规格号（历史偏移约定不再沿用，理由见 spec.md FR 节首注）；拆卡 T-046（contracts，ready）→ T-047（backend 通知服务）/ T-048（frontend 弹窗栈与收件箱）→ T-049（frontend P1–P3 事项，依赖 T-048）、T-050（frontend 设置分区）→ T-051（docs）。`.specify/feature.json` 已切到 005。T-046 已合入（`17d13f1`，契约 v1.13；协调者在 frontend main.ts 加 notify-activate 占位 case 一行保 tsc 绿，正式处理在 T-048）。flow-back（2026-10-21 负责人定位）：收件箱入口定版为 rail 底部组、主题按钮上方的收件箱按钮，弹层分「待处理 / 历史」两页签管理审批状态与历史（FR-511 修订 + FR-515 新增，T-048 承接）。
 > 004 记录：T-037…T-045 一批（ADR 0010 终端模式 / 自动授权 + 看板自省 P0-1·P1-7·P1-8）此前在工作区未提交，卡片却已写「done」；本轮由 coordinator 按泳道拆分后逐支合入 `manus`：契约 v1.6（`b3c247c`）→ 契约 v1.7（`ebd00a9`）→ 后端 T-038（`2f189c8`）→ 后端 T-041（`7b332bc`）→ 前端 T-039/T-042（`dc17495`）→ infra T-044（`ba56b5a`）→ contracts T-043（`abe1fd8`）→ docs T-045（`7232917`）→ 看板与协作文档同步（`413a765`）→ 提交号修正（`ed77d77`）。约定：契约先行期间干净树 typecheck 预期为红（preload / handler 穷举检查），T-039 合入后转绿。
 > 003 记录：T-023（契约 v1.2）合入提交 `cc62487` 到 T-025 合入提交 `7f900e1` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（同 002，plan.md Complexity Tracking）；三者连续合入，其余每次合入后 lint / typecheck / 测试为绿。
@@ -31,7 +31,7 @@
 | T-018 | 002 用户与测试/安全文档 | docs | T-015, T-017 | done | coordinator | `feat/docs/T-018-docs-002`（本地 --no-ff 合入） |
 | T-019 | 002 收尾：路线图与看板 | @shared | T-018 | done | coordinator | `feat/contracts/T-019-converge` + `int/T-019-closeout`（本地 --no-ff 合入） |
 | T-020 | 三板块 Electron E2E | frontend | T-011 | done | worker | `feat/frontend/T-020-e2e-boards`（协调者直合 manus 本地提交 `547927d`，推送待解阻） |
-| T-021 | Windows 实机验证 opencode 集成 | infra | T-019 | ready | （待派发） | — |
+| T-021 | Windows 实机验证 opencode 集成 | infra | T-019 | done | worker | CI `windows-opencode` 作业三跑定案 6/6 全绿（run 39608075767） |
 | T-022 | 评估 opencode serve 逐条工具审批 | backend | T-019 | done | hark | `feat/backend/T-022-opencode-serve`（本地 --no-ff 合入；原型未接入，结论见 ADR 0006 修订） |
 | T-023 | 功能 003 规格、契约 v1.2 与 ADR | contracts | 无 | done | coordinator | `feat/contracts/T-023-spec-003`（本地 --no-ff 合入） |
 | T-024 | 003 拆卡、测试规则与 Web 预览脚本入口 | @shared | T-023 | done | coordinator | `int/T-024-split`（本地 --no-ff 合入） |

@@ -29,10 +29,10 @@
 | 任务卡 / BOARD / spec 解析 `workspace/cards.ts`，状态推导 `board.ts` | ✅ | ✅（临时 git 仓库：合入后删除分支、阻塞、声明冲突、越界） | — | backend |
 | Git 快照 `workspace/git-overview.ts`、git 运行器 `workspace/git.ts` | ✅ | ✅（ahead/behind、已删除分支的合并记录、worktree、非仓库） | — | backend |
 | Agent CLI 参数模板与权限映射 `agent-cli/invocation.ts` | ✅ | — | — | backend |
-| opencode 启动环境适配 `agent-cli/platform-env.ts`（question 禁用、win32 Git Bash 探测 / PowerShell 回退） | ✅（注入假探测，不依赖宿主平台） | — | 🟡（CI `windows-opencode` 作业已建：windows-latest 跑 `scripts/verify-opencode-windows.ts` 第 4 / 5 项验探测 / 回退注入，T-021；待 CI 首跑见绿后转 ✅） | backend |
+| opencode 启动环境适配 `agent-cli/platform-env.ts`（question 禁用、win32 Git Bash 探测 / PowerShell 回退） | ✅（注入假探测，不依赖宿主平台） | — | ✅（CI `windows-opencode` 作业第 4 / 5 项真机实测通过，run 39608075767，T-021） | backend |
 | opencode 会话 token 用量采集（契约 v1.8：step_finish tokens 解析/合成 + `accumulateUsage` 累加落盘 `Session.usage`）与实时推送（契约 v1.10：`SessionSummary.usage` 随 session-updated 在回合结束前到达，sink 单测 + summarizeSession 单测） | ✅ | ✅（handlers-v11 假 opencode 回合后断言 usage 落盘 + 带 usage 的摘要先于 status(false)） | — | backend |
-| 可执行文件解析 `agent-cli/resolve.ts`（PATH/PATHEXT、npm .cmd 包装） | ✅（win32 以注入的文件系统模拟） | — | 🟡（同 `windows-opencode` 作业第 1 / 2 / 3 / 6 项：真实 npm 安装下 .cmd → .exe 解析、空格 / 中文路径、taskkill 停止、无 Key 错误路径，T-021；待 CI 首跑见绿后转 ✅） | backend |
-| Windows opencode 实机验证 `scripts/verify-opencode-windows.ts`（T-021） | — | — | 🟡（`ci.yml` 的 `windows-opencode` 作业，windows-latest + 真实 `opencode-ai@1.19.3`；待首跑） | infra |
+| 可执行文件解析 `agent-cli/resolve.ts`（PATH/PATHEXT、npm .cmd 包装） | ✅（win32 以注入的文件系统模拟） | — | ✅（同 `windows-opencode` 作业第 1 / 2 / 3 / 6 项真机实测通过，run 39608075767，T-021） | backend |
+| Windows opencode 实机验证 `scripts/verify-opencode-windows.ts`（T-021） | — | — | ✅（`ci.yml` 的 `windows-opencode` 作业，windows-latest + 真实 `opencode-ai@1.19.3`；三跑定案 6/6 全绿，run 39608075767） | infra |
 | opencode JSONL 解析 `agent-cli/opencode-events.ts` | ✅（opencode 1.19.3 真实输出样例） | — | — | backend |
 | CLI 运行器 `agent-cli/cli-runner.ts` 与 handlers 接线（首轮 / 续接 / 停止 / ask 拒绝 / plan / 错误 / 不可用 / 敏感值不外泄） | — | ✅（假 opencode 可执行文件，POSIX） | — | backend |
 | Agent CLI 设置存储（敏感 env 加密、safeStorage 不可用拒绝） | — | ✅ | — | backend |
@@ -87,7 +87,7 @@
 | SC-005 | 审批在别处被处理后，其弹窗残留超过 1 秒的次数为 0 | T-048：`tests/unit/frontend/lib/notify.test.ts`「已解决撤下：从待批集合移除后重建结果中不再出现，计数同步下降（FR-505/514）」；T-047：通知服务「解决后不再升级，且已发通知被关掉、定时器清净」 |
 | SC-006 | 从看到 P0 弹窗到完成批 / 拒 ≤2 次点击（弹窗内直批）或 ≤3 次（跳转后批） | T-048：弹窗内「批准 / 拒绝」按钮 1 次点击直达既有 `agent:approve` 通道（`views/notify-view.ts`），跳转路径为「查看 → 审批卡上批 / 拒」2 次操作后完成；呈现层走仓库外截图冒烟，审批通道本身由上表「执行器与审批闸门」行覆盖 |
 
-> 已知问题（与 005 无关，登记在案）：`tests/integration/backend/ipc/handlers-reask.test.ts` 的 `reaskLatest` 用例为计时型 flaky——2026-10-21 T-047 验收时在 pristine HEAD 上复跑 4 次失败 2 次。本节登记备查，待单独治理，不计入 005 覆盖缺口。
+> 已知问题（与 005 无关，登记在案）：`tests/integration/backend/ipc/handlers-reask.test.ts` 的 `reaskLatest` 用例为计时型 flaky——2026-10-21 T-047 验收时在 pristine HEAD 上复跑 4 次失败 2 次；同日 CI run 39608075767 的 build-test 作业亦命中本 flake（同跑次其余作业全绿）。本节登记备查，待单独治理，不计入 005 覆盖缺口。
 
 > ❌ 行由 `specs/001-agent-desktop/tasks.md` 的 Convergence 任务 **T040 / T041** 跟踪（本仓库无远端 issue 系统，以任务号代替 issue）。
 > 界面视图已用无头 Chromium + 模拟 `window.api` 做过手工冒烟（001：亮/暗主题、待批准 diff、任务面板、斜杠提示；002：三板块 1680×1200 截图并与 HTML 原型并排对比，数据为本仓库真实 `board:get` / `git:get` 快照），但脚本未纳入仓库，故不计为 ✅。
