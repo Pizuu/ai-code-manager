@@ -153,7 +153,8 @@ export function createNotifyFeed(): NotifyFeed {
       return;
     }
     const nowIso = new Date().toISOString();
-    const transition = diffReminderSnapshot(prev, next, nowIso);
+    // 合入提醒的标题分支名取看板快照的集成分支（不写死）；看板未加载时传 undefined，lib 兜底「集成分支」。
+    const transition = diffReminderSnapshot(prev, next, nowIso, store.state.board?.integrationBranch);
     prev = next;
     // 状态时间戳：任何卡片状态变迁都亲历记录（不止产生事项的那些），供「进度」页签。
     const rec = recordCardStatusTimes(statusTimes, next.cards, nowIso, false);

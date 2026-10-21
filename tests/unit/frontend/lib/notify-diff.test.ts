@@ -95,10 +95,67 @@ test('状态间直转：blocked → review 时旧事项消解、新事项产生'
   assert.deepEqual(t.added.map((i) => i.id), [cardReminderId('T-001', 'review')]);
 });
 
-test('非目标状态（active / merged）永不产生事项', () => {
+test('非目标状态（active）永不产生事项；进入 merged 产生 P2 并消解旧事项', () => {
   const t = diffReminderSnapshot(snap({ 'T-001': 'blocked' }), snap({ 'T-001': 'merged', 'T-002': 'active' }), LATER);
-  assert.deepEqual(t.added, []);
   assert.deepEqual(t.resolvedIds, [cardReminderId('T-001', 'blocked')]);
+  assert.deepEqual(t.added.map((i) => i.id), [cardReminderId('T-001', 'merged')]);
+});
+
+test('合入提醒：进入 merged → P2，标题带卡号 / 卡名 / 集成分支名，可进轻提示集合', () => {
+  const base = snap({ 'T-001': 'review' });
+  const t = diffReminderSnapshot(base, snap({ 'T-001': 'merged' }), NOW, 'manus');
+  assert.equal(t.added.length, 1);
+  const item = t.added[0];
+  assert.equal(item?.level, 'P2');
+  assert.equal(item?.source, 'card');
+  assert.equal(item?.cardId, 'T-001');
+  assert.equal(item?.id, cardReminderId('T-001', 'merged'));
+  assert.equal(item?.title, 'T-001 卡片 T-001 已合入 manus');
+  // 走 P2 通道：收件箱 + 轻提示一次（不进弹窗）。
+  assert.deepEqual(selectExtraToasts(t.added).map((i) => i.id), [cardReminderId('T-001', 'merged')]);
+  assert.deepEqual(selectExtraPopups(t.added), []);
+});
+
+test('合入提醒：不传分支名时标题兜底为「集成分支」，不写死具体分支', () => {
+  const t = diffReminderSnapshot(snap({ 'T-001': 'active' }), snap({ 'T-001': 'merged' }), NOW);
+  assert.equal(t.added[0]?.title, 'T-001 卡片 T-001 已合入 集成分支');
+});
+
+test('合入提醒：基线不产（启动时已合入的卡不是变迁）；同批多卡逐条产生', () => {
+  const base = diffReminderSnapshot(null, snap({ 'T-001': 'merged', 'T-002': 'merged' }), NOW, 'manus');
+  assert.deepEqual(base, { added: [], resolvedIds: [] });
+  const t = diffReminderSnapshot(
+    snap({ 'T-001': 'active', 'T-002': 'review', 'T-003': 'active' }),
+    snap({ 'T-001': 'merged', 'T-002': 'merged', 'T-003': 'active' }),
+    LATER,
+    'manus',
+  );
+  assert.deepEqual(t.added.map((i) => i.id), [cardReminderId('T-001', 'merged'), cardReminderId('T-002', 'merged')]);
+  assert.deepEqual(t.resolvedIds, [cardReminderId('T-002', 'review')]);
+});
+
+test('合入提醒：持续 merged 不重复；离开消解；离开后再次合入再产生', () => {
+  const active = run([
+    snap({ 'T-001': 'active' }),
+    snap({ 'T-001': 'merged' }),
+    snap({ 'T-001': 'merged' }),
+  ]);
+  assert.equal(active.size, 1);
+  const left = diffReminderSnapshot(snap({ 'T-001': 'merged' }), snap({ 'T-001': 'active' }), LATER);
+  assert.deepEqual(left.resolvedIds, [cardReminderId('T-001', 'merged')]);
+  const reentered = run([
+    snap({ 'T-001': 'active' }),
+    snap({ 'T-001': 'merged' }),
+    snap({ 'T-001': 'active' }),
+    snap({ 'T-001': 'merged' }),
+  ]);
+  assert.equal(reentered.size, 1);
+  assert.ok(reentered.has(cardReminderId('T-001', 'merged')));
+});
+
+test('合入提醒：非 merged 变迁不误产（active → review 只产 review 事项）', () => {
+  const t = diffReminderSnapshot(snap({ 'T-001': 'active' }), snap({ 'T-001': 'review' }), LATER, 'manus');
+  assert.deepEqual(t.added.map((i) => i.id), [cardReminderId('T-001', 'review')]);
 });
 
 test('会话出错：进入 → P1（source session），持续不重复，恢复消解，再次出错再产生', () => {

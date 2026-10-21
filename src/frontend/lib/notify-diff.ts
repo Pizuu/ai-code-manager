@@ -4,6 +4,7 @@
  * 输入是「观察快照」：看板卡片 id → 状态（含标题）与出错会话 id → 摘要。
  * 输出是事项变迁（新增 / 消解）。规则口径：
  * - 卡片新进入 blocked → P1（source 'card'）；新进入 review → P2；新进入 ready → P3（FR-509 / FR-510）。
+ * - 卡片新进入 merged → P2 合入提醒（走 P2 通道：收件箱 + 轻提示一次）；标题带集成分支名。
  * - 会话新进入出错态 → P1（source 'session'）。
  * - 同一来源同一目标状态持续期间不重复产生；状态离开即消解；离开后再次进入可再产生
  *   （id 由「来源 + 对象 + 目标状态」推导，消解后同 id 复用不冲突，见契约 v1.13 去重键口径）。
@@ -40,11 +41,12 @@ export interface ReminderTransition {
   resolvedIds: string[];
 }
 
-/** 卡片目标状态 → 级别；非目标状态（active / merged）不产生事项。 */
+/** 卡片目标状态 → 级别；非目标状态（active）不产生事项。merged 为合入提醒（P2）。 */
 const CARD_LEVEL: Partial<Record<BoardCardStatus, ReminderItem['level']>> = {
   blocked: 'P1',
   review: 'P2',
   ready: 'P3',
+  merged: 'P2',
 };
 
 const CARD_VERB: Partial<Record<BoardCardStatus, string>> = {
@@ -63,9 +65,21 @@ export function sessionReminderId(sessionId: string): string {
   return `session:${sessionId}:error`;
 }
 
-function cardItem(cardId: string, card: ObservedCardState, now: string): ReminderItem | null {
+function cardItem(cardId: string, card: ObservedCardState, now: string, branchLabel: string): ReminderItem | null {
   const level = CARD_LEVEL[card.status];
   if (!level) return null;
+  if (card.status === 'merged') {
+    // 合入提醒：标题自带卡号 + 卡名 + 目标集成分支（轻提示只显标题，须自足）；卡名不再另放 body 防重复。
+    return {
+      id: cardReminderId(cardId, card.status),
+      level,
+      source: 'card',
+      title: card.title ? `${cardId} ${card.title} 已合入 ${branchLabel}` : `${cardId} 已合入 ${branchLabel}`,
+      createdAt: now,
+      state: 'active',
+      cardId,
+    };
+  }
   return {
     id: cardReminderId(cardId, card.status),
     level,
@@ -95,13 +109,17 @@ function sessionItem(sessionId: string, err: ObservedErrorState, now: string): R
  * 差分前后两份观察快照。prev 为 null 表示首次喂入（基线）：恒返回空变迁。
  * 「进入」判定：对象在 next 处于目标状态，且 prev 中不存在或状态不同；
  * 对象从快照消失（卡片被删 / 会话错误清空）按离开其原目标状态处理。
+ * integrationBranch 只用于合入提醒的标题文案（调用方从看板快照取集成分支名）；
+ * 缺省 / 空白时兜底为「集成分支」，不写死具体分支名。
  */
 export function diffReminderSnapshot(
   prev: ObservedSnapshot | null,
   next: ObservedSnapshot,
   now: string = new Date().toISOString(),
+  integrationBranch?: string,
 ): ReminderTransition {
   if (!prev) return { added: [], resolvedIds: [] };
+  const branchLabel = integrationBranch?.trim() ? integrationBranch : '集成分支';
   const added: ReminderItem[] = [];
   const resolvedIds: string[] = [];
 
@@ -109,7 +127,7 @@ export function diffReminderSnapshot(
     if (!CARD_LEVEL[card.status]) continue;
     const before = prev.cards.get(cardId);
     if (!before || before.status !== card.status) {
-      const item = cardItem(cardId, card, now);
+      const item = cardItem(cardId, card, now, branchLabel);
       if (item) added.push(item);
     }
   }

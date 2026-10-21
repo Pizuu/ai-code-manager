@@ -70,10 +70,15 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
   const firstSeenAt = new Map<string, string>();
   /** 被 × 收起的弹窗（只收弹窗，事项仍在收件箱待处理中，角标不变）。 */
   const dismissed = new Set<string>();
+  /** 本次打开期间在待处理页签「看过」的未读 feed 事项 id：关闭弹层 / 切走页签时统一落已读，
+   * 保证未读标记在本次打开内始终可见（看过即已读，但不抢在看清之前就消标记）。 */
+  const pendingSeen = new Set<string>();
   /** 决定提交中的审批：禁用其按钮防双击，决定事件回来前不重复发。 */
   const deciding = new Set<string>();
   let inboxOpen = false;
   let activeTab: 'pending' | 'history' | 'progress' = 'pending';
+  /** 上一次 renderInbox 实际渲染的页签（与列表滚动位置的保存 / 恢复配对）。 */
+  let lastInboxTab: 'pending' | 'history' | 'progress' | null = null;
 
   const sessionTitle = (sessionId: string): string =>
     store.state.sessions.find((s) => s.id === sessionId)?.title
@@ -154,6 +159,7 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
 
   const pendingRow = (item: ReminderItem): HTMLElement => {
     const fromFeed = feedIds.has(item.id);
+    // 未读口径：feed 的 P2 / P3 事项且未落已读标记（P0 待批是待办、P1 是未消解警报，均不走已读）。
     const canRead = fromFeed && (item.level === 'P2' || item.level === 'P3') && item.state !== 'read';
     const actions: HTMLElement[] = [];
     if (hooks.viewItem) {
@@ -176,8 +182,9 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
         on: { click: () => feed.markRead(item.id) },
       }, '标已读'));
     }
-    return h('article', { class: 'notify-row', attrs: { 'data-item-id': item.id } },
+    const row = h('article', { class: `notify-row${canRead ? ' unread' : ''}`, attrs: { 'data-item-id': item.id } },
       h('div', { class: 'notify-hd' },
+        ...(canRead ? [h('span', { class: 'notify-dot', attrs: { title: '未读', 'aria-label': '未读' } })] : []),
         h('span', { class: `chip ${LEVEL_CHIP[item.level] ?? ''}`.trim() }, item.level),
         h('span', { class: 'notify-kind' }, item.title),
         ...(item.state === 'read' ? [h('span', { class: 'chip' }, '已读')] : []),
@@ -185,6 +192,9 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
         h('span', { class: 'notify-time' }, hm(item.createdAt))),
       ...(item.body ? [h('div', { class: 'notify-row-body' }, item.body)] : []),
       ...(actions.length ? [h('div', { class: 'notify-actions' }, ...actions)] : []));
+    // 点击条目本身即已读触发（行内按钮各自的动作不受影响：markRead 幂等）。
+    if (canRead) row.addEventListener('click', () => feed.markRead(item.id));
+    return row;
   };
 
   /* ── T-049：P1 弹窗卡（复用弹窗栈形态；无审批类按钮，「稍后」只收起弹窗） ── */
@@ -269,8 +279,14 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
     popover.hidden = !inboxOpen;
     if (!inboxOpen) {
       popover.replaceChildren();
+      lastInboxTab = null;
       return;
     }
+    // 滚动位置保存：document 捕获相 scroll 监听（FR-507）与 store 事件都会整层重建弹层，
+    // 旧 .notify-list 被替换后 scrollTop 归零——不保存恢复，列表滚一下就被弹回顶部。
+    // 仅同一页签的重渲恢复；切页签归零。
+    const prevList = popover.querySelector('.notify-list');
+    const savedScrollTop = prevList && lastInboxTab === activeTab ? prevList.scrollTop : 0;
     const history = listApprovalHistory();
     const progress = feed.progressRows();
     // 页签计数与下方列表渲染同源（同一批数组的长度）：角标数字与实际条目数恒一致。
@@ -286,12 +302,16 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
         click: () => {
           // 目标页签没有数据时不切空页签：直接关闭弹层（负责人定版口径），activeTab 不变。
           if (tabCounts[id] === 0) { closeInbox(); return; }
+          // 从待处理页签切走 = 已看过：先把看过的未读事项落已读，再切换。
+          if (activeTab === 'pending' && id !== 'pending') flushSeenPending();
           activeTab = id;
           render();
         },
       },
     }, label);
     const body = h('div', { class: 'notify-list' });
+    // 进度汇总头是固定区（页签下、滚动区外），不随列表滚动——与页签行同级拼进弹层子节点。
+    let sumEl: HTMLElement | null = null;
     if (activeTab === 'progress') {
       if (!progress.length) {
         body.append(h('div', { class: 'notify-empty' }, '暂无任务卡。'));
@@ -299,13 +319,17 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
         // 全量进度汇总头：就地从本次渲染的 rows 计算（已完成 = 已合入行数），不另取数。
         const done = progress.filter((r) => r.status === 'merged').length;
         const pct = Math.round((done / progress.length) * 100);
-        body.append(h('div', { class: 'notify-prog-sum' },
+        sumEl = h('div', { class: 'notify-prog-sum' },
           h('span', { class: 'notify-prog-sum-text' }, `已完成 ${done} / 共 ${progress.length} 张 · ${pct}%`),
           h('div', { class: 'notify-prog-bar', attrs: { role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' } },
-            h('span', { class: `notify-prog-bar-fill${pct === 100 ? ' full' : ''}`, attrs: { style: `width:${pct}%` } }))));
+            h('span', { class: `notify-prog-bar-fill${pct === 100 ? ' full' : ''}`, attrs: { style: `width:${pct}%` } })));
         for (const row of progress) body.append(progressRow(row));
       }
     } else if (activeTab === 'pending') {
+      // 本次渲染里看得见的未读 feed 事项记入「看过」集合（关闭 / 切走时统一落已读）。
+      for (const item of extras) {
+        if (feedIds.has(item.id) && (item.level === 'P2' || item.level === 'P3') && item.state !== 'read') pendingSeen.add(item.id);
+      }
       if (!approvals.length && !extras.length) body.append(h('div', { class: 'notify-empty' }, '暂无待处理事项。'));
       for (const req of approvals) body.append(approvalCard(req, 'inbox'));
       for (const item of extras) body.append(pendingRow(item));
@@ -335,7 +359,10 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
         tabBtn('pending', `待处理 ${tabCounts.pending}`),
         tabBtn('history', `历史 ${tabCounts.history}`),
         tabBtn('progress', `进度 ${tabCounts.progress}`)),
+      ...(sumEl ? [sumEl] : []),
       body);
+    body.scrollTop = savedScrollTop;
+    lastInboxTab = activeTab;
     positionInbox();
   };
 
@@ -397,9 +424,19 @@ export function mountNotifyView(hooks: NotifyViewHooks): NotifyView {
     render();
   }
 
+  /** 把待处理页签「看过」的未读事项统一落已读（feed.markRead 落盘、幂等；已消解的 id 自动跳过）。 */
+  function flushSeenPending(): void {
+    if (!pendingSeen.size) return;
+    const ids = [...pendingSeen];
+    pendingSeen.clear();
+    for (const id of ids) feed.markRead(id);
+  }
+
   /** 弹层唯一的关闭入口：标题栏 ×、点外关闭、Esc 与「空页签点击关闭」都走这里。 */
   function closeInbox(): void {
     inboxOpen = false;
+    // 关闭 = 在待处理页签看过的内容就此落已读（先置关闭态，markRead 引发的重渲不再重开弹层）。
+    flushSeenPending();
     render();
   }
 

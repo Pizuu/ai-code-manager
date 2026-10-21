@@ -1089,6 +1089,9 @@ a.sk-row:hover{background:var(--chip)}
 .notify-list{overflow:auto;min-height:0;flex:1;padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px}
 .notify-card.inbox{box-shadow:none;background:var(--panel)}
 .notify-row{border:1px solid var(--line);border-radius:var(--border-radius-md);background:var(--panel);padding:10px 12px}
+/* 未读事项（feed 的 P2 / P3 未落已读者）：圆点 + 浅强调底；已读回常态行样式 */
+.notify-row.unread{background:color-mix(in srgb,var(--accent) 7%,var(--panel))}
+.notify-dot{flex:none;width:8px;height:8px;border-radius:99px;background:var(--accent)}
 .notify-row-body{margin-top:6px;color:var(--ink2);line-height:1.6;overflow-wrap:anywhere}
 .notify-empty{color:var(--mute);padding:18px 8px;text-align:center;line-height:1.7}
 /* 审批卡定位高亮（chat.ts focusApproval，与看板 .card.flash 同口径） */
@@ -1099,6 +1102,8 @@ a.sk-row:hover{background:var(--chip)}
 .notify-toast-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 「进度」页签（FR-516 / T-049）：全量开发进度；分段进度指示，受阻整轨异常态（红） */
 .notify-prog-sum{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:var(--border-radius-md);background:var(--panel);padding:10px 12px}
+/* 汇总头现为弹层固定区（页签之下、滚动列表之外）：不收缩、外距与列表内边距对齐 */
+.notify-pop>.notify-prog-sum{flex:none;margin:10px 12px 0}
 .notify-prog-sum-text{font-weight:var(--font-weight-semibold)}
 .notify-prog-bar{height:6px;border-radius:99px;background:var(--chip);overflow:hidden}
 .notify-prog-bar-fill{display:block;height:100%;border-radius:99px;background:var(--accent)}
