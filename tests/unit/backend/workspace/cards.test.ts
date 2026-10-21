@@ -198,3 +198,84 @@ test('buildBoard: done card with direct commit refs is merged (no mismatch, merg
   assert.equal(board.conflicts.length, 1);
   assert.match(board.conflicts[0] ?? '', /T-102/);
 });
+
+test('derives merged for a stale contained branch only with direct ref + declared done (T-020 shape)', () => {
+  const mk = (id: string, branch: string | null, declaredStatus: string) => ({ id, title: id, lane: 'backend', frs: [], frsLabel: '—', specTaskIds: [], branch, prTarget: null, deps: [], declaredStatus, assignee: null, goal: '', acceptance: [] });
+  const cards = [
+    mk('T-201', 'feat/a/T-201-x', 'done'), // (e) 分支已被包含 + 直提引用 + 声明 done → merged
+    mk('T-202', 'feat/a/T-202-y', 'active'), // (f) 分支已被包含 + 直提引用，但声明非 done → 不升
+    mk('T-203', 'feat/a/T-203-z', 'done'), // (g) 分支已被包含 + 声明 done，但无直提引用 → 不升
+    mk('T-204', 'feat/a/T-204-w', 'done'), // 已包含却 ahead>0（矛盾数据）+ 直提引用 + done → 在途优先 review
+  ];
+  const contained = { ahead: 0, behind: 2, worktree: null, time: 't', mergedIntoIntegration: true };
+  const facts = {
+    merged: new Map<string, { sha: string; short: string; time: string }>(),
+    branches: new Map([
+      ['feat/a/T-201-x', contained],
+      ['feat/a/T-202-y', contained],
+      ['feat/a/T-203-z', contained],
+      ['feat/a/T-204-w', { ahead: 2, behind: 0, worktree: null, time: 't', mergedIntoIntegration: true }],
+    ]),
+    directRefs: new Map([
+      ['T-201', { sha: 'd1', short: 'd1', time: 'td1' }],
+      ['T-202', { sha: 'd2', short: 'd2', time: 'td2' }],
+      ['T-204', { sha: 'd4', short: 'd4', time: 'td4' }],
+    ]),
+  };
+  const s = deriveStatuses(cards, facts);
+  assert.equal(s.get('T-201')?.status, 'merged');
+  assert.equal(s.get('T-202')?.status, 'active');
+  assert.equal(s.get('T-203')?.status, 'active');
+  assert.equal(s.get('T-204')?.status, 'review');
+});
+
+const T020_LOG_LINE = ['c'.repeat(40), '2026-10-21T11:00:00+08:00', 'docs(tasks): T-201 收尾（done、协调者直合）'].join(SEP);
+
+function stubSnapshotWithBranches(): GitSnapshot {
+  const br = (name: string, task: string | null, kind: 'integration' | 'worker', current: boolean) => ({
+    name, sha: 'e'.repeat(40), short: 'eeeeeee', time: '2026-10-21T00:00:00+08:00', subject: 'x', kind,
+    lane: task ? 'frontend' : null, task, ahead: 0, behind: 3, mergedIntoIntegration: true, worktree: null, current,
+  });
+  return {
+    ...stubSnapshot(),
+    branches: [
+      br('manus', null, 'integration', true),
+      br('feat/frontend/T-201-e2e-boards', 'T-201', 'worker', false),
+      br('feat/frontend/T-202-stale', 'T-202', 'worker', false),
+    ],
+  };
+}
+
+test('buildBoard (T-020 replica): contained stale branch + direct ref + declared done is merged; contained branch without ref still mismatches', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'acm-board-t020-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const files: Record<string, string> = {
+    '.agents/config.sh': 'MAIN_BRANCH=main\nINTEGRATION_BRANCH=manus\nBRANCH_PREFIX=feat\nMAX_PARALLEL=4\n',
+    '.agents/lanes.conf': 'backend src/backend/**\nfrontend src/frontend/**\n@shared docs/**\n',
+    'docs/tasks/T-201.md': DIRECT_CARD('T-201', '陈旧分支挡路的卡', 'feat/frontend/T-201-e2e-boards'),
+    'docs/tasks/T-202.md': DIRECT_CARD('T-202', '已包含但无引用的卡', 'feat/frontend/T-202-stale'),
+    'docs/tasks/BOARD.md': '| 编号 | 标题 | 泳道 | 前置 | 状态 | 执行者 | PR |\n|---|---|---|---|---|---|---|\n| T-201 | 陈旧分支挡路的卡 | frontend | 无 | done | coordinator | x |\n| T-202 | 已包含但无引用的卡 | frontend | 无 | done | coordinator | x |\n',
+  };
+  for (const [rel, content] of Object.entries(files)) {
+    const abs = path.join(root, rel);
+    await fs.mkdir(path.dirname(abs), { recursive: true });
+    await fs.writeFile(abs, content);
+  }
+  const board = await buildBoard(root, stubGit(T020_LOG_LINE), stubSnapshotWithBranches(), '2026-10-21T12:00:00.000Z');
+  assert.equal(board.available, true);
+  const c201 = board.cards.find((c) => c.id === 'T-201');
+  const c202 = board.cards.find((c) => c.id === 'T-202');
+  assert.ok(c201 && c202);
+  // (e) T-020 复刻：陈旧空分支仍在、tip 已被集成分支包含、标题有直提引用、文书 done
+  // → merged、mismatch 消失、merge 记录回退直提记录
+  assert.equal(c201.status, 'merged');
+  assert.equal(c201.declaredMismatch, false);
+  assert.deepEqual(c201.merge, { sha: 'c'.repeat(40), short: 'ccccccc', time: '2026-10-21T11:00:00+08:00' });
+  // (g) 分支同样已被包含、文书 done，但集成分支上没有任何引用该卡的提交 → 证据不足，
+  // 维持 active + mismatch（不放水），冲突清单只剩这一条
+  assert.equal(c202.status, 'active');
+  assert.equal(c202.declaredMismatch, true);
+  assert.equal(c202.merge, null);
+  assert.equal(board.conflicts.length, 1);
+  assert.match(board.conflicts[0] ?? '', /T-202/);
+});

@@ -139,8 +139,16 @@ export function deriveStatuses(cards: ParsedCard[], facts: GitFacts): Map<string
   for (const c of cards) {
     const br = c.branch ? facts.branches.get(c.branch) : undefined;
     if (c.branch && facts.merged.has(c.branch)) out.set(c.id, { status: 'merged', unmet: [] });
+    // 第二证据之二（陈旧分支 + 直提引用，三证齐备才升 merged）：分支 tip 已被集成分支包含
+    // （mergedIntoIntegration = is-ancestor，且无独有提交 ahead=0）、集成分支上有引用该卡的
+    // 直提提交、且任务卡自身声明 done。缺一不可——刚从集成分支拉出的空分支也天然满足包含
+    // 关系，故必须有直提引用与 done 声明把关；防的是协调者直合后遗留的空分支把 done 卡
+    // 挡成 active（T-020：分支 feat/frontend/T-020-e2e-boards 从未承载工作、成果直提 manus）。
+    // 声明口径取卡文件自身的 declaredStatus（buildBoard 的 declared 本就以卡文件优先）；
+    // 仅 BOARD.md 声明 done 而卡文件未声明者不升——那种情形另有「卡与 BOARD 状态不一致」冲突把关。
+    else if (br && br.mergedIntoIntegration && br.ahead === 0 && c.declaredStatus === 'done' && facts.directRefs.has(c.id)) out.set(c.id, { status: 'merged', unmet: [] });
     else if (br) out.set(c.id, { status: br.ahead > 0 ? 'review' : 'active', unmet: [] });
-    // 第二证据（直提提交引用）：只在无在途分支时生效——分支在途走上一行口径优先，
+    // 第二证据之一（直提提交引用）：只在无在途分支时生效——分支在途走上一行口径优先，
     // 防一笔仅「提及」该卡的提交把在途卡误升 merged。
     else if (facts.directRefs.has(c.id)) out.set(c.id, { status: 'merged', unmet: [] });
   }
@@ -208,9 +216,10 @@ export async function buildBoard(root: string, git: GitRunner, gitSnap: GitSnaps
     const st = statuses.get(c.id) ?? { status: 'ready' as const, unmet: [] };
     const declared = c.declaredStatus || row?.declaredStatus || '';
     const br = c.branch ? facts.branches.get(c.branch) : undefined;
-    // merge 记录：分支合入记录优先；无在途分支时回退直提证据（与 deriveStatuses 同口径——
-    // 在途分支不拿一笔提及记录冒充它自己的合入，卡片 merge/lastActivity 仍按分支走）。
-    const merge = (c.branch ? facts.merged.get(c.branch) : undefined) ?? (br ? null : (facts.directRefs.get(c.id) ?? null));
+    // merge 记录：分支合入记录优先；状态已由直提证据升 merged（deriveStatuses 第二证据，
+    // 含「陈旧分支已被包含」的三证情形）时回退直提记录，merge/lastActivity 与状态同口径；
+    // 在途卡（status 非 merged）不回退——不拿一笔提及记录冒充在途分支自己的合入。
+    const merge = (c.branch ? facts.merged.get(c.branch) : undefined) ?? (st.status === 'merged' ? (facts.directRefs.get(c.id) ?? null) : null);
     const files = changed[ci] ?? [];
     const workerLane = lanesCfg.lanes.some((l) => l.name === lane);
     // 文书豁免（仅看板判定口径，不改 lanes.ts 的通用 laneCheck 语义）：任务分支更新自己任务卡的
