@@ -133,10 +133,58 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
     }
     if (!b.available) table.append(h('div', { class: 'mute pad8' }, b.reason ?? '未读取到泳道配置'));
 
-    // ── 左栏续：多 Agent 配置（原右栏面板，整块换列至此，接在 wts 列表之后）──
+    // ── 右栏续：Agent 工作情况（按任务卡执行者聚合，数据只来自 cards）──
+    const PENDING_ASSIGNEE = '（待派发）';
+    const byAgent = new Map<string, BoardCard[]>();
+    let pendingN = 0;
+    for (const c of cards) {
+      const a = c.assignee.trim();
+      if (!a) continue;
+      if (a === PENDING_ASSIGNEE) {
+        pendingN++;
+        continue;
+      }
+      const arr = byAgent.get(a);
+      if (arr) arr.push(c);
+      else byAgent.set(a, [c]);
+    }
+    interface AgentRow { name: string; rank: number; active: BoardCard[]; reviewN: number; doneN: number; lane: string }
+    const agentRows: AgentRow[] = [...byAgent.entries()].map(([name, mine]) => {
+      const active = mine.filter((c) => c.status === 'active');
+      const reviewN = mine.filter((c) => c.status === 'review').length;
+      const fly = active[0] ?? mine.find((c) => c.status === 'review') ?? mine[0];
+      return {
+        name,
+        rank: active.length ? 0 : reviewN ? 1 : 2,
+        active,
+        reviewN,
+        doneN: mine.filter((c) => c.status === 'merged').length,
+        lane: fly?.lane ?? '',
+      };
+    }).sort((x, y) => x.rank - y.rank || x.name.localeCompare(y.name));
+    const busyN = agentRows.filter((r) => r.rank === 0).length;
+    const agentsSec = h('div', { class: 'sec' }, h('span', {}, 'Agent 工作情况'), h('span', { class: 'mute' }, `${agentRows.length} 位执行者 · ${busyN} 位在途`));
+    const agentsList = h('div', { class: 'lanes agents' },
+      h('div', { class: 'lr lh' }, h('span', {}, '执行者'), h('span', {}, '状态'), h('span', {}, '泳道'), h('span', {}, '已合入')));
+    for (const r of agentRows) {
+      agentsList.append(h('div', { class: 'lr' },
+        h('span', { class: 'b600 who', title: r.name }, r.name),
+        r.active.length
+          ? h('span', { class: 'tasks' }, h('span', { class: 'ink2' }, '执行中'),
+            ...r.active.map((c) => h('span', { class: 'chip blu', title: `${c.title}\n${c.branch ?? ''}`, attrs: sendAttrs({ kind: 'card', id: c.id, title: c.title, lane: c.lane, status: STATUS_META[c.status].label }) }, c.id)))
+          : h('span', { class: 'tasks' }, h('span', { class: r.reviewN ? 'ink2' : 'mute' }, r.reviewN ? `待审查 ${r.reviewN}` : '空闲')),
+        h('span', { class: 'ink2' }, r.lane || '—'),
+        h('span', { class: 'ink2' }, String(r.doneN))));
+    }
+    if (!agentRows.length && !pendingN) {
+      agentsList.append(h('div', { class: 'mute pad8' }, cards.length ? '暂无已指派执行者的任务卡' : '暂无任务卡'));
+    }
+    if (pendingN) agentsList.append(h('div', { class: 'mute pad8' }, `另有 ${pendingN} 张待派发`));
+
+    // ── 左栏续：多 Agent 配置（原右栏面板，整块换列至此，接在 wts 列表之后；标题已移出面板作栏目头）──
     const prefix = cfg?.get('BRANCH_PREFIX') ?? 'feat';
+    left.append(h('div', { class: 'sec' }, h('span', {}, '多 Agent 配置'), h('span', { class: 'mute mono' }, CONFIG_FILE)));
     left.append(h('div', { class: 'panel cfg' },
-      h('div', { class: 'h' }, h('span', {}, '多 Agent 配置'), h('span', { class: 'mute mono' }, CONFIG_FILE)),
       kv('集成分支', h('span', { class: 'mono' }, integ), '任务分支从这里切出并 --no-ff 合回'),
       kv('主分支', h('span', { class: 'mono' }, b.available ? b.mainBranch : g.mainBranch), '仅 Owner 批准后发布'),
       kv('最大并行', maxPar !== null ? `${maxPar} 个 worktree` : '—', `当前已用 ${extraWts}`),
@@ -146,9 +194,9 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
       h('div', { class: 'mute fs12 mt12' }, '配置文件由 coordinator 维护，此处只读；需修改请在任务分支中编辑文件。'),
       h('div', { class: 'fx8 mt12 wrap' }, fileBtn('查看 config.sh', CONFIG_FILE), fileBtn('查看 lanes.conf', LANES_FILE), fileBtn('协作流程', MULTI_AGENT_DOC))));
 
-    // ── 右栏：泳道与 Agent（整块换列至此）──
+    // ── 右栏：泳道与 Agent（整块换列至此），其下接 Agent 工作情况 ──
     const right = h('div', { class: 'cfgcol' });
-    right.append(lanesSec, table);
+    right.append(lanesSec, table, agentsSec, agentsList);
 
     container.append(h('div', { class: 'gx agx' }, left, right));
   };

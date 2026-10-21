@@ -103,7 +103,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   };
   const stopBtn = h('button', { class: 'stop' }, '停止');
   const sendBtn = h('button', { class: 'send', title: '发送' }, icon('up'));
-  const attachBtn = h('button', { class: 'plus', title: '添加文件', attrs: { type: 'button' } }, '+');
+  const attachBtn = h('button', { class: 'plus', title: '添加文件（项目外文件将上传到 uploads/）', attrs: { type: 'button' } }, '+');
   const modeSel = h('select', { class: 'mode', title: '权限模式' });
   for (const [v, l] of Object.entries(MODE_LABELS)) modeSel.append(h('option', { attrs: { value: v } }, `权限：${l}`));
   // CLI 模型切换器：.ft 第二个元素，仅 CLI 会话显示。
@@ -236,7 +236,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
 
   // ── 附件添加（+）：弹系统文件选择框（契约 v1.12 files:pick），选中路径逐个插入输入框光标处。
   // 项目内文件与点文件树发送同格式（formatSendText({ kind:'file', path, dir:false }) → `@<相对路径>`，
-  // 相对路径按正斜杠）；项目外 / 无项目时插绝对路径原文（带空格时双引号包裹）。多个文件空格分隔、末尾留一空格。──
+  // 相对路径按正斜杠）；项目外文件先经 files:import（契约 v1.14）上传到项目 uploads/ 再 @ 引用其相对路径。
+  // 插入顺序保持用户选择顺序；多个文件空格分隔、末尾留一空格。──
   const pickSystemFiles = async () => {
     let paths: string[];
     try {
@@ -247,14 +248,39 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
     if (!paths.length) return; // 用户取消：什么都不做
     const root = store.state.project?.root.replace(/\\/g, '/').replace(/\/$/, '') ?? null;
-    const parts = paths.map((abs) => {
+    // relOf 与 paths 同序：项目内文件先填相对路径，项目外文件先占位 null、待 import 后回填
+    const external: string[] = [];
+    const externalSlots: number[] = [];
+    const relOf: (string | null)[] = paths.map((abs, i) => {
       const norm = abs.replace(/\\/g, '/');
       if (root && norm.toLowerCase().startsWith(`${root.toLowerCase()}/`)) {
-        return formatSendText({ kind: 'file', path: norm.slice(root.length + 1), dir: false });
+        return norm.slice(root.length + 1);
       }
-      return abs.includes(' ') ? `"${abs}"` : abs;
+      external.push(abs);
+      externalSlots.push(i);
+      return null;
     });
-    insertAtCursor(`${parts.join(' ')} `);
+    if (external.length) {
+      if (!root) {
+        // 无项目打开：外部文件无处上传，提示后整批跳过（此时内部组必然为空）
+        notify('未打开项目，无法上传外部文件');
+        return;
+      }
+      try {
+        const imported = await api.invoke('files:import', external);
+        imported.forEach((rel, j) => {
+          const slot = externalSlots[j];
+          if (slot !== undefined) relOf[slot] = rel;
+        });
+      } catch (e) {
+        // 上传失败只跳过外部文件，已就绪的项目内引用照常插入
+        notify(errorText(e));
+      }
+    }
+    const parts = relOf
+      .filter((rel): rel is string => rel !== null)
+      .map((rel) => formatSendText({ kind: 'file', path: rel, dir: false }));
+    if (parts.length) insertAtCursor(`${parts.join(' ')} `);
   };
   attachBtn.addEventListener('click', () => void pickSystemFiles());
 

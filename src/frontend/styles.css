@@ -750,6 +750,12 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 /* 看板工具条：搜索框 / 筛选按钮 / 下拉框统一 radius-md 与焦点环 */
 .cap .inp,.cap .ibtn,.cap .selw,.cap .selw select.chip{border-radius:var(--border-radius-md)}
 .cap .selw select.chip:focus-visible{outline:0;border-color:var(--color-border-primary);box-shadow:0 0 0 3px var(--color-background-secondary)}
+/* 矩阵缩放控件（工具条右端）：− / 百分比（点击重置 100%）/ +，按钮复用 .ibtn 外观 */
+.zoomctl{display:flex;align-items:center;gap:6px;flex:none}
+.zoomctl .ibtn{cursor:pointer;color:var(--ink2);font-size:15px}
+.zoomctl .ibtn:disabled{opacity:.35;cursor:default}
+.zoompct{min-width:46px;height:var(--h-ctl);padding:0 6px;border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--ink2);font-family:var(--sans);font-size:12px;cursor:pointer}
+.zoompct:hover{border-color:var(--color-border-primary)}
 /* 状态色圆点（列头、泳道行首） */
 .mh .dot,.lanec .dot{width:7px;height:7px;margin:0;flex:none}
 .matrix .dot.st-none{background:var(--color-text-ghost)}
@@ -871,7 +877,9 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .agx{grid-template-columns:minmax(0,1fr) 560px}
 .agx .sec.first{margin-top:16px}
 .agx .cfgcol>.sec:first-child{margin:16px 0 0}
-.agx .wts+.panel.cfg{margin-top:16px}
+.agx .cfgcol>.sec:not(:first-child){margin:8px 0 0}
+.lanes.agents .lr{grid-template-columns:minmax(0,1.1fr) minmax(0,1.4fr) 84px 60px}
+.lanes.agents .lr .who{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .lanes{border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);overflow:hidden}
 .lr{display:grid;grid-template-columns:88px 112px minmax(0,1.1fr) minmax(0,1fr);gap:12px;padding:9px 12px;align-items:center;font-size:var(--font-body);border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
 .lanes .lr>span{white-space:nowrap}
@@ -879,7 +887,6 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .lr .tasks{display:flex;flex-wrap:nowrap;gap:6px;align-items:center;min-width:0;overflow:hidden}
 .lr .globs{font-size:11px;color:var(--color-text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cfgcol{display:flex;flex-direction:column;gap:12px;min-width:0}
-.panel.cfg .h .mono{font-size:11px}
 .kv{display:grid;grid-template-columns:108px minmax(0,1fr);column-gap:12px;row-gap:2px;padding:8px 0;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary);font-size:var(--font-body)}
 .kv:first-of-type{margin-top:8px}
 .kv .k{color:var(--color-text-secondary)}
