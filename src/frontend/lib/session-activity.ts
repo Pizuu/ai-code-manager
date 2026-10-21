@@ -1,5 +1,5 @@
 /**
- * 会话活动计数（图标栏徽标 + 状态栏，P0-3）：纯函数，便于单元测试。
+ * 会话活动计数（图标栏徽标 + 状态栏圆点 + 对话区红点，P0-3）：纯函数，便于单元测试。
  *
  * 计数口径：
  * - running：运行中的会话数（store.state.running 的会话 ID 集合）。
@@ -64,6 +64,48 @@ export function activityTarget(
   if (kind === 'pending') return input.approvalSessionIds[0] ?? null;
   if (input.toolCalls.some((c) => c.status === 'error')) return input.currentSessionId;
   return null;
+}
+
+/** 会话三态计数的结果：三个计数 + 判定函数（调用方据此找跳转目标）。 */
+export interface SessionStateCounts {
+  /** 出错会话数（红）。 */
+  nErr: number;
+  /** 回答中会话数（黄，含待批准）。 */
+  nRun: number;
+  /** 回答完成会话数（绿，含新会话）。 */
+  nDone: number;
+  isAnswering(sessionId: string): boolean;
+  isErrored(sessionId: string): boolean;
+}
+
+export interface SessionStateCountsInput {
+  sessions: readonly { id: string }[];
+  /** 运行中的会话 ID 集合。 */
+  running: ReadonlySet<string>;
+  /** 待批准审批所属的会话 ID（可重复，只用于判定回答中）。 */
+  approvalSessionIds: readonly string[];
+  /** 某会话的错误条目（只取长度）。 */
+  errorsOf(sessionId: string): readonly unknown[];
+}
+
+/**
+ * 会话三态分类计数（图标栏徽标、状态栏黄/绿点与对话区红点共用同一套，保证各处口径永不漂移）：
+ * 回答中（含待批准，运行集 ∪ 审批集）优先，其次有错误条目为出错，其余（含新会话）为回答完成；
+ * 判定序与会话列表 statusOf 一致，计数单位恒为会话数。
+ */
+export function sessionStateCounts(input: SessionStateCountsInput): SessionStateCounts {
+  const approvalIds = new Set(input.approvalSessionIds);
+  const isAnswering = (id: string) => input.running.has(id) || approvalIds.has(id);
+  const isErrored = (id: string) => input.errorsOf(id).length > 0;
+  let nErr = 0;
+  let nRun = 0;
+  let nDone = 0;
+  for (const s of input.sessions) {
+    if (isAnswering(s.id)) nRun++;
+    else if (isErrored(s.id)) nErr++;
+    else nDone++;
+  }
+  return { nErr, nRun, nDone, isAnswering, isErrored };
 }
 
 /** 状态栏文案片段：无活动时返回空数组。 */

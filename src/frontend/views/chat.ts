@@ -16,6 +16,8 @@ import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
+import { errorSectionTitle } from '../lib/error-log.ts';
+import { sessionStateCounts } from '../lib/session-activity.ts';
 import { parseSlashCommand, suggestCommands } from '../lib/slash-commands.ts';
 import { store } from '../store.ts';
 import { renderToolCard, type DiffRenderer } from './tool-card.ts';
@@ -26,6 +28,8 @@ export interface ChatHooks {
   renderDiff?: DiffRenderer;
   onNewSession(): void;
   onToggleList(): void;
+  /** 点击对话区红点时跳到目标出错会话（session-view 透传其 selectSession）；未提供时红点只开关错误日志层。 */
+  onJumpToSession?(id: string): void;
   /** 会话标题含任务号时关联的任务卡（显示原型 .sysb 任务卡摘要）。 */
   linkedCard(): BoardCard | null;
 }
@@ -77,6 +81,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   /** 当前会话累计 token 数（Session.usage，opencode 聚合；无数据时隐藏）。 */
   const ctxUsage = h('span', { class: 'chip' });
   ctxUsage.hidden = true;
+  /** 出错会话计数红点（原状态栏三色圆之红，本批迁入 .ctx 条靠右）：计数与显隐口径与状态栏时期一致
+   *（0 时淡显 .zero 且无点击行为）；点击优先跳其它出错会话，无处可跳且当前会话有错误条目时开关错误日志层。 */
+  const errDot = h('button', { class: 'st-dot r zero', attrs: { type: 'button' } }, '0');
   const slashMenu = h('div', { class: 'slash-menu' });
   slashMenu.hidden = true;
   const textarea = h('textarea', { attrs: { placeholder: '回复…（Enter 发送，Shift+Enter 换行，/ 查看命令）' } });
@@ -115,11 +122,79 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     modelMenuFor = null;
   };
   const comp = h('div', { class: 'comp' },
-    h('div', { class: 'ctx' }, ctxUsage),
+    h('div', { class: 'ctx' }, ctxUsage, errDot),
     slashMenu,
     h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
     h('div', { class: 'ft' }, modelPick, modeSel));
   container.append(thd, log, comp);
+
+  // ── 当前会话错误日志层：原对话流内的 .errlog 聚合块移出，改挂 .ctx 条红点上方弹出 ──
+  // 条目呈现沿用 .errlog 内部结构（chip + 文本 + 时间 + detail pre）；开关口径与全站浮层一致
+  //（锚点 stopPropagation + 点层外 / Esc 关闭）。renderErrDot 每次重渲时经 refreshErrPop 同步：
+  // 层开着就重渲内容，当前会话错误清空则自动关。（本块与红点原在 shell.ts 状态栏，本批整体迁入。）
+  const errPop = h('div', { class: 'errpop errlog', attrs: { role: 'dialog', 'aria-label': '当前会话错误日志' } });
+  errPop.hidden = true;
+  document.body.append(errPop);
+  const closeErrPop = () => { errPop.hidden = true; };
+  const renderErrPop = () => {
+    const cur = store.state.current;
+    const entries = cur ? store.errorsOf(cur.id) : [];
+    errPop.replaceChildren(
+      h('div', { class: 'errpop-hd' }, h('b', { class: 'b600' }, errorSectionTitle(entries)), h('span', { class: 'mute errpop-sess' }, cur?.title ?? '')),
+      h('div', { class: 'list' }, ...entries.map((e) => h('div', { class: 'e' },
+        h('div', { class: 'h' }, h('span', { class: `chip ${e.kind === 'tool' ? 'amb' : 'acc'}` }, e.kind === 'tool' ? '工具失败' : 'Agent 错误'), h('span', { class: 't' }, e.text), h('span', { class: 'mute mono' }, hm(e.at))),
+        e.detail ? h('pre', {}, e.detail) : null))));
+  };
+  /** 锚点定位：横向钳制在视口内，层底贴红点顶部上方 8px（与原状态栏时期的公式一致）。 */
+  const anchorErrPop = () => {
+    const r = errDot.getBoundingClientRect();
+    errPop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - errPop.offsetWidth - 8))}px`;
+    errPop.style.bottom = `${window.innerHeight - r.top + 8}px`;
+  };
+  const toggleErrPop = () => {
+    if (!errPop.hidden) { closeErrPop(); return; }
+    renderErrPop();
+    errPop.hidden = false;
+    anchorErrPop();
+  };
+  const refreshErrPop = () => {
+    if (errPop.hidden) return;
+    const cur = store.state.current;
+    if (!cur || !store.errorsOf(cur.id).length) { closeErrPop(); return; }
+    renderErrPop();
+    anchorErrPop();
+  };
+  document.addEventListener('click', (ev) => { if (!errPop.hidden && !errPop.contains(ev.target as Node) && !errDot.contains(ev.target as Node)) closeErrPop(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeErrPop(); });
+
+  /** 红点计数：与图标栏徽标、状态栏黄/绿点共用 lib 的 sessionStateCounts，口径永不漂移。 */
+  const errCounts = () => sessionStateCounts({
+    sessions: store.state.sessions,
+    running: store.state.running,
+    approvalSessionIds: [...store.state.approvals.values()].map((a) => a.sessionId),
+    errorsOf: (id) => store.errorsOf(id),
+  });
+  const renderErrDot = () => {
+    const { nErr } = errCounts();
+    errDot.textContent = String(nErr);
+    errDot.className = `st-dot r${nErr ? '' : ' zero'}`;
+    errDot.title = `出错会话 ${nErr}`;
+    refreshErrPop();
+  };
+  errDot.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const { nErr, isAnswering, isErrored } = errCounts();
+    if (!nErr) return; // 计数为 0 时无点击行为（与状态栏时期「0 不挂监听」等效）
+    // 优先跳到其它出错会话；无处可跳且当前会话有错误条目时开关错误日志层
+    const curId = store.state.current?.id ?? null;
+    const other = store.state.sessions.find((s) => s.id !== curId && !isAnswering(s.id) && isErrored(s.id));
+    if (other) {
+      closeErrPop();
+      hooks.onJumpToSession?.(other.id);
+    } else if (curId && isErrored(curId)) {
+      toggleErrPop();
+    }
+  });
 
   // ── 附件添加（+）：选中项目文件后以 @引用 插入输入框光标处，文本格式与左侧结构树 /
   // 右键 sendFile 完全一致（同一 formatSendText({ kind:'file', path, dir:false }) → `@<相对路径>`）。──
@@ -291,7 +366,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (folded) turnFolded.add(messageId);
     else turnFolded.delete(messageId);
     btn?.closest('article.turn')?.classList.toggle('folded', folded);
-    if (btn) btn.title = folded ? '展开' : '折叠';
+    if (btn) btn.setAttribute('data-tip', folded ? '展开' : '折叠');
   };
 
   /** 收藏 / 取消收藏一个回合（状态变更经 onFavoritesChanged 同步回按钮选中态）。 */
@@ -309,10 +384,24 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     // 流式生成中的回合不显示折叠按钮（正文还在变长，折叠无意义）；回合结束重渲染后出现。
     const streaming = streamingMessage()?.id === m.id;
     return h('span', { class: 'acts' },
-      m.content ? h('button', { class: 'act', title: '复制', attrs: { type: 'button' }, on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')) : null,
-      streaming ? null : h('button', { class: 'act act-fold', title: folded ? '展开' : '折叠', attrs: { type: 'button' }, on: { click: (ev) => toggleFold(m.id, ev) } }, icon('caret')),
-      h('button', { class: 'act', title: '重新回答', attrs: { type: 'button' }, on: { click: () => reanswerFrom(m.id) } }, icon('retry')),
-      m.content && fid ? h('button', { class: `act act-fav${isFavorite(fid) ? ' on' : ''}`, title: '收藏', attrs: { type: 'button', 'data-fav': fid }, on: { click: () => toggleFav(m, fid) } }, icon('star')) : null);
+      m.content ? h('button', { class: 'act', attrs: { type: 'button', 'data-tip': '复制' }, on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')) : null,
+      streaming ? null : h('button', { class: 'act act-fold', attrs: { type: 'button', 'data-tip': folded ? '展开' : '折叠' }, on: { click: (ev) => toggleFold(m.id, ev) } }, icon('caret')),
+      h('button', { class: 'act', attrs: { type: 'button', 'data-tip': '重新回答' }, on: { click: () => reanswerFrom(m.id) } }, icon('retry')),
+      m.content && fid ? h('button', { class: `act act-fav${isFavorite(fid) ? ' on' : ''}`, attrs: { type: 'button', 'data-fav': fid, 'data-tip': '收藏' }, on: { click: () => toggleFav(m, fid) } }, icon('star')) : null);
+  };
+
+  /**
+   * 一次性「重提最近提问」武装标记：重提按钮（重新发送 / 重新回答）在触发前按目标 user 消息
+   * 是否为会话最后一条 user 消息置位，输入框 send() 入口读取后立即清零并透传给 sendText →
+   * agent:send（契约 v1.11 reaskLatest，后端据此截断旧问答只保留最新一轮）。
+   */
+  let pendingReask = false;
+
+  /** 目标 user 消息是否为当前会话最后一条 user 消息（从尾部向前找第一条 user 消息比对）。 */
+  const isLastUserMessage = (m: ChatMessage): boolean => {
+    const msgs = store.state.current?.messages ?? [];
+    const lastUser = [...msgs].reverse().find((x) => x.role === 'user');
+    return lastUser?.id === m.id;
   };
 
   /** 用户回合「重新发送」：把本条用户消息经现行发送路径（与发送按钮同一入口 send）再发一次。会话运行中不并发发送，只给提示（与助手侧「重新回答」一致）。 */
@@ -321,6 +410,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       notify('正在回答中，稍后再试', 'info');
       return;
     }
+    pendingReask = isLastUserMessage(m);
     textarea.value = m.content;
     void send();
   };
@@ -331,10 +421,10 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const fid = s ? favoriteId(s.id, m.id) : null;
     const folded = turnFolded.has(m.id);
     return h('span', { class: 'acts' },
-      m.content ? h('button', { class: 'act', title: '复制', attrs: { type: 'button' }, on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')) : null,
-      h('button', { class: 'act act-fold', title: folded ? '展开' : '折叠', attrs: { type: 'button' }, on: { click: (ev) => toggleFold(m.id, ev) } }, icon('caret')),
-      h('button', { class: 'act', title: '重新发送', attrs: { type: 'button' }, on: { click: () => resendUser(m) } }, icon('retry')),
-      m.content && fid ? h('button', { class: `act act-fav${isFavorite(fid) ? ' on' : ''}`, title: '收藏', attrs: { type: 'button', 'data-fav': fid }, on: { click: () => toggleFav(m, fid) } }, icon('star')) : null);
+      m.content ? h('button', { class: 'act', attrs: { type: 'button', 'data-tip': '复制' }, on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')) : null,
+      h('button', { class: 'act act-fold', attrs: { type: 'button', 'data-tip': folded ? '展开' : '折叠' }, on: { click: (ev) => toggleFold(m.id, ev) } }, icon('caret')),
+      h('button', { class: 'act', attrs: { type: 'button', 'data-tip': '重新发送' }, on: { click: () => resendUser(m) } }, icon('retry')),
+      m.content && fid ? h('button', { class: `act act-fav${isFavorite(fid) ? ' on' : ''}`, attrs: { type: 'button', 'data-fav': fid, 'data-tip': '收藏' }, on: { click: () => toggleFav(m, fid) } }, icon('star')) : null);
   };
 
   /** 用户回合：右侧气泡 + 操作行（按钮 + 时间戳）。 */
@@ -452,6 +542,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const i = msgs.findIndex((x) => x.id === assistantId);
     const prev = msgs.slice(0, i).reverse().find((x) => x.role === 'user');
     if (!prev) return;
+    pendingReask = isLastUserMessage(prev);
     textarea.value = prev.content;
     void send();
   };
@@ -499,6 +590,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
     // 菜单锚定的会话已切换（或不再是 CLI 会话）时关掉，避免对旧会话写模型。
     if (modelMenuFor && (modelMenuFor.sessionId !== s?.id || !cli)) closeModelMenu();
+    // .ctx 条红点随头部一并刷新（计数源含 current / sessions / approvals 等多路变化）。
+    renderErrDot();
   };
 
   const renderAll = () => {
@@ -532,7 +625,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       n.afterMessageId = lastId ?? null;
       logIn.append(noticeEl(n.text, n.kind));
     }
-    // 错误明细已移出对话流：当前会话的错误条目改由状态栏红圆上方的错误日志层呈现（shell.ts errPop，数据同为 store.errorsOf）。
+    // 错误明细已移出对话流：当前会话的错误条目改由 .ctx 条红点上方的错误日志层呈现（本文件 errPop，数据同为 store.errorsOf）。
     // 「正在思考…」提示永远挂在末尾；流式正文末尾另有一个光标。
     logIn.append(liveEl);
     updateLive();
@@ -766,7 +859,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
    * 本地斜杠命令（/help、/clear、/model）在 runSlash 内消化（返回 null），不产生发送。
    * 内容为空 / 无当前会话 / 配置未就绪 / 发送失败均抛错；不操作输入框 DOM，原文恢复与提示由调用方处理。
    */
-  const sendText = async (rawText: string): Promise<void> => {
+  const sendText = async (rawText: string, opts?: { reaskLatest?: boolean }): Promise<void> => {
     const raw = rawText.trim();
     const s = store.state.current;
     if (!raw) throw new Error('发送内容为空');
@@ -780,7 +873,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     s.messages.push(local);
     renderAll();
     try {
-      await api.invoke('agent:send', { sessionId: s.id, text });
+      await api.invoke('agent:send', opts?.reaskLatest ? { sessionId: s.id, text, reaskLatest: true } : { sessionId: s.id, text });
     } catch (e) {
       s.messages.splice(s.messages.indexOf(local), 1);
       renderAll();
@@ -789,13 +882,16 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   };
 
   const send = async () => {
+    // 消费一次性重提标记：入口处读取并立即清零，发送失败回填 / 早退等路径都不残留。
+    const reaskLatest = pendingReask;
+    pendingReask = false;
     const raw = textarea.value.trim();
     if (!raw || !store.state.current) return;
     textarea.value = '';
     renderSlashMenu();
     autoGrow();
     try {
-      await sendText(raw);
+      await sendText(raw, reaskLatest ? { reaskLatest: true } : undefined);
     } catch (e) {
       if (e instanceof RestoreInputError) {
         textarea.value = raw;
@@ -833,6 +929,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   store.on('messages', renderAll);
   store.on('approvals', renderAll);
   store.on('workspace', renderAll);
+  // 错误条目变化（新增 / 清空）时头部未必重渲，红点计数与打开的错误层单独订阅刷新。
+  store.on('errors', renderErrDot);
   // 运行状态变化：只更新头部与「正在思考…」提示 / 流式光标（不整体重渲染，避免打断流式输出）。
   store.on('running', () => {
     renderHeader();

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSlashCommand, SLASH_COMMANDS, suggestCommands } from '../../../../src/frontend/lib/slash-commands.ts';
+import { helpText, parseSlashCommand, SLASH_COMMANDS, suggestCommands } from '../../../../src/frontend/lib/slash-commands.ts';
 
 test('plain text is not a command', () => {
   assert.deepEqual(parseSlashCommand('解释一下 src'), { kind: 'none' });
@@ -39,6 +39,56 @@ test('unknown commands return an error with the command list and are case-insens
   assert.equal(r.kind, 'error');
   assert.match(r.kind === 'error' ? r.text : '', /\/specify/);
   assert.deepEqual(parseSlashCommand('/CLEAR'), { kind: 'clear' });
+});
+
+test('/speckit-bug-assess parses the wizard format and builds an evaluation-only prompt', () => {
+  const r = parseSlashCommand('/speckit-bug-assess "登录页点击\'保存\'后 崩溃" slug=login-crash');
+  assert.equal(r.kind, 'prompt');
+  const prompt = r.kind === 'prompt' ? r.prompt : '';
+  assert.match(prompt, /speckit-bug-assess\/SKILL\.md/);
+  assert.match(prompt, /不直接修改代码/);
+  assert.match(prompt, /\.specify\/bugs\/login-crash\//);
+  assert.match(prompt, /症状：登录页点击'保存'后 崩溃（slug=login-crash）/);
+});
+
+test('/speckit-assess-intake parses the wizard format and builds a five-stage prompt', () => {
+  const r = parseSlashCommand('/speckit-assess-intake "让用户离线工作、重连后自动同步" slug=offline-mode');
+  assert.equal(r.kind, 'prompt');
+  const prompt = r.kind === 'prompt' ? r.prompt : '';
+  assert.match(prompt, /speckit-assess-intake\/SKILL\.md/);
+  assert.match(prompt, /受理 → 调研 → 定义 → 塑形 → 决策/);
+  assert.match(prompt, /\.specify\/assessments\/offline-mode\//);
+  assert.match(prompt, /go \/ needs-clarification \/ kill/);
+  assert.match(prompt, /想法：让用户离线工作、重连后自动同步（slug=offline-mode）/);
+});
+
+test('bug/assess commands accept unquoted hand-typed text around slug=', () => {
+  const r = parseSlashCommand('/speckit-bug-assess 登录页 崩溃 slug=login-crash');
+  assert.equal(r.kind, 'prompt');
+  assert.match(r.kind === 'prompt' ? r.prompt : '', /症状：登录页 崩溃（slug=login-crash）/);
+});
+
+test('bug/assess commands require both body and slug', () => {
+  for (const input of [
+    '/speckit-bug-assess "只有症状没有 slug"',
+    '/speckit-bug-assess slug=only-slug',
+    '/speckit-bug-assess',
+    '/speckit-assess-intake "只有想法没有 slug"',
+    '/speckit-assess-intake slug=only-slug',
+    '/speckit-assess-intake "" slug=empty-body',
+    '/speckit-assess-intake',
+  ]) {
+    const r = parseSlashCommand(input);
+    assert.equal(r.kind, 'error', input);
+    assert.match(r.kind === 'error' ? r.text : '', /用法：\/speckit-/, input);
+  }
+});
+
+test('suggestCommands and helpText include the two extension commands', () => {
+  assert.deepEqual(suggestCommands('/speckit-').map((c) => c.name), ['/speckit-bug-assess', '/speckit-assess-intake']);
+  const help = helpText();
+  assert.match(help, /\/speckit-bug-assess "症状" slug=<slug>/);
+  assert.match(help, /\/speckit-assess-intake "想法" slug=<slug>/);
 });
 
 test('suggests commands by prefix only before arguments are typed', () => {

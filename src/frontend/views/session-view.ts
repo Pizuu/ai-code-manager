@@ -163,6 +163,8 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     renderDiff,
     onNewSession: () => void hooks.newSession(),
     onToggleList: () => slist.toggleAttribute('hidden'),
+    // 对话区红点点击跳出错会话：与会话列表条目点击同路（selectSession）。
+    onJumpToSession: (id) => { void hooks.selectSession(id).catch((e: unknown) => chat.notify(errorText(e))); },
     linkedCard,
   });
 
