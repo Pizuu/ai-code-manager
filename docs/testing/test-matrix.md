@@ -74,6 +74,7 @@
 | 看板 / 会话差分 `src/frontend/lib/notify-diff.ts`（功能 005：首次快照只建基线、进入 / 持续 / 离开 / 再入的 P1 / P2 / P3 产生与消解、呈现集合 P3 弹窗恒 0、FR-516 进度段映射与时间戳三口径、角标计数口径） | ✅ 14 条（`tests/unit/frontend/lib/notify-diff.test.ts`） | — | — | frontend |
 | 提醒设置纯逻辑 `src/frontend/lib/notify-settings.ts`（功能 005：缺省合并回 FR-512 默认值、稍后时长校验 1–120、原生通知能力判定） | ✅ 7 条（`tests/unit/frontend/lib/notify-settings.test.ts`） | — | — | frontend |
 | 提醒呈现视图 `src/frontend/views/notify-view.ts` / `notify-feed.ts`（弹窗栈、收件箱三页签、P2 轻提示）与设置「提醒」分区 `views/settings-dialog.ts` | — | — | 🟡 仓库外无头截图冒烟（同界面视图行口径；逻辑由上三行纯函数单测覆盖，纯 UI 部分按宪法 五） | frontend |
+| 三板块 E2E `tests/e2e/frontend/boards-paths.test.ts`（T-020） | — | — | ✅ 3 条（FR-101 三板块导航与草稿保持 + Git 分支图结构断言「节点 / 连线 / 合并环 / 分支标注」；FR-109 看板卡片 → 任务会话「预填 / 标题关联 / `.sysb` 摘要 / 重进打开已有会话」；FR-112 假 opencode 对话路径「自动检测注册 → run 通道两轮 → argv 参数数组 → `--session` 续接」；本机 xvfb 实跑含 T040 共 4/4） | frontend |
 
 ### 功能 005（审批通知提醒器）SC 追溯
 

@@ -62,7 +62,7 @@ description: "Task list for 002-workspace-boards"
 
 > `$speckit-converge`（2026-10-20，hark-dev @ T-018 合入后）：对照 spec FR/SC 与实际实现，以下缺口无法在本轮沙箱内闭合，转为新任务（需显式派工，不「顺手」修）。
 
-- [ ] T123 [lane:frontend] 在 T040 的 Electron E2E 中覆盖三板块导航、看板卡片 → 任务会话、Git 图渲染与 opencode（假可执行文件）对话路径，置于 tests/e2e/frontend/ per FR-101, FR-109, FR-112 (partial：现仅仓库外截图冒烟)
+- [x] T123 [lane:frontend] 在 T040 的 Electron E2E 中覆盖三板块导航、看板卡片 → 任务会话、Git 图渲染与 opencode（假可执行文件）对话路径，置于 tests/e2e/frontend/ per FR-101, FR-109, FR-112（tests/e2e/frontend/boards-paths.test.ts，本机 xvfb 实跑 4/4）
 - [ ] T124 [lane:infra] 在 Windows x64 runner 上用真实 `npm install -g opencode-ai` 验证 `opencode.cmd` → `opencode.exe` 解析、PowerShell 路径含空格/中文、`taskkill /T /F` 停止，加入 windows-latest CI 作业 per FR-112, FR-113, SC-103 (partial：Windows 分支仅以模拟文件系统单测)
 - [x] T125 [lane:backend] 评估以 `opencode serve` + 权限事件实现逐条工具审批，替代「每轮批准」，落 ADR 修订 per FR-116、宪法 九 (missing：ADR 0006 已接受风险，目标 v0.3.0)
 
