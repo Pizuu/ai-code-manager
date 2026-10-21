@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain（剩 1 处：FR-009 确认后行为，等待负责人选择）
+- [x] No [NEEDS CLARIFICATION] markers remain（FR-009 已于 2026-10-21 由负责人澄清为选项 C：两段式确认）
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,4 +31,5 @@
 
 ## Notes
 
-- 校验第 1 轮：除 FR-009 的待澄清项外全部通过。FR-009 涉及「确认即执行」与否的用户体验与安全边界（/clear 会清会话），按技能规则保留标记并向负责人提问（Q1）；澄清后需复跑本清单再进入 plan。
+- 校验第 1 轮：除 FR-009 的待澄清项外全部通过。FR-009 涉及「确认即执行」与否的用户体验与安全边界（/clear 会清会话），按技能规则保留标记并向负责人提问（Q1）。
+- 校验第 2 轮（2026-10-21）：负责人选定选项 C（填入并预置、再按 Enter 才执行），FR-009 已定稿、验收场景与假设已同步，全部条目通过——本规格可进入 plan。
