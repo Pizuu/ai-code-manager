@@ -9,7 +9,7 @@
  */
 import type { BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
-import { agentName, agentWho, isCli } from '../lib/agent-label.ts';
+import { agentName, isCli } from '../lib/agent-label.ts';
 import { hm, PR_LINE, STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
@@ -166,14 +166,13 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   store.on('current', () => applyMode());
 
   const statusOf = (s: SessionSummary): string => {
-    if (store.state.running.has(s.id)) return [...store.state.approvals.values()].some((a) => a.sessionId === s.id) ? '待批准' : '运行中';
+    if (store.state.running.has(s.id)) return '回答中';
     // P1-6：有错误条目的会话标为「出错」，一眼可见（右侧分区可查详情）
     if (store.errorsOf(s.id).length) return '出错';
-    return s.messageCount ? '空闲' : '新会话';
+    return '回答完成';
   };
 
   const renderList = () => {
-    const st = store.state.settings;
     const cur = store.state.current?.id;
     const q = query.trim().toLowerCase();
     const items = store.state.sessions.filter((s) => !q || s.title.toLowerCase().includes(q));
@@ -191,12 +190,12 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         togglePin(s.id);
       });
       const status = statusOf(s);
-      // 回答状态圆点：出错红 / 运行中·待批准黄 / 空闲·新会话绿
-      const dotCls = status === '出错' ? 'r' : status === '运行中' || status === '待批准' ? 'y' : 'g';
+      // 回答状态圆点：出错红 / 回答中黄 / 回答完成绿（与 statusOf 三态同步）
+      const dotCls = status === '出错' ? 'r' : status === '回答中' ? 'y' : 'g';
       const el = h('a', { class: `si${s.id === cur ? ' on' : ''}${isPinned ? ' pinned' : ''}` },
-        h('div', { class: 'a' }, h('span', { class: 'who' }, agentWho(s.agent, st)), h('span', { class: 'st' }, status), h('span', { class: 'tm' }, hm(s.updatedAt) || '—'), pin, del),
+        h('div', { class: 'a' }, h('span', { class: 'st' }, status), h('span', { class: 'tm' }, hm(s.updatedAt) || '—'), pin, del),
         h('div', { class: 'b' }, h('span', { class: `dot ${dotCls}`, title: status }), h('span', { class: 'ttl' }, s.title)),
-        h('div', { class: 'c' }, `${s.messageCount} 条消息 · ${isCli(s.agent, st) ? '外部 CLI' : '内置 agent'}`));
+        h('div', { class: 'c' }, `${s.messageCount} 条消息`));
       el.addEventListener('click', () => void hooks.selectSession(s.id).catch((e: unknown) => chat.notify(errorText(e))));
       del.addEventListener('click', async (ev) => {
         ev.stopPropagation();

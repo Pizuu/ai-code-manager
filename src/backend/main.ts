@@ -64,6 +64,9 @@ function createWindow(): BrowserWindow {
     height: 900,
     minWidth: 960,
     minHeight: 600,
+    // 启动全屏且禁止改变窗口大小（用户要求）；上面的尺寸是退出全屏时的兜底。
+    fullscreen: true,
+    resizable: false,
     title: 'AI Code Manager',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1f22' : '#ffffff',
     autoHideMenuBar: true,

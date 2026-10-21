@@ -504,7 +504,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .slist .hd{padding:0 8px;font-size:var(--font-heading-sm);font-weight:var(--font-weight-semibold)}
 .slist .inp{width:100%;margin:12px 0}
 .slist .feat{padding:0 8px 8px;font-size:var(--font-caption)}
-.si{padding:10px 12px;margin-bottom:4px;border-radius:var(--border-radius-md)}
+.si{padding:14px 12px;margin-bottom:4px;border-radius:var(--border-radius-md)}
 .si:hover{background:var(--color-background-tertiary)}
 .si.on{background:var(--color-background-secondary);border-color:transparent}
 .si .b{margin:4px 0 2px;font-size:var(--font-body);font-weight:var(--font-weight-semibold);display:flex;align-items:center;gap:6px}.si .c{font-size:var(--font-caption)}
