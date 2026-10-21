@@ -1,0 +1,36 @@
+{
+  "notifyActivateEvent": {
+    "target": {
+      "approvalId": "ap-1",
+      "kind": "approval",
+      "sessionId": "s-sample-0001"
+    },
+    "type": "notify-activate"
+  },
+  "notifySettings": {
+    "snoozeMinutes": 10,
+    "sound": {
+      "P0": false,
+      "P1": false,
+      "P2": false,
+      "P3": false
+    },
+    "systemNotify": {
+      "P0": true,
+      "P1": true,
+      "P2": false,
+      "P3": false
+    }
+  },
+  "reminderItem": {
+    "approvalId": "ap-1",
+    "body": "edit · README.md",
+    "createdAt": "2026-10-21T10:00:00.000Z",
+    "id": "ap-1",
+    "level": "P0",
+    "sessionId": "s-sample-0001",
+    "source": "approval",
+    "state": "active",
+    "title": "会话「解释 src 目录结构」要修改文件 README.md"
+  }
+}

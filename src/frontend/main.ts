@@ -162,6 +162,9 @@ function handleEvent(e: AgentEvent): void {
     case 'git-changed':
       void shell.refreshWorkspace();
       return;
+    // v1.13：提醒激活事件（系统通知点击回传）先占位忽略——事件在 T-047 落地前不会产生，正式处理在 T-048
+    case 'notify-activate':
+      return;
     default:
       break;
   }
