@@ -5,11 +5,11 @@
  * v1.8：改为主流对话样式（回合制）——用户消息为右侧气泡，助手消息为「头部（头像 / 名称 / 时间 / 操作）+
  * 正文」的回合；工具调用收进可折叠的「思考」区（默认折叠，有待批准时自动展开，见 lib/chat-turn.ts）。
  */
-import type { BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
+import type { BoardCard, ChatMessage, FileNode, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
 import { agentName, agentWho, isCli } from '../lib/agent-label.ts';
-import { insertBlock } from '../lib/context-send.ts';
+import { formatSendText, insertBlock } from '../lib/context-send.ts';
 import { hm } from '../lib/board-format.ts';
 import { avatarText, hasPendingApproval, thinkCountText, thinkStatusText } from '../lib/chat-turn.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
@@ -85,8 +85,15 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     textarea.style.height = 'auto';
     textarea.style.height = `${textarea.scrollHeight}px`;
   };
+  /** 在光标处插入文本并触发 autoGrow、回焦（ChatView.insertText 的实现体，附件选择器共用）。 */
+  const insertAtCursor = (text: string) => {
+    textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, 'end');
+    autoGrow();
+    textarea.focus();
+  };
   const stopBtn = h('button', { class: 'stop' }, '停止');
   const sendBtn = h('button', { class: 'send', title: '发送' }, icon('up'));
+  const attachBtn = h('button', { class: 'plus', title: '添加附件（项目文件）', attrs: { type: 'button' } }, '+');
   const modeSel = h('select', { class: 'mode', title: '权限模式' });
   for (const [v, l] of Object.entries(MODE_LABELS)) modeSel.append(h('option', { attrs: { value: v } }, `权限：${l}`));
   // CLI 模型切换器：.ft 第二个元素，仅 CLI 会话显示。
@@ -110,9 +117,158 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const comp = h('div', { class: 'comp' },
     h('div', { class: 'ctx' }, ctxUsage),
     slashMenu,
-    h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, h('span', { class: 'mute plus', title: '插入 @文件：在左侧项目结构中点击文件' }, '+'), h('span', { class: 'right' }, stopBtn, sendBtn))),
+    h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
     h('div', { class: 'ft' }, modelPick, modeSel));
   container.append(thd, log, comp);
+
+  // ── 附件添加（+）：选中项目文件后以 @引用 插入输入框光标处，文本格式与左侧结构树 /
+  // 右键 sendFile 完全一致（同一 formatSendText({ kind:'file', path, dir:false }) → `@<相对路径>`）。──
+  const fattFilter = h('input', { class: 'fatt-filter', attrs: { type: 'text', placeholder: '过滤文件路径…', 'aria-label': '过滤文件路径' } });
+  const fattList = h('div', { class: 'fatt-list' });
+  const fattPop = h('div', { class: 'fatt-pop' }, fattFilter, fattList);
+  fattPop.hidden = true;
+  document.body.append(fattPop);
+  /** 递归收集时不进入的重目录。 */
+  const FATT_SKIP: ReadonlySet<string> = new Set(['node_modules', '.git', 'dist', 'out', 'build', 'coverage', '.cache', '.next']);
+  const FATT_MAX_DEPTH = 6;
+  const FATT_MAX_FILES = 400;
+  /** 收集结果按项目根缓存；切项目（root 变化）自动失效，下次打开时重新拉取。 */
+  let fattCache: { root: string; files: string[] } | null = null;
+  /** 浮层内的完整文件表 / 过滤后列表 / 键盘选中下标。 */
+  let fattAll: string[] = [];
+  let fattShown: string[] = [];
+  let fattSel = 0;
+
+  const closeFatt = () => {
+    fattPop.hidden = true;
+  };
+  /** 与模型菜单同款定位：横向钳制在视口内；输入区在窗口底部，浮层锚在 + 上方展开。 */
+  const positionFatt = () => {
+    const r = attachBtn.getBoundingClientRect();
+    const { innerWidth: W } = window;
+    const rect = fattPop.getBoundingClientRect();
+    fattPop.style.left = `${Math.max(4, Math.min(r.left, W - rect.width - 4))}px`;
+    fattPop.style.top = `${Math.max(4, r.top - rect.height - 6)}px`;
+  };
+  /** 从项目根递归收集文件相对路径（只收文件、不收目录）；单目录拉取失败静默跳过。 */
+  const collectFiles = async (): Promise<string[]> => {
+    const proj = store.state.project;
+    if (!proj) return [];
+    if (fattCache?.root === proj.root) return fattCache.files;
+    const files: string[] = [];
+    const walk = async (rel: string, depth: number): Promise<void> => {
+      if (files.length >= FATT_MAX_FILES) return;
+      let nodes: FileNode[];
+      try {
+        nodes = await api.invoke('fs:tree', rel);
+      } catch {
+        return;
+      }
+      nodes.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      for (const n of nodes) {
+        if (files.length >= FATT_MAX_FILES) break;
+        if (n.kind === 'file') files.push(n.relPath);
+        else if (depth < FATT_MAX_DEPTH && !FATT_SKIP.has(n.name)) await walk(n.relPath, depth + 1);
+      }
+    };
+    await walk('', 0);
+    fattCache = { root: proj.root, files };
+    return files;
+  };
+  const markFattSel = () => {
+    fattList.querySelectorAll<HTMLElement>('.fatt-item').forEach((el, i) => el.classList.toggle('sel', i === fattSel));
+  };
+  /** 选中文件：关浮层，把与 sendFile 同格式的 @引用插入光标处（insertAtCursor 内部回焦输入框）。 */
+  const pickFile = (rel: string) => {
+    closeFatt();
+    insertAtCursor(formatSendText({ kind: 'file', path: rel, dir: false }));
+  };
+  const renderFattList = () => {
+    const q = fattFilter.value.trim().toLowerCase();
+    fattShown = q ? fattAll.filter((p) => p.toLowerCase().includes(q)) : fattAll;
+    if (fattSel >= fattShown.length) fattSel = Math.max(0, fattShown.length - 1);
+    if (!fattAll.length) {
+      fattList.replaceChildren(h('div', { class: 'fatt-empty' }, store.state.project ? '项目里没有可添加的文件。' : '先打开一个项目，再添加附件。'));
+      return;
+    }
+    if (!fattShown.length) {
+      fattList.replaceChildren(h('div', { class: 'fatt-empty' }, '没有匹配的文件。'));
+      return;
+    }
+    const rows: HTMLElement[] = fattShown.map((rel, i) => {
+      const item = h('button', { class: `fatt-item${i === fattSel ? ' sel' : ''}`, attrs: { type: 'button' } },
+        h('span', { class: 'fatt-name' }, rel.split('/').pop() ?? rel),
+        h('span', { class: 'fatt-path' }, rel));
+      item.addEventListener('click', () => pickFile(rel));
+      item.addEventListener('mousemove', () => {
+        if (fattSel !== i) {
+          fattSel = i;
+          markFattSel();
+        }
+      });
+      return item;
+    });
+    if (fattAll.length >= FATT_MAX_FILES) rows.push(h('div', { class: 'fatt-note' }, `仅显示前 ${FATT_MAX_FILES} 个文件，用过滤缩小范围。`));
+    fattList.replaceChildren(...rows);
+  };
+  const openFatt = async () => {
+    const proj = store.state.project;
+    fattFilter.value = '';
+    fattSel = 0;
+    fattAll = fattCache && proj && fattCache.root === proj.root ? fattCache.files : [];
+    fattPop.hidden = false;
+    if (fattAll.length) renderFattList();
+    else fattList.replaceChildren(h('div', { class: 'fatt-empty' }, proj ? '加载文件列表…' : '先打开一个项目，再添加附件。'));
+    positionFatt();
+    fattFilter.focus();
+    if (!proj) return;
+    const files = await collectFiles();
+    // 拉取期间浮层被关、或项目被切走：丢弃本次结果，不覆盖新状态。
+    if (fattPop.hidden || store.state.project?.root !== proj.root) return;
+    fattAll = files;
+    fattSel = 0;
+    renderFattList();
+    positionFatt();
+  };
+  attachBtn.addEventListener('click', () => {
+    if (fattPop.hidden) void openFatt();
+    else closeFatt();
+  });
+  fattFilter.addEventListener('input', () => {
+    fattSel = 0;
+    renderFattList();
+  });
+  fattFilter.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      const rel = fattShown[fattSel];
+      if (rel) pickFile(rel);
+    } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      if (!fattShown.length) return;
+      fattSel = (fattSel + (ev.key === 'ArrowDown' ? 1 : -1) + fattShown.length) % fattShown.length;
+      markFattSel();
+      fattList.querySelectorAll<HTMLElement>('.fatt-item')[fattSel]?.scrollIntoView({ block: 'nearest' });
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeFatt();
+      textarea.focus();
+    }
+  });
+  // 与模型菜单同款的全局关闭口径：点外 / Esc / 失焦 / 缩放关闭（点 + 本身由其 click 切换，不在此关）。
+  document.addEventListener('mousedown', (ev) => {
+    if (!fattPop.hidden && ev.target instanceof Node && !fattPop.contains(ev.target) && !attachBtn.contains(ev.target)) closeFatt();
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !fattPop.hidden) {
+      closeFatt();
+      textarea.focus();
+    }
+  });
+  window.addEventListener('blur', closeFatt);
+  window.addEventListener('resize', closeFatt);
+  store.on('project', closeFatt);
 
   const pendingDeltas = new Set<string>();
   let frame = 0;
@@ -702,11 +858,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     appendDelta,
     notify,
     sendText,
-    insertText: (text) => {
-      textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, 'end');
-      autoGrow();
-      textarea.focus();
-    },
+    insertText: insertAtCursor,
     insertBlock: (text) => {
       const r = insertBlock(textarea.value, textarea.selectionStart, textarea.selectionEnd, text);
       textarea.value = r.text;
