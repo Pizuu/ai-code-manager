@@ -35,6 +35,22 @@ test('summarizeSession takes the last Q&A pair (wall clock, tool messages includ
   assert.equal(summarizeSession(s).lastTurnMs, 30000);
 });
 
+test('summarizeSession carries usage as a copy when the session has usage (v1.10)', () => {
+  const s = session([]);
+  s.usage = { total: 15, input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 };
+  const summary = summarizeSession(s);
+  assert.deepEqual(summary.usage, { total: 15, input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 });
+  // 摘要里是副本：改摘要不回写会话对象（session-updated 下游会合并进前端 current）
+  summary.usage!.total = 999;
+  assert.equal(s.usage.total, 15);
+});
+
+test('summarizeSession omits usage when the session has none (v1.10)', () => {
+  const summary = summarizeSession(session([]));
+  assert.equal(summary.usage, undefined);
+  assert.equal('usage' in summary, false);
+});
+
 test('summarizeSession omits lastTurnMs when there is no assistant reply', () => {
   const s = session([msg('user', '2026-01-01T00:00:00.000Z')]);
   const summary = summarizeSession(s);

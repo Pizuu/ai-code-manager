@@ -220,7 +220,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const statusR = h('span', { class: 'st-r' });
   /** P0-3：活动计数（运行中 / 待批准 / 错误），可点击跳转到对应会话。 */
   const statusAct = h('span', { class: 'st-act' });
-  const status = h('footer', { class: 'status' }, statusL, statusAct, statusR);
+  /** 规格进度行（原看板 .prog 移入）：状态栏最右端常驻，类名沿用 .prog，布局覆盖在 styles.css 的 .status .prog。 */
+  const statusProg = h('span', { class: 'prog' });
+  const status = h('footer', { class: 'status' }, statusL, statusAct, statusR, statusProg);
   const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, status);
   app.append(rail, explorer, ws);
 
@@ -258,6 +260,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       statusL.replaceChildren(h('span', { class: 'dot' }), store.state.project ? (store.state.workspaceError ?? g?.reason ?? '读取中…') : '未打开项目');
     }
     renderGitStatus();
+    renderProg();
     renderActivity();
     renderProject();
   };
@@ -301,6 +304,33 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     seg('running', `${act.running} 运行中`, act.running);
     seg('pending', `${act.pending} 待批准`, act.pending);
     seg('errors', `${act.errors} 错误`, act.errors);
+  };
+
+  /**
+   * 规格进度行（原看板 .prog，本批移入状态栏右端常驻）：内容与推导口径与看板原实现逐字一致，
+   * 数据取 store.state.board，随 renderChrome（workspace / project 事件）刷新；无看板数据时隐藏
+   * （与原 .prog 的出现条件对齐：没打开项目时看板里也没有这一行）。
+   */
+  const renderProg = () => {
+    const b = store.state.board;
+    statusProg.hidden = !b;
+    if (!b) return;
+    const F = b.feature;
+    const cards = b.cards;
+    const integ = b.integrationBranch;
+    const contractCard = cards.find((c) => c.lane === 'contracts' && c.status === 'merged') ?? cards.find((c) => c.lane === 'contracts');
+    const frozen = contractCard?.status === 'merged';
+    const stg = h('div', { class: 'stg' });
+    for (const s of F?.stages ?? []) stg.append(h('span', { class: s.done ? 'ok' : '', title: s.detail }, `${s.label}${s.key === 'checklists' ? ` ${s.detail}` : ''} ${s.done ? '✓' : '○'}`));
+    // 当前阶段由真实 stages 推导：第一个未完成的阶段；七步全完成 = 规格准备结束、已进入实施（Implement）；无 stages 回退 '—'
+    const currentStage = (F?.stages ?? []).find((s) => !s.done)?.label ?? ((F?.stages ?? []).length ? 'Implement' : '—');
+    statusProg.replaceChildren(
+      icon('check'),
+      h('span', {}, `契约 IPC ${b.contractVersion ?? '?'}${frozen ? ' 已冻结' : ' 未冻结'}`),
+      h('span', { class: 'mute' }, contractCard ? `${contractCard.id} · ${contractCard.merge ? `merge ${contractCard.merge.short} 已合入 ${integ}` : '未合入'}` : ''),
+      stg,
+      h('span', { class: 'chip acc', title: 'specs tasks.md 勾选数' }, `当前：${currentStage} · tasks.md ${F?.tasksDone ?? 0}/${F?.tasksTotal ?? 0}`),
+      h('span', { class: 'mute' }, '按序合入 → Converge'));
   };
 
   const renderGitStatus = () => {

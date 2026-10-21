@@ -76,7 +76,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   /** 当前会话累计 token 数（Session.usage，opencode 聚合；无数据时隐藏）。 */
   const ctxUsage = h('span', { class: 'chip' });
   ctxUsage.hidden = true;
-  const ctxText = h('span');
   const slashMenu = h('div', { class: 'slash-menu' });
   slashMenu.hidden = true;
   const textarea = h('textarea', { attrs: { placeholder: '回复…（Enter 发送，Shift+Enter 换行，/ 查看命令）' } });
@@ -103,7 +102,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     modelMenuFor = null;
   };
   const comp = h('div', { class: 'comp' },
-    h('div', { class: 'ctx' }, ctxChip, ctxUsage, ctxText),
+    h('div', { class: 'ctx' }, ctxChip, ctxUsage),
     slashMenu,
     h('div', { class: 'box' }, textarea, h('div', { class: 'bar' }, h('span', { class: 'mute plus', title: '插入 @文件：在左侧项目结构中点击文件' }, '+'), h('span', { class: 'right' }, stopBtn, sendBtn))),
     h('div', { class: 'ft' }, h('span', {}, 'Enter 发送 · Shift + Enter 换行'), modelPick, modeSel));
@@ -271,8 +270,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     } else {
       ctxUsage.hidden = true;
     }
-    const card = hooks.linkedCard();
-    ctxText.textContent = `上下文：${card ? `${card.id} · ` : ''}${store.state.project ? `${store.state.project.name} · AGENTS.md` : '无项目'}`;
     textarea.placeholder = `回复 ${agentName(agent, st)}…（Enter 发送，Shift+Enter 换行，/ 查看命令）`;
     if (st) modeSel.value = st.permissionMode;
     // CLI 会话：底栏显示模型切换器；内置 agent 会话不显示。
@@ -303,8 +300,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (sysb) logIn.append(sysb);
     const visible = s?.messages.filter((m) => m.role !== 'tool') ?? [];
     if (!s || (visible.length === 0 && store.state.notices.length === 0)) {
-      // 空会话只留标题行：示例提示（.ev）属非主动提示，按用户要求不再展示。
-      logIn.append(h('div', { class: 'meta center' }, '— 开始一个任务 —'));
+      // 空会话不放任何占位行：示例提示（.ev）与「开始一个任务」标题行均属非主动提示，已按用户要求删除；
+      // 只保留未配置 agent 时的配置引导块（agentSetupHint）。
       const setup = agentSetupHint(s?.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
       if (setup) logIn.append(h('div', { class: 'notice setup' }, setup));
     }
@@ -620,6 +617,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   });
   store.on('settings', renderAll);
   store.on('project', renderHeader);
+  // v1.10：session-updated（'sessions' 主题）会带回回合进行中的累计 token 用量（已由 main 合并进
+  // current.usage）；只重渲染标题行刷新 Tokens chip，不整体重渲染，避免打断流式输出。
+  store.on('sessions', renderHeader);
   renderAll();
 
   return {

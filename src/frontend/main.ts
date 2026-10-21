@@ -101,7 +101,12 @@ function handleEvent(e: AgentEvent): void {
       if (i === -1) store.state.sessions.unshift(e.summary);
       else store.state.sessions[i] = e.summary;
       store.state.sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      if (s && s.id === e.summary.id) s.title = e.summary.title;
+      if (s && s.id === e.summary.id) {
+        s.title = e.summary.title;
+        // v1.10：回合进行中的累计 token 用量随摘要实时到达，合并进当前会话供 Tokens chip 刷新
+        // （chat 订阅 'sessions' 只重渲染标题行，不重建日志）。
+        if (e.summary.usage) s.usage = e.summary.usage;
+      }
       store.emit('sessions');
       return;
     }
@@ -248,7 +253,8 @@ async function bootstrap(): Promise<void> {
     store.emit('current');
   }
   store.emit('settings', 'sessions');
-  shell.setView(project ? 'board' : 'session');
+  // 启动恒打开任务会话（用户要求），不再按是否恢复了项目跳泳道看板。
+  shell.setView('session');
   void shell.refreshWorkspace();
 }
 

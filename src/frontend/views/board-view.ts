@@ -161,8 +161,6 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     const integ = snap.integrationBranch;
     const activeC = cards.filter((c) => c.status === 'active' || c.status === 'review');
     const workers = activeC.filter((c) => c.lane !== '@shared');
-    const contractCard = cards.find((c) => c.lane === 'contracts' && c.status === 'merged') ?? cards.find((c) => c.lane === 'contracts');
-    const frozen = contractCard?.status === 'merged';
     const allMerged = cards.length > 0 && cards.every((c) => c.status === 'merged');
 
     const pad = h('div', { class: 'pad' });
@@ -171,18 +169,7 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
       h('div', {},
         h('div', { class: 't' }, h('span', {}, F ? F.title : '未找到 specs/NNN-*'), h('span', { class: `chip ${allMerged ? 'grn' : 'acc'}` }, allMerged ? '已全部合入' : '实施中'))),
       h('button', { class: 'btn', on: { click: hooks.openGit } }, '查看集成队列')));
-    // 进度条（先构建暂存，最终位置在矩阵正上方，append 见下方矩阵宿主处）
-    const stg = h('div', { class: 'stg' });
-    for (const s of F?.stages ?? []) stg.append(h('span', { class: s.done ? 'ok' : '', title: s.detail }, `${s.label}${s.key === 'checklists' ? ` ${s.detail}` : ''} ${s.done ? '✓' : '○'}`));
-    // 当前阶段由真实 stages 推导：第一个未完成的阶段；七步全完成 = 规格准备结束、已进入实施（Implement）；无 stages 回退 '—'
-    const currentStage = (F?.stages ?? []).find((s) => !s.done)?.label ?? ((F?.stages ?? []).length ? 'Implement' : '—');
-    const prog = h('div', { class: 'prog' },
-      icon('check'),
-      h('span', {}, `契约 IPC ${snap.contractVersion ?? '?'}${frozen ? ' 已冻结' : ' 未冻结'}`),
-      h('span', { class: 'mute' }, contractCard ? `${contractCard.id} · ${contractCard.merge ? `merge ${contractCard.merge.short} 已合入 ${integ}` : '未合入'}` : ''),
-      stg,
-      h('span', { class: 'chip acc', title: 'specs tasks.md 勾选数' }, `当前：${currentStage} · tasks.md ${F?.tasksDone ?? 0}/${F?.tasksTotal ?? 0}`),
-      h('span', { class: 'mute' }, '按序合入 → Converge'));
+    // 规格进度行（原 .prog）已移至 shell 底部状态栏右端常驻，见 shell.ts renderProg
     // 「显示已完成」开关：挂在容量条右端（原在 .ctl 控制行，本批按用户定位反馈移入 .cap）
     const tog = h('span', { class: `tog${f.done ? ' on' : ''}` }, '显示已完成 ', h('i'));
     tog.addEventListener('click', () => {
@@ -240,8 +227,6 @@ export function mountBoard(container: HTMLElement, hooks: BoardHooks): void {
     }
     // 不一致项默认折叠为一行摘要（v0.4 重新设计，ADR 0009），展开查看明细
     if (snap.conflicts.length) pad.append(h('details', { class: 'conflicts' }, h('summary', {}, h('b', { class: 'b600' }, `声明与 git 不一致 ${snap.conflicts.length} 项`), h('span', { class: 'mute' }, snap.conflicts[0] ?? '')), h('div', { class: 'list' }, ...snap.conflicts.map((c) => h('div', {}, `· ${c}`)))));
-    // 进度行放在矩阵正上方（紧邻矩阵宿主之前 append）
-    pad.append(prog);
     matrixHost = h('div');
     pad.append(matrixHost);
     pad.append(h('div', { class: 'legend' },

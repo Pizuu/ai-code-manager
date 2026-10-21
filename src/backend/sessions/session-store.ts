@@ -35,7 +35,9 @@ export function lastTurnMs(s: Session): number | undefined {
 
 export function summarizeSession(s: Session): SessionSummary {
   const turnMs = lastTurnMs(s);
-  return { id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: s.messages.length, ...(s.agent ? { agent: s.agent } : {}), ...(turnMs !== undefined ? { lastTurnMs: turnMs } : {}) };
+  // v1.10：usage 随摘要走 session-updated 实时推送（回合中途的 step-finish / usage_update 落盘即带上），
+  // 渲染进程据此刷新 Tokens chip，不必等回合结束重拉整会话。传副本，避免下游改动回写会话对象。
+  return { id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: s.messages.length, ...(s.agent ? { agent: s.agent } : {}), ...(turnMs !== undefined ? { lastTurnMs: turnMs } : {}), ...(s.usage ? { usage: { ...s.usage } } : {}) };
 }
 
 export class SessionStore {

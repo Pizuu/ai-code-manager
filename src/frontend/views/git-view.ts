@@ -79,6 +79,8 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
   let selected = localStorage.getItem(SEL_KEY) ?? '';
   /** 分支背景联动（.brhl）：当前被浅染的分支与分支 → 颜色表（与提交图 lanes 同源取色）。 */
   let branchTint: string | null = null;
+  /** 图内悬停时被悬停的图行本身（非空 = 图内来源，图中只染这一行，见 applyTint）。 */
+  let tintRow: Element | null = null;
   let branchColors = new Map<string, string>();
 
   /** 把 el 滚到 box 可视区内（只滚动 box 自身，不牵动整页）。 */
@@ -141,11 +143,16 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     if (branch) mark(shasOf(branch), branch, true, fromQueue, !fromQueue);
     else apply(selected, false);
   };
-  /** 分支背景联动：悬停任一侧的分支行时，两侧同分支行一起以该分支色浅染背景；与 .hl 图形联动相互独立。 */
+  /**
+   * 分支背景联动：悬停队列 / 列表侧的分支行时，两侧同分支行一起以该分支色浅染背景；
+   * 悬停提交图内的行时，图中只染被悬停的那一行本身（同分支的其它图行不亮），
+   * 队列 / 列表侧的对应行仍照常联动浅染。与 .hl 图形联动相互独立。
+   */
   const TINT_SEL = '.q[data-branch], .pr[data-branch], .gr[data-branch]';
-  const applyTint = (branch: string | null) => {
-    if (branch === branchTint) return;
+  const applyTint = (branch: string | null, rowEl: Element | null = null) => {
+    if (branch === branchTint && rowEl === tintRow) return;
     branchTint = branch;
+    tintRow = rowEl;
     for (const el of container.querySelectorAll('.brhl')) {
       el.classList.remove('brhl');
       (el as HTMLElement).style.removeProperty('--hl');
@@ -154,13 +161,15 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     const color = branchColors.get(branch) ?? fallbackColor(branch);
     for (const el of container.querySelectorAll(TINT_SEL)) {
       if (el.getAttribute('data-branch') !== branch) continue;
+      // 图内悬停：图中的行只染被悬停的那一行，其余同分支图行跳过
+      if (rowEl && el.classList.contains('gr') && el !== rowEl) continue;
       (el as HTMLElement).style.setProperty('--hl', color);
       el.classList.add('brhl');
     }
   };
   container.addEventListener('mouseover', (ev) => {
     const t = (ev.target as Element).closest?.(TINT_SEL);
-    if (t && !t.contains(ev.relatedTarget as Node)) applyTint(t.getAttribute('data-branch'));
+    if (t && !t.contains(ev.relatedTarget as Node)) applyTint(t.getAttribute('data-branch'), t.classList.contains('gr') ? t : null);
   });
   container.addEventListener('mouseout', (ev) => {
     const t = (ev.target as Element).closest?.(TINT_SEL);
@@ -195,6 +204,7 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
     prListEl = null;
     queueEl = null;
     branchTint = null;
+    tintRow = null;
     const g = store.state.git;
     const b = store.state.board;
     if (!store.state.project) {

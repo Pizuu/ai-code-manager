@@ -197,6 +197,22 @@ test('CLI errors: error events, non-zero exit with stderr, and missing executabl
   assert.match(check.message, /opencode\.ai\/docs/);
 });
 
+test('usage rides session-updated summaries before the turn ends (v1.10 realtime Tokens chip)', { skip: posixOnly }, async (t) => {
+  const { handlers, events, agent, waitIdle } = await setup(t);
+  const s = await handlers['sessions:setAgent']((await handlers['sessions:create']()).id, agent);
+  await handlers['agent:send']({ sessionId: s.id, text: '写一个 hello.txt' });
+  await waitIdle(s.id, 1);
+  // 累计用量随 step-finish 落盘的 session-updated 摘要到达渲染进程（摘要此前不带 usage，前端 chip 只能回合末重拉）
+  const usageIdx = events.findIndex((e) => e.type === 'session-updated' && e.summary.id === s.id && e.summary.usage?.total === 15);
+  assert.notEqual(usageIdx, -1);
+  const ev = events[usageIdx];
+  assert.ok(ev && ev.type === 'session-updated');
+  assert.deepEqual(ev.summary.usage, { total: 15, input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 });
+  // 实时性口径：带 usage 的摘要出现在回合结束信号（status running=false）之前
+  const idleIdx = events.findIndex((e) => e.type === 'status' && e.sessionId === s.id && !e.running);
+  assert.ok(idleIdx !== -1 && usageIdx < idleIdx);
+});
+
 test('board:get / git:get without a project and default agent for new sessions', { skip: posixOnly }, async (t) => {
   const { handlers, agent } = await setup(t);
   const b = await handlers['board:get']();

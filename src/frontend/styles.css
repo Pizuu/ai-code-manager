@@ -78,7 +78,7 @@ button{font:inherit;color:inherit}
 .prog .stg span.ok{color:var(--ink);font-weight:600}
 .cap{display:flex;align-items:center;height:44px;margin-top:16px;gap:12px;font-size:12px}
 .cap .sep{width:1px;height:22px;background:var(--line);margin:0 12px}
-.ctl{display:flex;align-items:center;gap:8px;margin-top:16px;height:44px}
+.ctl{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:16px;height:44px}
 .inp{height:44px;width:224px;border:1px solid var(--line);border-radius:10px;padding:0 15px;font:15px var(--sans);color:var(--ink);background:var(--bg);outline:none}
 .inp:focus{border-color:var(--accent2)}
 .ibtn{width:32px;height:32px;border:1px solid var(--line);border-radius:8px;display:grid;place-items:center;background:var(--bg)}
@@ -515,7 +515,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .slist .hd{padding:0 8px;font-size:var(--font-heading-sm);font-weight:var(--font-weight-semibold)}
 .slist .inp{width:100%;margin:12px 0}
 .slist .feat{padding:0 8px 8px;font-size:var(--font-caption)}
-.si{display:flex;flex-direction:column;min-height:108px;margin-bottom:4px;border-radius:var(--border-radius-md)}
+.si{display:flex;flex-direction:column;min-height:108px;margin-bottom:4px;border-radius:var(--border-radius-md);padding:10px}
 .si .a .tm{position:static;margin-left:0}.si .a .pin{margin-left:auto}.si .a .pin,.si .a .del{margin-top:-2px}
 .si:hover{background:var(--color-background-tertiary)}
 .si.on{background:var(--color-background-secondary);border-color:transparent}
@@ -765,6 +765,12 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .panel.pub{margin-bottom:12px}
 /* 状态栏：Git 视图时右侧显示集成摘要 */
 .status .st-r{margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;padding-left:16px}
+/* 规格进度行（原看板 .prog 移入状态栏右端）：抵消 .prog 看板场景的面板外观（背景/边框/外边距/换行），在 28px 状态栏内单行紧凑常驻 */
+.status .prog{margin:0;padding:0;height:auto;min-height:0;background:none;border:0;border-radius:0;gap:10px;flex:none;flex-wrap:nowrap;white-space:nowrap}
+.status .prog[hidden]{display:none}
+.status .prog .stg{margin-left:0;gap:8px}
+/* 靠右机制：statusR 可见时由其 margin-left:auto 把两者一起推到右端、prog 居最右；statusR 隐藏（非 Git 视图）时改由 prog 自己承接 auto 边距 */
+.status .st-r[hidden] + .prog{margin-left:auto}
 /* 状态栏活动计数（P0-3）：点击跳转到相关会话 */
 .status .st-act{display:flex;gap:10px;align-items:center;padding-left:16px;flex:none}
 .status .act{white-space:nowrap}
