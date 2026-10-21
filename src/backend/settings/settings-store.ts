@@ -53,9 +53,31 @@ interface StoredSettings {
 /** 主进程内部使用的非敏感设置。 */
 export type ActiveSettings = Pick<StoredSettings, 'provider' | 'baseUrl' | 'model' | 'permissionMode' | 'lastProjectPath' | 'defaultAgent'>;
 
+/** CLI 条目名 → id 前缀的 slug 化（newAgentCliId 与孤儿改绑匹配共用同一口径，避免两处漂移）。 */
+export function cliNameSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'cli';
+}
+
 export function newAgentCliId(name: string): string {
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'cli';
-  return `${slug}-${randomBytes(3).toString('hex')}`;
+  return `${cliNameSlug(name)}-${randomBytes(3).toString('hex')}`;
+}
+
+/** 条目 id → 其 slug 部分：去掉 newAgentCliId 追加的 `-<6 位 hex>` 随机后缀；无此后缀时原样返回。 */
+export function cliIdSlug(id: string): string {
+  return id.replace(/-[0-9a-f]{6}$/, '');
+}
+
+/**
+ * 孤儿会话自动改绑（自愈）的候选查找：会话绑定的 CLI id 已不存在时，按 slug 找同名条目——
+ * 条目被删除后重新添加（或在另一环境添加）会得到同 slug、不同随机后缀的新 id。
+ * 候选 = 条目 id 的 slug 与缺失 id 的 slug 相同，或条目名的 slug 与缺失 id 的 slug 相同；
+ * 恰好一条才返回其 id——零条无从恢复、多条无法判定，均返回 null（保持原 E_CLI 报错，不乱绑）。
+ */
+export function findCliRebindCandidate(missingId: string, clis: ReadonlyArray<{ id: string; name: string }>): string | null {
+  const slug = cliIdSlug(missingId);
+  const hits = clis.filter((c) => cliIdSlug(c.id) === slug || cliNameSlug(c.name) === slug);
+  const [only] = hits;
+  return hits.length === 1 && only ? only.id : null;
 }
 
 function defaults(): StoredSettings {

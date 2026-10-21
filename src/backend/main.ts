@@ -64,9 +64,10 @@ function createWindow(): BrowserWindow {
     height: 900,
     minWidth: 960,
     minHeight: 600,
-    // 启动全屏且禁止改变窗口大小（用户要求）；上面的尺寸是退出全屏时的兜底。
+    // 启动全屏（用户要求）；上面的尺寸是退出全屏时的兜底。
+    // resizable 构造期不能设 false：Windows 上无 WS_THICKFRAME 的窗口进不了全屏，
+    // 改为进入全屏后再锁定禁止改变大小（见下方 enter-full-screen 处理）。
     fullscreen: true,
-    resizable: false,
     title: 'AI Code Manager',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1f22' : '#ffffff',
     autoHideMenuBar: true,
@@ -83,9 +84,11 @@ function createWindow(): BrowserWindow {
   win.once('ready-to-show', () => {
     // 延迟显示（show:false）时构造期的 fullscreen 可能不被应用，显示前再显式设一次兜底。
     win.setFullScreen(true);
-    win.setResizable(false);
     win.show();
   });
+  // 进入全屏后才禁止改变窗口大小：全屏本身无边框不可拖拽，锁定后即使退出全屏也保持不可缩放；
+  // 若在进入全屏前就锁定（resizable:false），Windows 会因缺少 WS_THICKFRAME 而拒绝全屏。
+  win.on('enter-full-screen', () => win.setResizable(false));
   win.webContents.on('will-navigate', (e, url) => {
     if (url !== ENTRY_URL) e.preventDefault();
   });

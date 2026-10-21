@@ -38,6 +38,7 @@
 | 看板文案 `src/frontend/lib/board-format.ts`、分支图布局 `lib/git-graph.ts`、CLI 表单 `lib/agent-cli-form.ts` / agent 名称 `lib/agent-label.ts` | ✅ | — | — | frontend |
 | 只读代码查看 `src/backend/fs/file-view.ts`（越界 / 绝对路径 / 符号链接逃逸 / 目录 / 二进制 / 截断 / 超大）与 `fs:read` 接线 | — | ✅ | — | backend |
 | 配置默认空白与未配置（`settings-store.ts` `builtinConfigProblem`、`E_NOT_CONFIGURED`、opencode 预设为空） | ✅ | ✅ | — | backend |
+| E_CLI 自动改绑（`settings-store.ts` `findCliRebindCandidate` 按名称 slug 唯一匹配、handlers `agent:send` 改绑落盘；同名多条不改绑仍报 E_CLI） | ✅ | ✅ | — | backend |
 | 右键发送内容组装 `lib/context-send.ts`、轻量高亮 `lib/highlight.ts`、配置提示 `lib/agent-config.ts` | ✅ | — | — | frontend |
 | Web 预览 UI 定位纯函数 `web/locator-core.ts`（栈解析、选择器） | ✅ | — | — | frontend |
 | Web 预览服务器 `scripts/web-dev.ts`（405 / 404 / E_PATH_ESCAPE / Host 校验） | — | — | ❌（手动 curl 验证，见 specs/003 quickstart；未纳入 CI） | infra |

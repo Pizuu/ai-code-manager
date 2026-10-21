@@ -24,7 +24,7 @@ import type { AppState } from '../app-state.ts';
 import { listTree } from '../fs/file-tree.ts';
 import { readFileForView } from '../fs/file-view.ts';
 import { summarizeSession, type SessionStore } from '../sessions/session-store.ts';
-import { builtinConfigProblem, type SettingsStore } from '../settings/settings-store.ts';
+import { builtinConfigProblem, findCliRebindCandidate, type SettingsStore } from '../settings/settings-store.ts';
 import { loadSpecTasks } from '../specs/tasks-parser.ts';
 import { interactiveArgs, shellCommand, TerminalManager, type TerminalHandle } from '../terminal/terminal-manager.ts';
 import { buildBoard, listFeatures, readAgentsConfig } from '../workspace/board.ts';
@@ -248,7 +248,22 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     {
       const s = await sessions.get(sessionId);
       const agent = effectiveAgent(s, settings.getActive().defaultAgent);
-      if (agent !== 'builtin') return startCliTurn(s, agent.slice(4), text);
+      if (agent !== 'builtin') {
+        let sess = s;
+        let cliId = agent.slice(4);
+        // 自愈（自动改绑）：绑定的 CLI 条目已不存在（被删后重加换了 id 等）时，同名条目恰好一条就
+        // 改绑落盘再继续；零条/多条不乱绑，保持 startCliTurn → resolveCli 的原 E_CLI 报错。
+        // 只对「id 不存在」触发，条目存在但可执行文件不可用等其它 E_CLI 不走这里。
+        if (!settings.getAgentCliCommand(cliId)) {
+          const cand = findCliRebindCandidate(cliId, settings.getPublic().agentClis ?? []);
+          if (cand) {
+            sess = await sessions.setAgent(s.id, `cli:${cand}`);
+            emit({ type: 'session-updated', summary: summarizeSession(sess) });
+            cliId = cand;
+          }
+        }
+        return startCliTurn(sess, cliId, text);
+      }
     }
     const active = settings.getActive();
     const problem = builtinConfigProblem(active);
