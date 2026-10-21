@@ -11,6 +11,7 @@ import path from 'node:path';
 import type { AgentEvent } from '../../../../contracts/ipc.ts';
 import { AppState } from '../../../../src/backend/app-state.ts';
 import { createHandlers } from '../../../../src/backend/ipc/handlers.ts';
+import { OPENCODE_EXAMPLE } from '../../../../src/backend/agent-cli/presets.ts';
 import { SessionStore } from '../../../../src/backend/sessions/session-store.ts';
 import { SettingsStore, type KeyCipher } from '../../../../src/backend/settings/settings-store.ts';
 import { tempProject } from '../helpers/temp-project.ts';
@@ -105,4 +106,44 @@ test('terminal:open 以 CLI 模式打开时，会话未选外部 CLI 则报 E_CL
   const { handlers, session } = await setup(t);
   // 默认 agent 为内置（builtin）→ 不能以 CLI 模式打开
   await assert.rejects(() => handlers['terminal:open']({ sessionId: session.id, kind: 'cli' }), /E_CLI/);
+});
+
+const posixOnly = process.platform === 'win32' ? 'shebang 假可执行文件仅在 POSIX 上运行' : false;
+
+test('terminal:open (cli) opencode 条目：启动 env 带 question 禁用（管道终端弹不出 question 界面）', { skip: posixOnly }, async (t) => {
+  const userData = await fs.mkdtemp(path.join(os.tmpdir(), 'acm-userdata-'));
+  t.after(() => fs.rm(userData, { recursive: true, force: true }));
+  const bin = await fs.mkdtemp(path.join(os.tmpdir(), 'acm-bin-'));
+  t.after(() => fs.rm(bin, { recursive: true, force: true }));
+  await fs.writeFile(
+    path.join(bin, 'opencode'),
+    "#!/usr/bin/env node\nconsole.log('QUESTION=' + (process.env.OPENCODE_ENABLE_QUESTION_TOOL ?? 'unset'));\nprocess.stdin.resume();\n",
+    { mode: 0o755 },
+  );
+  const root = await tempProject(t, { 'README.md': '# demo\n' });
+  const settings = new SettingsStore(path.join(userData, 'settings.json'), cipher);
+  const sessions = new SessionStore(path.join(userData, 'sessions'));
+  const state = new AppState();
+  const events: AgentEvent[] = [];
+  const handlers = createHandlers({
+    settings, sessions, state, platform: process.platform,
+    emit: (e) => events.push(e),
+    pickDirectory: async () => root,
+    resolveDeps: { platform: process.platform, pathEnv: bin, pathExt: '', isFile: async (p) => fs.stat(p).then((s) => s.isFile(), () => false), readText: async () => null },
+    cliBaseEnv: { PATH: process.env.PATH ?? '' },
+  });
+  await handlers['project:pick']();
+  const pub = await handlers['agentCli:save']({
+    ...OPENCODE_EXAMPLE, args: [...OPENCODE_EXAMPLE.args], resumeArgs: [...OPENCODE_EXAMPLE.resumeArgs], modelArgs: [...OPENCODE_EXAMPLE.modelArgs],
+    model: '', env: [],
+  });
+  const cli = pub.agentClis?.[0];
+  assert.ok(cli);
+  const session = await handlers['sessions:create']();
+  await handlers['sessions:setAgent'](session.id, `cli:${cli.id}`);
+  await handlers['terminal:open']({ sessionId: session.id, kind: 'cli' });
+  await waitFor(() => events.some((e) => e.type === 'terminal-data' && (e as { data: string }).data.includes('QUESTION=')));
+  const data = events.filter((e) => e.type === 'terminal-data').map((e) => (e as { data: string }).data).join('');
+  assert.ok(data.includes('QUESTION=false'), `期望终端 env 带 question 禁用，实际输出：${data}`);
+  await handlers['terminal:close']({ sessionId: session.id });
 });

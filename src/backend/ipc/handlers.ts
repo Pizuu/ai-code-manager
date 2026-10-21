@@ -11,6 +11,7 @@ import { runCliTurn, type CliRuntimeConfig } from '../agent-cli/cli-runner.ts';
 import { detectInstalledClis, probeCliVersion } from '../agent-cli/detect.ts';
 import { expandTemplate } from '../agent-cli/invocation.ts';
 import { listOpencodeModels } from '../agent-cli/models.ts';
+import { opencodeLaunchEnv } from '../agent-cli/platform-env.ts';
 import { installHint } from '../agent-cli/presets.ts';
 import { OpencodeServeManager, prepareServeTurn, runServeCliTurn, type PreparedServeTurn } from '../agent-cli/serve-runner.ts';
 import { defaultResolveDeps, resolveExecutable, type ResolveDeps } from '../agent-cli/resolve.ts';
@@ -325,7 +326,11 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     const vars = { prompt: '', model: runtime.model, session: '', cwd: root };
     const args = expandTemplate(interactiveArgs(runtime.args), vars);
     if (runtime.model.trim()) args.push(...expandTemplate(runtime.modelArgs, vars));
-    return { sessionId, kind, cwd: root, file: executable, args, program: meta.name, env: runtime.env };
+    // opencode 条目：终端是管道（非 PTY），同样弹不出 question 界面——与三条对话通道一致做启动环境适配
+    // （question 禁用 + win32 shell 适配，见 platform-env.ts）；通用 CLI 只带自身 env。
+    const effectiveEnv: NodeJS.ProcessEnv = { ...(deps.cliBaseEnv ?? process.env), ...runtime.env };
+    const env = runtime.outputFormat === 'opencode-json' ? { ...runtime.env, ...opencodeLaunchEnv(deps.platform, effectiveEnv) } : runtime.env;
+    return { sessionId, kind, cwd: root, file: executable, args, program: meta.name, env };
   };
 
   return {

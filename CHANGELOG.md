@@ -21,7 +21,7 @@
 
 ### Fixed
 
-- opencode 的 question 工具在本客户端必然失败（无承接界面）：此前仅 ACP 通道禁用，现 acp / serve / run 三条通道统一以 `OPENCODE_ENABLE_QUESTION_TOOL=false` 禁用，serve 另在会话规则集里对 question 显式 deny。
+- opencode 的 question 工具在本客户端必然失败（无承接界面）：此前仅 ACP 通道禁用，现 acp / serve / run 三条对话通道与会话终端模式（管道、非 PTY）统一以 `OPENCODE_ENABLE_QUESTION_TOOL=false` 禁用，serve 另在会话规则集里对 question 显式 deny；win32 的 shell 适配（Git Bash 探测 / PowerShell 回退）同样覆盖终端模式。
 - opencode 的命令工具在无 Git Bash 的 Windows 上不可用：启动前按平台适配——探测 Git Bash（安装目录 / PATH）并以 `OPENCODE_GIT_BASH_PATH` 指给 opencode，探测不到时经 `OPENCODE_CONFIG_CONTENT` 指定 `shell=powershell.exe`（用户既有配置优先，不覆盖）；非 Windows 不受影响。
 - 集成分支本地缺失时回退 `origin/<分支>`（契约 v1.7 纯增量：`GitSnapshot.integrationRef` / `integrationRefRemote`、`BoardSnapshot.integrationRef` / `integrationRefRemote` / `integrationMissing`）：此前 git 不会把 `manus` 解析成 `origin/manus`，合并记录与 ahead / behind 全部落空，导致看板把 34 张已合入的卡误报为「未合入」；现按实际引用比对，并把这些同因冲突合并为一条，顶部给出根因提示。
 - 集成分支名漂移致泳道守卫静默失效：`lane-guard.yml` 的触发分支原为 `dev`（该分支在本地与 origin 均不存在），合入集成分支的 PR 从不触发泳道检查；现改为与 `.agents/config.sh` 的 `INTEGRATION_BRANCH` 一致（当前 `manus`），并新增 `scripts/check-branch-config.sh` 在 CI 与 `verify.sh` 中校验工作流与文档是否漂移。
