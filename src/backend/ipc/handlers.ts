@@ -21,6 +21,7 @@ import { createOpenAIProvider } from '../agent/providers/openai.ts';
 import type { Provider, ProviderConfig } from '../agent/providers/types.ts';
 import { buildSystemPrompt } from '../agent/system-prompt.ts';
 import type { AppState } from '../app-state.ts';
+import { importFiles } from '../fs/file-import.ts';
 import { listTree } from '../fs/file-tree.ts';
 import { readFileForView } from '../fs/file-view.ts';
 import { reaskCutIndex } from '../sessions/reask.ts';
@@ -40,6 +41,7 @@ import {
   asRelPath,
   asSessionId,
   asSessionModelInput,
+  asStringArray,
   asTerminalCloseRequest,
   asTerminalInputRequest,
   asTerminalOpenRequest,
@@ -386,6 +388,7 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     'fs:tree': async (relDir) => listTree(requireProject(state).root, asRelDir(relDir)),
     'fs:read': async (relPath) => readFileForView(requireProject(state).root, asRelPath(relPath)),
     'files:pick': async () => (deps.pickFiles ? deps.pickFiles() : []),
+    'files:import': async (absPaths) => importFiles(requireProject(state).root, asStringArray(absPaths, 'absPaths')),
     'sessions:list': async () => sessions.list(),
     'sessions:create': async () => sessions.create(state.project?.root ?? null, settings.getActive().defaultAgent),
     'sessions:get': async (id) => sessions.get(asSessionId(id)),

@@ -37,6 +37,7 @@ const INVOKE_CHANNELS = [
   'git:checkout',
   'fs:read',
   'files:pick',
+  'files:import',
   'terminal:open',
   'terminal:input',
   'terminal:close',

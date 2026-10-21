@@ -70,6 +70,15 @@ export function asRelPath(value: unknown): string {
   return asString(value, 'relPath', { max: MAX_REL_PATH_CHARS });
 }
 
+const MAX_ARRAY_ITEMS = 100;
+
+/** v1.14：字符串数组参数（如 files:import 的绝对路径列表）；必须是数组，逐项按普通字符串校验。 */
+export function asStringArray(value: unknown, name: string): string[] {
+  if (!Array.isArray(value)) fail(`${name} 必须是数组`);
+  if (value.length > MAX_ARRAY_ITEMS) fail(`${name} 最多 ${MAX_ARRAY_ITEMS} 项`);
+  return value.map((v) => asString(v, name));
+}
+
 const MAX_BRANCH_CHARS = 255;
 
 /**
