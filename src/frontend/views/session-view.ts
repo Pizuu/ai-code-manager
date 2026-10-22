@@ -399,7 +399,6 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   // ── 右列 ──
   const kv = (k: string, v: string | Node, mono = false) => [h('div', { class: 'k' }, k), h('div', { class: `v${mono ? ' mono' : ''}` }, v)];
   const generatedFiles: Array<{ sessionId: string; content: string; ext: string; at: string }> = [];
-  const downloadedFiles = new Set<string>();
   const conversationFiles = (s: NonNullable<typeof store.state.current>): RelatedFile[] => {
     const found = new Map<string, RelatedFile>();
     for (const m of s.messages) {
@@ -517,8 +516,8 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     for (const diff of sessionDiffs) if (diff.path) addRelated({ path: diff.path, author: 'assistant', at: latestAt });
     for (const path of files) addRelated({ path, author: 'user', at: latestAt });
     const relatedFiles = [...relatedByPath.values()];
-    // 栏目标题：名称居左、数量右对齐
-    const ctxHead = (name: string, count: number): HTMLElement => h('div', { class: 'k ctx-k' }, h('span', {}, name), h('span', { class: 'ctx-k-n' }, String(count)));
+    // 栏目标题：只显示名称（数量已按需求删除）
+    const ctxHead = (name: string): HTMLElement => h('div', { class: 'k ctx-k' }, h('span', {}, name));
     const renderCodeDownloads = codeDownloads.length
       ? h('div', { class: 'v ctx-files ctx-generated-files' }, ...codeDownloads.map((file) => {
         const stamp = file.at.replace(/[-:TZ.]/g, '').slice(0, 14);
@@ -530,29 +529,14 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         return button;
       }))
       : h('div', { class: 'v ctx-empty' }, '暂无代码块下载文件');
-    if (codeDownloads.length) ctxp.append(ctxHead('下载', codeDownloads.length), renderCodeDownloads);
+    if (codeDownloads.length) ctxp.append(ctxHead('下载'), renderCodeDownloads);
     const renderFiles = (files: RelatedFile[], emptyText: string) => files.length
       ? h('div', { class: 'v ctx-files' }, ...files.map((file) => {
-        const ext = file.path.split('.').pop()?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'txt';
-        const stamp = file.at.replace(/[-:TZ.]/g, '').slice(0, 14) || String(Date.now());
-        const download = h('button', { class: 'ctx-download', attrs: { type: 'button' }, title: downloadedFiles.has(file.path) ? '文件已下载，点击跳转' : '下载对话文件' }, downloadedFiles.has(file.path) ? '↗' : '↓');
-        download.addEventListener('click', async (ev) => {
-          ev.stopPropagation();
-          if (downloadedFiles.has(file.path)) { openFile(file.path); return; }
-          try {
-            const content = await api.invoke('fs:read', file.path);
-            if (content.kind !== 'text') return;
-            const url = URL.createObjectURL(new Blob([content.content], { type: 'text/plain;charset=utf-8' }));
-            const a = document.createElement('a'); a.href = url; a.download = `${file.author}-${stamp}.${ext}`; a.click(); URL.revokeObjectURL(url);
-            downloadedFiles.add(file.path);
-            openFile(file.path);
-          } catch (e) { chat.notify(`下载失败：${errorText(e)}`); }
-        });
-        const row = h('div', { class: 'ctx-file-row' }, h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: `打开 ${file.path}`, on: { click: () => openFile(file.path) } }, icon('file', 13), h('span', {}, file.path)), download);
+        const row = h('div', { class: 'ctx-file-row' }, h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: `打开 ${file.path}`, on: { click: () => openFile(file.path) } }, icon('file', 13), h('span', {}, file.path)));
         return row;
       }))
       : h('div', { class: 'v ctx-empty' }, emptyText);
-    ctxp.append(ctxHead('文件', relatedFiles.length), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
+    ctxp.append(ctxHead('文件'), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
     // DIFF（当前会话实时）：放在「文件」下方；同一文件多次修改只留最新一条（Map 覆盖值不改键序）。
     // 只显示路径与增删行数，点击打开文件；已删除状态标签与下方展开预览。待批准时保留批准 / 拒绝按钮。
     const byPath = new Map<string, (typeof sessionDiffs)[number]>();
@@ -571,7 +555,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       }
       dl.append(item);
     }
-    if (diffs.length) ctxp.append(ctxHead('DIFF', diffs.length), dl);
+    if (diffs.length) ctxp.append(ctxHead('DIFF'), dl);
     const currentFavorites = s ? listFavorites().filter((f) => f.sessionId === s.id) : [];
     const favoriteLinks = h('div', { class: 'v ctx-favorites' }, ...currentFavorites.map((f) => {
       const link = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '跳转到收藏消息' },
