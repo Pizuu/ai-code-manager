@@ -117,10 +117,24 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   const savedProject = h('div', { class: 'cli-item saved-project' },
     h('div', { class: 'grow0 saved-project-main' },
       h('div', { class: 'fx8 saved-project-title' },
-        h('span', { class: `saved-project-dot ${hasSavedProject ? 'saved' : 'empty'}`, attrs: { title: hasSavedProject ? '项目路径已保存' : '尚未选择项目', 'aria-label': hasSavedProject ? '项目路径已保存' : '尚未选择项目' } }),
-        h('b', {}, '已保存项目')),
+        h('span', { class: `saved-project-dot ${hasSavedProject ? 'saved' : 'empty'}`, attrs: { title: hasSavedProject ? '项目路径已保存' : '尚未选择项目', 'aria-label': hasSavedProject ? '项目路径已保存' : '尚未选择项目' } })),
       h('div', { class: 'mono saved-project-path' }, savedProjectPath ?? '尚未选择项目')),
     h('span', { class: 'mute saved-project-hint' }, hasSavedProject ? '当前项目配置将用于 API 会话' : '打开项目后会自动保存项目路径'));
+
+  // 「已保存」一行：项目路径 + 当前已保存的 API 配置（只读展示，Key 只显示是否已保存）。
+  const savedApi = h('div', { class: 'saved-api' });
+  const renderSavedApi = () => {
+    const cur = store.state.settings;
+    const p = cur?.provider ?? s.provider;
+    const row = (k: string, v: string) => h('div', { class: 'kv-row' }, h('span', { class: 'mute' }, k), h('span', { class: 'mono' }, v));
+    clear(savedApi);
+    savedApi.append(
+      row('提供方', PROVIDER_LABELS[p]),
+      row('Base URL', cur?.baseUrl || '未填写'),
+      row('模型', cur?.model || '未填写'),
+      row('API Key', cur?.hasApiKey[p] ? '已加密保存' : '未保存'));
+  };
+  renderSavedApi();
 
   const refreshKeyState = () => {
     const p = provider.value as ProviderId;
@@ -161,32 +175,40 @@ export function openSettings(tab: SettingsTab = 'model'): void {
       store.state.settings = await api.invoke('settings:set', { apiKey: { provider: provider.value as ProviderId, value: '' } });
       store.emit('settings');
       refreshKeyState();
+      renderSavedApi();
     } catch (e) {
       err.textContent = errorText(e);
     }
   });
 
+  // 「添加」= 把下方填写的配置写入「已保存」并留在设置里；「保存」= 同样写入后关闭。
+  const addBtn = h('button', { class: 'btn', attrs: { type: 'button' } }, '添加');
+
   const form = h('form', { class: 'cfg-card', attrs: { method: 'dialog' } },
     // 标题区与 CLI 页统一形态：左 h3「设置」+ 右空槽位（CLI 页在此注入「自动检测」）。
     h('div', { class: 'dhead' }, h('h3', {}, '设置'), h('span', {})),
     tabs,
-    h('div', { class: 'cfg-panel' },
+    h('div', { class: 'cfg-panel cfg-saved' },
+      h('div', { class: 'cfg-sec-title' }, '已保存'),
       savedProject,
+      savedApi,
+      h('div', { class: 'fx8' }, testBtn),
+      testStatus),
+    h('div', { class: 'cfg-panel cfg-add' },
+      h('div', { class: 'cfg-sec-title' }, '添加'),
       field('模型提供方', provider),
       field('Base URL', baseUrl, '必填，默认空白：填写你所用服务的接口地址（OpenAI 兼容端点或 Anthropic Messages API）。'),
       field('模型', model, '必填，默认空白：按服务商文档填写模型 ID。也可用 /model <模型名> 切换。'),
       h('div', { class: 'field' }, h('label', {}, 'API Key'), key, keyHelp, h('div', {}, removeKey)),
       field('权限模式', mode, '内置 agent：命令执行在任何模式下都需要逐条批准；「仅规划」禁止修改与执行。外部 CLI 的映射见「Agent CLI」分区。')),
     err,
-    testStatus,
     h('div', { class: 'actions' },
-      testBtn,
+      addBtn,
       h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => dialog.close() } }, '取消'),
       h('button', { class: 'btn pri', attrs: { type: 'submit' } }, '保存')),
   );
 
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
+  const save = async (close: boolean) => {
     err.textContent = '';
     const p = provider.value as ProviderId;
     // 「保存」= 保存设置并确认使用 API：同一次 settings:set 带上 defaultAgent: 'builtin'。
@@ -198,11 +220,20 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     try {
       store.state.settings = await api.invoke('settings:set', update);
       key.value = '';
+      baseUrl.value = '';
+      model.value = '';
       store.emit('settings');
-      dialog.close();
+      renderSavedApi();
+      refreshKeyState();
+      if (close) dialog.close();
     } catch (e) {
       err.textContent = errorText(e);
     }
+  };
+  addBtn.addEventListener('click', () => { void save(false); });
+  form.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    void save(true);
   });
 
   dialog.append(form);
