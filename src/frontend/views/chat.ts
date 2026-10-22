@@ -151,7 +151,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   primebar.hidden = true;
   const textarea = h('textarea', { attrs: { placeholder: '' } });
   // 输入框不限高：高度全量跟随内容生长（scrollHeight），下限由 CSS min-height 兜住；内部不滚动、无滚动条。
-  /** 输入框折叠预览：文本高度超过输入框 2 倍时，失焦后折叠，只显示首尾各约 1.5 行，点击展开继续编辑。 */
+  /** 输入框折叠预览：文本高度超过输入框 2 倍时，失焦后折叠为 2 倍原高度：首尾各 0.5 倍原高度的文字，中间 1 倍原高度为省略区；点击展开继续编辑。 */
   const foldHead = h('div', { class: 'cfold-head' });
   const foldTail = h('div', { class: 'cfold-tail' }, h('div', {}));
   const foldPreview = h('div', { class: 'cfold', attrs: { role: 'button', tabindex: '0', title: '点击展开继续编辑' } },
@@ -167,6 +167,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const foldInputIfLong = () => {
     const base = parseFloat(getComputedStyle(textarea).minHeight) || 44;
     if (!textarea.value.trim() || textarea.scrollHeight <= base * 2) return;
+    foldPreview.style.setProperty('--cf-base', `${base}px`);
     foldHead.textContent = textarea.value;
     (foldTail.firstElementChild as HTMLElement).textContent = textarea.value;
     textarea.hidden = true;
