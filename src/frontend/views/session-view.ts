@@ -14,7 +14,7 @@ import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
 import { clear, h } from '../lib/dom.ts';
-import { listFavorites, onFavoritesChanged, removeFavorite, updateFavorite } from '../lib/favorites.ts';
+import { favoriteMessageId, listFavorites, onFavoritesChanged, removeFavorite, updateFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
 import { decideApproval, MODE_LABELS, mountChat, type ChatView } from './chat.ts';
@@ -313,12 +313,15 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         try {
           if (store.state.current?.id !== sessionId) await hooks.selectSession(sessionId);
           const source = todo.content.trim();
+          if (store.state.current?.id !== sessionId) return;
+          if (chat.focusText(source)) return;
+          // 渲染文字匹配不到（如 Markdown 原文）时退回按原始内容找（用户与助手消息都算）
           const normalizedSource = source.replace(/\s+/g, ' ');
           const message = normalizedSource
-            ? [...(store.state.current?.messages ?? [])].reverse().find((item) => item.role === 'user'
+            ? [...(store.state.current?.messages ?? [])].reverse().find((item) => (item.role === 'user' || item.role === 'assistant')
               && item.content.replace(/\s+/g, ' ').includes(normalizedSource))
             : undefined;
-          if (store.state.current?.id === sessionId && message) chat.focusMessage(message.id, source);
+          if (message) chat.focusMessage(message.id, source);
         } catch (e) {
           chat.notify(errorText(e));
         }
@@ -549,12 +552,13 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       : h('div', { class: 'v ctx-empty' }, emptyText);
     ctxp.append(h('div', { class: 'k' }, `相关文件 · ${relatedFiles.length}`), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
     const currentFavorites = s ? listFavorites().filter((f) => f.sessionId === s.id) : [];
-    const sessionId = s?.id ?? '';
     const favoriteLinks = h('div', { class: 'v ctx-favorites' }, ...currentFavorites.map((f) => {
       const link = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '跳转到收藏消息' },
         icon(f.text.includes('```') ? 'code' : 'text', 13), h('span', {}, f.text.replace(/\s+/g, ' ').slice(0, 100)));
       link.addEventListener('click', () => {
-        chat.focusMessage(f.id.slice(sessionId.length + 1));
+        const mid = favoriteMessageId(f);
+        if (mid) chat.focusMessage(mid, f.quote ? f.text : undefined);
+        else chat.focusText(f.text);
         link.classList.remove('ctx-favorite-jump');
         void link.offsetWidth;
         link.classList.add('ctx-favorite-jump');

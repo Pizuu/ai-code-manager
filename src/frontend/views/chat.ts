@@ -94,6 +94,8 @@ export interface ChatView {
   insertBlock(text: string): void;
   notify(text: string, kind?: 'notice' | 'info'): void;
   focusMessage(messageId: string, sourceText?: string): void;
+  /** 在当前会话里找包含该文字的消息（从新到旧），滚动过去并高亮整条消息与文字；找不到返回 false。 */
+  focusText(text: string): boolean;
 }
 
 export async function decideApproval(approvalId: string, approved: boolean): Promise<void> {
@@ -541,6 +543,21 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
         }
       }
     }
+  };
+
+  const focusText = (text: string): boolean => {
+    const needle = text.trim().replace(/\s+/g, ' ');
+    if (!needle) return false;
+    const turns = [...log.querySelectorAll<HTMLElement>('article.turn')].reverse();
+    for (const t of turns) {
+      const id = t.classList.contains('user') ? t.dataset.id : t.querySelector<HTMLElement>('.msg[data-id]')?.dataset.id;
+      const body = t.querySelector('.ubub, .msg .md') ?? t;
+      if (id && (body.textContent ?? '').replace(/\s+/g, ' ').includes(needle)) {
+        focusMessage(id, text);
+        return true;
+      }
+    }
+    return false;
   };
 
   /**
@@ -1178,6 +1195,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     appendDelta,
     notify,
     focusMessage,
+    focusText,
     insertText: insertAtCursor,
     insertBlock: (text) => {
       const r = insertBlock(textarea.value, textarea.selectionStart, textarea.selectionEnd, text);

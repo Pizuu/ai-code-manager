@@ -13,8 +13,10 @@ export interface ContextMenuHooks {
   sendNew(text: string): Promise<void>;
   /** 元素所在区域的中文名（用于选中文本的来源标注）。 */
   originOf(el: Element): string;
-  addTodo?(text: string): Promise<void>;
-  addFavorite?(messageId: string): Promise<void>;
+  /** 任务会话里任意文字加入待办：text 为选中文字或整条消息，messageId 为所在消息（可缺省）。 */
+  addTodo?(text: string, messageId?: string): Promise<void>;
+  /** 加入收藏：quote 为选中文字（缺省 = 收藏整条消息）。 */
+  addFavorite?(messageId: string | undefined, quote?: string): Promise<void>;
 }
 
 const lineOf = (n: Node | null): number => {
@@ -64,9 +66,18 @@ export function installContextMenu(hooks: ContextMenuHooks): void {
     // 输入框内保留默认菜单（粘贴等）
     if (target.closest('textarea, input, select, [contenteditable="true"]')) return;
     const r = resolveSource(target, hooks);
-    const assistantId = target.closest('article.turn.assistant')?.querySelector<HTMLElement>('.msg[data-id]')?.dataset.id;
-    const userMessageId = target.closest<HTMLElement>('article.turn.user[data-id]')?.dataset.id;
-    if (!r && !assistantId && !userMessageId) {
+    const inSession = Boolean(target.closest('#wb-session'));
+    const turn = target.closest<HTMLElement>('article.turn');
+    const messageIdOf = (t: HTMLElement | null): string | undefined => t
+      ? (t.classList.contains('user') ? t.dataset.id : t.querySelector<HTMLElement>('.msg[data-id]')?.dataset.id)
+      : undefined;
+    // 选区所在消息优先（右键点在别处也能认出选区属于哪条消息）
+    const selNode = window.getSelection()?.anchorNode ?? null;
+    const selTurn = (selNode instanceof Element ? selNode : selNode?.parentElement)?.closest<HTMLElement>('article.turn') ?? null;
+    const messageId = r?.selected ? messageIdOf(selTurn) ?? messageIdOf(turn) : messageIdOf(turn);
+    const wholeText = turn && !r?.selected ? (turn.querySelector('.ubub, .msg .md') ?? turn).textContent?.trim() ?? '' : '';
+    const pickText = r?.selected?.trim() || wholeText;
+    if (!r && !(inSession && pickText)) {
       close();
       return;
     }
@@ -74,11 +85,11 @@ export function installContextMenu(hooks: ContextMenuHooks): void {
     const text = r ? formatSendText(r.source) : '';
     const item = (label: string, sub: string, fn: () => void) => h('button', { class: 'mi', attrs: { type: 'button', role: 'menuitem' }, on: { click: () => { close(); fn(); } } }, h('span', {}, label), sub ? h('span', { class: 'mute' }, sub) : null);
     const items: HTMLElement[] = r ? [item(NEW_SESSION_LABEL, describeSource(r.source), () => void hooks.sendNew(text))] : [];
-    if (r?.selected) {
-      if (hooks.addTodo && target.closest('#wb-session')) items.push(item('加入待办', '添加到当前任务会话', () => void hooks.addTodo?.(r.selected)));
+    if (inSession && pickText) {
+      const what = r?.selected ? '选中的文字' : '这条消息';
+      if (hooks.addTodo) items.push(item('加入待办', `添加${what}`, () => void hooks.addTodo?.(pickText, messageId)));
+      if (hooks.addFavorite) items.push(item('加入收藏', `收藏${what}`, () => void hooks.addFavorite?.(messageId, r?.selected ? pickText : undefined)));
     }
-    if (userMessageId && hooks.addFavorite) items.push(item('加入收藏', '收藏这条用户消息', () => void hooks.addFavorite?.(userMessageId)));
-    if (assistantId && hooks.addFavorite) items.push(item('加入收藏', '收藏这条回答', () => void hooks.addFavorite?.(assistantId)));
     if (r?.selected) items.push(item('复制', '', () => void navigator.clipboard.writeText(r.selected).catch(() => undefined)));
     menu.replaceChildren(...items);
     menu.hidden = false;
