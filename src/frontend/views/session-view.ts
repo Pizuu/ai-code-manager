@@ -14,7 +14,7 @@ import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
 import { clear, h } from '../lib/dom.ts';
-import { favoriteMessageId, listFavorites, onFavoritesChanged, removeFavorite, updateFavorite } from '../lib/favorites.ts';
+import { favoriteMessageId, listFavorites, onFavoritesChanged, removeFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
 import { decideApproval, MODE_LABELS, mountChat, type ChatView } from './chat.ts';
@@ -297,15 +297,6 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     const rows = entries.map(({ sessionId, todo }) => {
       const check = h('button', { class: `todo-check${todo.status === 'completed' ? ' done' : ''}`, attrs: { type: 'button' }, title: '切换完成状态' }, todo.status === 'completed' ? '✓' : '○');
       check.addEventListener('click', () => save(sessionId, (sessionTodos.get(sessionId) ?? []).map((x) => x.id === todo.id ? { ...x, status: x.status === 'completed' ? 'pending' : 'completed' } : x)));
-      const edit = h('button', { class: 'todo-edit', attrs: { type: 'button', 'aria-label': '编辑待办' }, title: '编辑待办文本' }, '✎');
-      edit.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const value = window.prompt('编辑项目待办（首尾空格会自动去除）', todo.content);
-        if (value === null) return;
-        const content = value.trim();
-        if (!content) { chat.notify('待办文本不能为空', 'info'); return; }
-        save(sessionId, (sessionTodos.get(sessionId) ?? []).map((x) => x.id === todo.id ? { ...x, content } : x));
-      });
       const del = h('button', { class: 'todo-delete', attrs: { type: 'button' }, title: '删除待办' }, '×');
       del.addEventListener('click', () => save(sessionId, (sessionTodos.get(sessionId) ?? []).filter((x) => x.id !== todo.id)));
       const owner = store.state.sessions.find((session) => session.id === sessionId)?.title ?? '当前会话';
@@ -326,7 +317,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
           chat.notify(errorText(e));
         }
       } } }, `${todo.content.trim()} · ${owner}`);
-      return h('div', { class: `todo-row${todo.status === 'completed' ? ' todo-done' : ''}` }, check, content, edit, del);
+      return h('div', { class: `todo-row${todo.status === 'completed' ? ' todo-done' : ''}` }, check, content, del);
     });
     const completed = entries.filter(({ todo }) => todo.status === 'completed').length;
     const title = h('button', { class: 'todo-dock-title', attrs: { type: 'button', 'aria-expanded': String(todoDockOpen) }, title: '展开项目待办卡片' }, h('span', {}, '项目待办'), h('span', { class: 'todo-dock-count' }, `${completed}/${entries.length}`), icon('caret', 14));
@@ -564,16 +555,9 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         link.classList.add('ctx-favorite-jump');
         window.setTimeout(() => link.classList.remove('ctx-favorite-jump'), 1400);
       });
-      const edit = h('button', { class: 'ctx-favorite-edit', attrs: { type: 'button', 'aria-label': '编辑收藏' }, title: '编辑收藏快照' }, '✎');
-      edit.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const value = window.prompt('编辑收藏快照（不会修改原始消息；首尾空格会自动去除）', f.text);
-        if (value === null) return;
-        if (!updateFavorite(f.id, value)) chat.notify('收藏内容不能为空', 'info');
-      });
       const remove = h('button', { class: 'ctx-favorite-remove', attrs: { type: 'button', 'aria-label': '删除收藏' }, title: '删除收藏' }, '×');
       remove.addEventListener('click', (event) => { event.stopPropagation(); removeFavorite(f.id); });
-      return h('div', { class: 'ctx-favorite-row' }, link, edit, remove);
+      return h('div', { class: 'ctx-favorite-row' }, link, remove);
     }));
     ctxp.append(h('div', { class: 'h ctx-section-title' }, h('span', {}, '收藏'), h('span', { class: 'mute' }, String(currentFavorites.length))), favoriteLinks);
 
