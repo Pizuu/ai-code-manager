@@ -94,6 +94,11 @@ export interface SettingsUpdate {
   defaultAgent?: AgentRef;
 }
 
+export interface SettingsTestResult {
+  ok: boolean;
+  message: string;
+}
+
 export interface ProjectInfo {
   /** 项目根绝对路径。 */
   root: string;
@@ -285,6 +290,7 @@ export interface ApprovalRequest {
 export interface IpcInvokeMap {
   'settings:get':    { args: [];                         result: PublicSettings };
   'settings:set':    { args: [update: SettingsUpdate];   result: PublicSettings };
+  'settings:test':   { args: [];                         result: SettingsTestResult };
   'project:pick':    { args: [];                         result: ProjectInfo | null };
   'project:current': { args: [];                         result: ProjectInfo | null };
   /** 在系统文件管理器中打开当前项目根目录。 */

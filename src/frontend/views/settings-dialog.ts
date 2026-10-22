@@ -109,8 +109,14 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   const key = h('input', { attrs: { type: 'password', autocomplete: 'off', placeholder: '' } });
   const mode = options(MODE_LABELS, s.permissionMode);
   const err = h('div', { class: 'error-text' });
+  const testStatus = h('div', { class: 'api-test-result', attrs: { role: 'status' } });
   const keyHelp = h('div', { class: 'help' });
   const removeKey = h('button', { class: 'btn danger', attrs: { type: 'button' } }, '删除已保存的 Key');
+  const savedProject = h('div', { class: 'cli-item saved-project' },
+    h('div', { class: 'grow0' },
+      h('div', { class: 'fx8' }, h('b', {}, '已保存项目'), h('span', { class: 'chip grn' }, store.state.settings?.lastProjectPath ? '已保存' : '未选择')),
+      h('div', { class: 'mono' }, store.state.settings?.lastProjectPath ?? '尚未选择项目')),
+    store.state.settings?.lastProjectPath ? h('span', { class: 'mute' }, '当前项目配置将用于 API 会话') : null);
 
   const refreshKeyState = () => {
     const p = provider.value as ProviderId;
@@ -129,6 +135,23 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   });
   refreshKeyState();
 
+  const testBtn = h('button', { class: 'btn', attrs: { type: 'button' } }, '测试 API');
+  testBtn.addEventListener('click', async () => {
+    testBtn.disabled = true;
+    testStatus.className = 'api-test-result';
+    testStatus.textContent = '正在测试…';
+    try {
+      const result = await api.invoke('settings:test');
+      testStatus.className = `api-test-result ${result.ok ? 'ok' : 'bad'}`;
+      testStatus.textContent = result.message;
+    } catch (e) {
+      testStatus.className = 'api-test-result bad';
+      testStatus.textContent = errorText(e);
+    } finally {
+      testBtn.disabled = false;
+    }
+  });
+
   removeKey.addEventListener('click', async () => {
     try {
       store.state.settings = await api.invoke('settings:set', { apiKey: { provider: provider.value as ProviderId, value: '' } });
@@ -144,13 +167,16 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     h('div', { class: 'dhead' }, h('h3', {}, '设置'), h('span', {})),
     tabs,
     h('div', { class: 'cfg-panel' },
+      savedProject,
       field('模型提供方', provider),
       field('Base URL', baseUrl, '必填，默认空白：填写你所用服务的接口地址（OpenAI 兼容端点或 Anthropic Messages API）。'),
       field('模型', model, '必填，默认空白：按服务商文档填写模型 ID。也可用 /model <模型名> 切换。'),
       h('div', { class: 'field' }, h('label', {}, 'API Key'), key, keyHelp, h('div', {}, removeKey)),
       field('权限模式', mode, '内置 agent：命令执行在任何模式下都需要逐条批准；「仅规划」禁止修改与执行。外部 CLI 的映射见「Agent CLI」分区。')),
     err,
+    testStatus,
     h('div', { class: 'actions' },
+      testBtn,
       h('button', { class: 'btn', attrs: { type: 'button' }, on: { click: () => dialog.close() } }, '取消'),
       h('button', { class: 'btn pri', attrs: { type: 'submit' } }, '保存')),
   );

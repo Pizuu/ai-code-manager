@@ -8,7 +8,7 @@
 import type { BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
-import { agentName, agentWho, isCli } from '../lib/agent-label.ts';
+import { agentName, isCli } from '../lib/agent-label.ts';
 import { insertBlock } from '../lib/context-send.ts';
 import { composeMessageWithAttachments, splitMessageAttachments, type MessageAttachment } from '../lib/message-attachments.ts';
 import { hm } from '../lib/board-format.ts';
@@ -75,6 +75,7 @@ function enhanceCodeBlocks(root: HTMLElement, autoFold = true, favorite?: { id: 
 export interface ChatHooks {
   renderDiff?: DiffRenderer;
   onOpenAttachment?(path: string): void;
+  onOpenSettings?(): void;
   onNewSession(): void;
   onToggleList(): void;
   /** 点击对话区红点时跳到目标出错会话（session-view 透传其 selectSession）；未提供时红点只开关错误日志层。 */
@@ -419,11 +420,11 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     setTrustedHtml(body, renderMarkdown(m.content));
     const sessionId = store.state.current?.id;
     enhanceCodeBlocks(body, !store.isRunning(), sessionId ? { id: favoriteId(sessionId, m.id), text: m.content } : undefined);
-    const who = agentWho(m.agent ?? 'builtin', settings());
+    const displayName = agentName(m.agent ?? 'builtin', settings());
     const turn = h('article', { class: `turn assistant${turnFolded.has(m.id) ? ' folded' : ''}` },
       h('header', { class: 'turn-hd' },
-        h('span', { class: 'avatar', attrs: { 'aria-hidden': 'true' } }, avatarText(who)),
-        h('span', { class: 'who', attrs: { title: agentName(m.agent ?? 'builtin', settings()) } }, who),
+        h('span', { class: 'avatar', attrs: { 'aria-hidden': 'true' } }, avatarText(displayName)),
+        h('span', { class: 'who', attrs: { title: displayName } }, displayName),
         h('span', { class: 'tm' }, hm(m.createdAt)),
         turnActions(m)),
       h('div', { class: 'msg', attrs: { 'data-id': m.id } }, body));
@@ -540,12 +541,16 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
     textarea.placeholder = ``;
     if (st) modeSel.value = st.permissionMode;
-    // CLI 会话：底栏显示模型切换器；内置 agent 会话不显示。
-    if (cli && s) {
+    // CLI 与内置 API 会话都显示模型切换器；CLI 打开候选模型菜单，API 打开设置页。
+    if (s && cli) {
       modelPick.hidden = false;
       const override = s.cliModel?.trim() ? s.cliModel : undefined;
       const cfgModel = st?.agentClis?.find((x) => x.id === agent.slice(4))?.model;
       modelLabel.textContent = `模型：${override ?? (cfgModel ? cfgModel : 'CLI 默认')}`;
+    } else if (s) {
+      modelPick.hidden = false;
+      modelLabel.textContent = `模型：${st?.model || '未配置'}`;
+      modelPick.title = '打开 API 模型设置';
     } else {
       modelPick.hidden = true;
     }
@@ -756,12 +761,24 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   };
 
   modelPick.addEventListener('click', () => {
+    const s = store.state.current;
+    const st = settings();
+    if (s && !isCli(s.agent ?? st?.defaultAgent ?? 'builtin', st)) {
+      hooks.onOpenSettings?.();
+      return;
+    }
     if (modelMenu.hidden) openModelMenu();
     else closeModelMenu();
   });
   modelPick.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' || ev.key === ' ') {
       ev.preventDefault();
+      const s = store.state.current;
+      const st = settings();
+      if (s && !isCli(s.agent ?? st?.defaultAgent ?? 'builtin', st)) {
+        hooks.onOpenSettings?.();
+        return;
+      }
       if (modelMenu.hidden) openModelMenu();
       else closeModelMenu();
     }

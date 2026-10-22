@@ -124,6 +124,7 @@ export function isFavorite(id: string): boolean {
 /** 切换收藏状态，返回切换后是否为已收藏。同 id 重复收藏只保留一条（刷新内容与时间）。 */
 export function toggleFavorite(fav: Favorite): boolean {
   const list = load();
+  fav = { ...fav, sessionTitle: fav.sessionTitle.trim(), text: fav.text.trim() };
   const i = list.findIndex((f) => f.id === fav.id);
   if (i >= 0) {
     list.splice(i, 1);

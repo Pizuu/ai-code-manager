@@ -39,6 +39,7 @@ export const WEB_DEV_DEFAULT_PORT = 5173;
 
 /** v2 开放的全部 invoke 通道（与 IpcInvokeMap 的键集合一致，下方穷举检查保证不漂移）。 */
 export const WEB_DEV_CHANNELS = [
+  'settings:test',
   'settings:get',
   'settings:set',
   'project:pick',

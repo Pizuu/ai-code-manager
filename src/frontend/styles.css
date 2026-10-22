@@ -365,6 +365,9 @@ input,select,textarea{font:inherit;color:inherit}
 .dialog .actions .btn{flex:none;width:auto}
 .dialog .btn{height:32px;font-size:13px}
 .error-text{color:var(--err);font-size:12px;min-height:1em;white-space:pre-wrap}
+.api-test-result{font-size:var(--font-caption);min-height:1.4em;color:var(--color-text-tertiary)}
+.api-test-result.ok{color:var(--color-text-success)}
+.api-test-result.bad{color:var(--color-text-danger)}
 .cli-list{display:flex;flex-direction:column;gap:8px}
 .cli-item{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--panel)}
 .cli-item .grow0 b{font-weight:600}
@@ -643,6 +646,10 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .ctx-link:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
 .ctx-link.ctx-favorite-jump{animation:favoriteJump 1.4s ease-out}
 @keyframes favoriteJump{0%{background:var(--asoft);color:var(--accent);box-shadow:inset 2px 0 var(--accent)}45%{background:var(--color-background-warning);color:var(--color-text-primary);box-shadow:inset 2px 0 var(--accent),0 0 8px color-mix(in srgb,var(--accent) 35%,transparent)}100%{background:transparent;color:var(--color-text-secondary);box-shadow:none}}
+.ctx-favorite-row{display:flex;align-items:center;gap:4px;min-width:0}
+.ctx-favorite-row .ctx-link{flex:1;min-width:0}
+.ctx-favorite-remove{flex:none;width:24px;height:24px;border:0;border-radius:var(--border-radius-sm);background:transparent;color:var(--color-text-tertiary);cursor:pointer}
+.ctx-favorite-remove:hover{background:var(--color-background-danger);color:var(--color-text-danger)}
 .ctx-link span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ctx-file-row{display:flex;align-items:center;gap:2px;min-width:0}
 .ctx-file-row .ctx-link{flex:1}

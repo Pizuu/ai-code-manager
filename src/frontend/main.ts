@@ -232,6 +232,7 @@ async function bootstrap(): Promise<void> {
     focusCard: (id: string) => { shell.setView('board'); focusBoardCard(id); },
     sendFile: (rel) => sendToSession(formatSendText({ kind: 'file', path: rel, dir: false })),
     onFileState: (states) => shell.setFileStates(states),
+    onOpenSettings: () => openSettings('model'),
   });
   chat = sessionView.chat;
   installContextMenu({

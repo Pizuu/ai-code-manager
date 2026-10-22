@@ -14,7 +14,7 @@ import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
 import { clear, h } from '../lib/dom.ts';
-import { listFavorites, onFavoritesChanged } from '../lib/favorites.ts';
+import { listFavorites, onFavoritesChanged, removeFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
 import { decideApproval, MODE_LABELS, mountChat, type ChatView } from './chat.ts';
@@ -43,6 +43,7 @@ export interface SessionHooks {
   /** 代码查看器「发送到任务会话」（整个文件引用）。 */
   sendFile(relPath: string): void;
   onFileState?(states: ReadonlyArray<{ path: string; mode: 'readonly' | 'editing'; dirty: boolean }>): void;
+  onOpenSettings?(): void;
 }
 
 export interface SessionView {
@@ -205,6 +206,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const chat = mountChat(chatCol, {
     renderDiff,
     onOpenAttachment: openFile,
+    onOpenSettings: hooks.onOpenSettings,
     onNewSession: () => void hooks.newSession(),
     onToggleList: () => slist.toggleAttribute('hidden'),
     // 对话区红点点击跳出错会话：与会话列表条目点击同路（selectSession）。
@@ -275,7 +277,8 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     if (current) sessionTodos.set(current.id, current.todos);
     const entries = [...sessionTodos.entries()].flatMap(([sessionId, todos]) => todos.map((todo) => ({ sessionId, todo })));
     const save = (sessionId: string, next: TodoItem[]) => {
-      void api.invoke('sessions:todos', { sessionId, todos: next }).then((updated) => {
+      const normalized = next.map((todo) => ({ ...todo, content: todo.content.trim() }));
+      void api.invoke('sessions:todos', { sessionId, todos: normalized }).then((updated) => {
         sessionTodos.set(updated.id, updated.todos);
         if (store.state.current?.id !== updated.id) {
           const summary = store.state.sessions.find((session) => session.id === updated.id);
@@ -295,11 +298,11 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         try {
           if (store.state.current?.id !== sessionId) await hooks.selectSession(sessionId);
           const message = store.state.current?.messages.find((item) => item.content.includes(todo.content));
-          if (message) chat.focusMessage(message.id, todo.content);
+          if (message) chat.focusMessage(message.id, todo.content.trim());
         } catch (e) {
           chat.notify(errorText(e));
         }
-      } } }, `${todo.content} · ${owner}`);
+      } } }, `${todo.content.trim()} · ${owner}`);
       return h('div', { class: `todo-row${todo.status === 'completed' ? ' todo-done' : ''}` }, check, content, del);
     });
     const completed = entries.filter(({ todo }) => todo.status === 'completed').length;
@@ -520,9 +523,6 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         return row;
       }))
       : h('div', { class: 'v ctx-empty' }, emptyText);
-    const replyFiles = filesInConversation.filter((file) => file.author === 'assistant');
-    if (replyFiles.length) ctxp.append(h('div', { class: 'k' }, `助手回复引用文件 · ${replyFiles.length}`), renderFiles(replyFiles, ''));
-
     const currentFavorites = s ? listFavorites().filter((f) => f.sessionId === s.id) : [];
     const sessionId = s?.id ?? '';
     const favoriteLinks = h('div', { class: 'v ctx-favorites' }, ...currentFavorites.map((f) => {
@@ -535,7 +535,9 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         link.classList.add('ctx-favorite-jump');
         window.setTimeout(() => link.classList.remove('ctx-favorite-jump'), 1400);
       });
-      return link;
+      const remove = h('button', { class: 'ctx-favorite-remove', attrs: { type: 'button', 'aria-label': '删除收藏' }, title: '删除收藏' }, '×');
+      remove.addEventListener('click', (event) => { event.stopPropagation(); removeFavorite(f.id); });
+      return h('div', { class: 'ctx-favorite-row' }, link, remove);
     }));
     ctxp.append(h('div', { class: 'h ctx-section-title' }, h('span', {}, '收藏'), h('span', { class: 'mute' }, String(currentFavorites.length))), favoriteLinks);
 

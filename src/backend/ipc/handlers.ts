@@ -377,6 +377,26 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
   return {
     'settings:get': async () => settings.getPublic(),
     'settings:set': async (update) => settings.update(validateSettingsUpdate(update)),
+    'settings:test': async () => {
+      const active = settings.getActive();
+      const problem = builtinConfigProblem(active);
+      if (problem) return { ok: false, message: problem };
+      const apiKey = settings.getApiKey(active.provider);
+      if (!apiKey) return { ok: false, message: '尚未配置当前 API 平台的 API Key。' };
+      try {
+        const provider = (deps.providerFactory ?? defaultProviderFactory)(active.provider, { baseUrl: active.baseUrl, apiKey });
+        await provider.stream({
+          model: active.model,
+          system: '',
+          messages: [{ id: 'settings-test', role: 'user', content: 'Reply with OK.', createdAt: new Date().toISOString() }],
+          tools: [],
+          signal: AbortSignal.timeout(15000),
+        }, () => undefined);
+        return { ok: true, message: 'API 配置测试成功。' };
+      } catch {
+        return { ok: false, message: 'API 配置测试失败，请检查平台、Base URL、模型、Key 和网络。' };
+      }
+    },
     'project:pick': async () => {
       const dir = await deps.pickDirectory();
       if (!dir) return null;

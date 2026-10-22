@@ -9,6 +9,7 @@ import type { AGENT_EVENT_CHANNEL, AgentEvent, IpcInvokeChannel, RendererApi } f
 const { contextBridge, ipcRenderer } = require('electron') as typeof ElectronModule;
 
 const INVOKE_CHANNELS = [
+  'settings:test',
   'settings:get',
   'settings:set',
   'project:pick',
