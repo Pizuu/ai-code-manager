@@ -1152,3 +1152,8 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .toast.toast-out{opacity:0;transform:translateY(4px)}
 @keyframes toastIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .ctx-favorite-row .ctx-link{background:var(--ubub);border:1px solid var(--line);border-radius:var(--border-radius-xl);padding:6px 10px}
+/* 待办 / 收藏跳转高亮：静态样式（不依赖动画），重绘后由 chat 重新套用，3 秒后清除 */
+.turn.ctx-hit{background:var(--color-background-warning);outline:2px solid var(--color-border-warning);outline-offset:2px;border-radius:var(--border-radius-xl);transition:background .3s,outline-color .3s}
+.turn.user.ctx-hit{background:transparent;outline:0}
+.turn.user.ctx-hit .ubub{background:var(--color-background-warning);outline:2px solid var(--color-border-warning);outline-offset:2px}
+mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 45%,transparent);color:var(--color-text-primary);font-weight:600;border-radius:var(--border-radius-xs);padding:1px 2px;box-shadow:0 0 0 1px var(--color-border-warning)}
