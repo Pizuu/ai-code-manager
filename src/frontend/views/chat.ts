@@ -294,6 +294,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   // ── v1.8：回合制的对话渲染 ──
   /** 思考区展开状态（消息 ID → 用户显式选择）；未记录时按「有待批准则展开」处理。 */
   const thinkOpen = new Map<string, boolean>();
+  /** 过程区滚动位置（按消息 ID），重渲染后还原。 */
+  const thinkScroll = new Map<string, { top: number; atBottom: boolean }>();
   /** 因待批准而自动展开过的消息：用户手动收起前保持展开（否则批准后卡片会突然消失）。 */
   const thinkSticky = new Set<string>();
   /** 回合折叠状态（被折叠的回合消息 ID，用户 / 助手回合共用；仅前端内存，不落盘，切换会话时清掉）。 */
@@ -398,12 +400,26 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       h('span', { class: 'mute think-count' }, thinkCountText(calls)));
     const status = thinkStatusText(calls);
     if (status) summary.append(h('span', { class: 'mute think-detail' }, status));
+    // 过程区：固定高度、可滚动；待授权的调用卡片放在滚动区外（下方），授权按钮始终可见、不会被滚走。
     const body = h('div', { class: 'think-body' });
+    const asks = h('div', { class: 'think-approvals' });
     for (const call of calls) {
       const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === call.id);
-      body.append(renderToolCard(call, approval, (id, ok) => void decideApproval(id, ok), hooks.renderDiff));
+      const card = renderToolCard(call, approval, (id, ok) => void decideApproval(id, ok), hooks.renderDiff);
+      (approval ? asks : body).append(card);
     }
     det.append(summary, body);
+    if (asks.childElementCount) det.append(asks);
+    // 滚动位置跨重渲染保持；流式输出中且停在底部时自动跟随到底。
+    const saved = thinkScroll.get(m.id);
+    body.addEventListener('scroll', () => {
+      thinkScroll.set(m.id, { top: body.scrollTop, atBottom: body.scrollHeight - body.scrollTop - body.clientHeight < 24 });
+    }, { passive: true });
+    requestAnimationFrame(() => {
+      if (!body.isConnected) return;
+      if (!saved || (streaming && saved.atBottom)) body.scrollTop = body.scrollHeight;
+      else body.scrollTop = saved.top;
+    });
 
     // 展开判定（优先级从高到低）：
     // 1. 有待批准的调用 → 强制展开：批准按钮被折叠就点不到了；
@@ -655,6 +671,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (sid !== lastSessionId) {
       lastSessionId = sid;
       thinkOpen.clear();
+      thinkScroll.clear();
       thinkSticky.clear();
       turnFolded.clear();
       suppressReanswer = false;

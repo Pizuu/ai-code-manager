@@ -1157,3 +1157,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .turn.user.ctx-hit{background:transparent;outline:0}
 .turn.user.ctx-hit .ubub{background:var(--color-background-warning);outline:2px solid var(--color-border-warning);outline-offset:2px}
 mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 45%,transparent);color:var(--color-text-primary);font-weight:600;border-radius:var(--border-radius-xs);padding:1px 2px;box-shadow:0 0 0 1px var(--color-border-warning)}
+/* 过程区：固定高度可滚动，可折叠（details）；待授权卡片在滚动区外常驻可见 */
+.think-body{max-height:240px;overflow-y:auto;overscroll-behavior:contain;padding:8px 6px 0 0;scrollbar-width:thin}
+.think-approvals{padding:8px 0 0}
+.think-approvals .verify.tool{margin:0 0 8px;padding:8px 10px;box-shadow:none;background:var(--color-background-tertiary);outline:1px solid var(--color-border-warning)}
