@@ -17,3 +17,7 @@ coverage/
 release/
 out/
 .eslintcache
+# ---- 运行产物 ----
+# 应用「导入文件」写入项目根 uploads/（见 src/backend/fs/file-import.ts），不入库
+uploads/
+.tmp-diff-*.txt

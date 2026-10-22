@@ -9,7 +9,7 @@
  */
 import type { AgentRef, BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
-import { agentName, isCli } from '../lib/agent-label.ts';
+import { agentName } from '../lib/agent-label.ts';
 import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
