@@ -22,7 +22,6 @@ import { mountCodeView } from './code-view.ts';
 import { renderDiff } from './diff-view.ts';
 import { mountTerminal } from './terminal-view.ts';
 import { refreshTasks } from './tasks-view.ts';
-import { STATUS_LABELS } from './tool-card.ts';
 
 /** 最后一个回答耗时格式：<1s 显示 '<1s'；<60s 如 '42s'；<60min 如 '3m 05s'（秒补零）；>=60min 如 '1h 12m'。 */
 function fmtDuration(ms: number): string {
@@ -498,6 +497,14 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
 
     const filesInConversation = s ? conversationFiles(s) : [];
     const codeDownloads = s ? generatedFiles.filter((file) => file.sessionId === s.id) : [];
+    // 当前会话的文件修改：从本会话消息的工具调用实时取（流式中 tool-call 事件会同步更新消息），
+    // 不再用全局 store.state.diffs（会混入其他会话、且重开会话后为空）。
+    const sessionDiffs: Array<{ toolCallId: string; path: string; diff: string; status: (typeof store.state.diffs)[number]['status'] }> = [];
+    for (const m of s?.messages ?? []) for (const c of m.toolCalls ?? []) {
+      if (!c.diff) continue;
+      const p = c.input.path ?? c.input.filePath;
+      sessionDiffs.push({ toolCallId: c.id, path: typeof p === 'string' ? p : '', diff: c.diff, status: c.status });
+    }
     const relatedByPath = new Map<string, RelatedFile>();
     const addRelated = (file: RelatedFile) => {
       const key = file.path.replace(/\\/g, '/').toLowerCase();
@@ -505,7 +512,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     };
     filesInConversation.forEach(addRelated);
     const latestAt = s?.messages.at(-1)?.createdAt ?? new Date(0).toISOString();
-    for (const diff of store.state.diffs) if (diff.path) addRelated({ path: diff.path, author: 'assistant', at: latestAt });
+    for (const diff of sessionDiffs) if (diff.path) addRelated({ path: diff.path, author: 'assistant', at: latestAt });
     for (const path of files) addRelated({ path, author: 'user', at: latestAt });
     const relatedFiles = [...relatedByPath.values()];
     const renderCodeDownloads = codeDownloads.length
@@ -542,6 +549,23 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       }))
       : h('div', { class: 'v ctx-empty' }, emptyText);
     ctxp.append(h('div', { class: 'k' }, `文件 · ${relatedFiles.length}`), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
+    // DIFF（当前会话实时）：放在「文件」下方；同一文件多次修改只留最新一条（Map 覆盖值不改键序）。
+    // 只显示路径与增删行数，点击打开文件；已删除状态标签与下方展开预览。待批准时保留批准 / 拒绝按钮。
+    const byPath = new Map<string, (typeof sessionDiffs)[number]>();
+    for (const d of sessionDiffs) byPath.set(d.path, d);
+    const diffs = [...byPath.values()].reverse();
+    const dl = h('div', { class: 'dlist' });
+    for (const d of diffs.slice(0, 12)) {
+      const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === d.toolCallId);
+      const { added, removed } = countChanges(d.diff);
+      const item = h('div', { class: 'ditem' }, h('div', { class: 'row', attrs: { role: 'button', tabindex: '0' }, title: d.path ? `打开 ${d.path}` : '', on: { click: () => { if (d.path) openFile(d.path); } } },
+        h('span', { class: 'p', title: d.path }, d.path || '(未知文件)'), h('span', { class: 'mute' }, `+${added} −${removed}`)));
+      if (approval && d.status === 'awaiting-approval') {
+        item.append(h('div', { class: 'fx8 mt6' }, h('button', { class: 'btn danger', on: { click: () => void decideApproval(approval.id, false) } }, '拒绝'), h('button', { class: 'btn pri', on: { click: () => void decideApproval(approval.id, true) } }, '批准')));
+      }
+      dl.append(item);
+    }
+    if (diffs.length) ctxp.append(h('div', { class: 'k' }, `DIFF · ${diffs.length}`), dl);
     const currentFavorites = s ? listFavorites().filter((f) => f.sessionId === s.id) : [];
     const favoriteLinks = h('div', { class: 'v ctx-favorites' }, ...currentFavorites.map((f) => {
       const link = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '跳转到收藏消息' },
@@ -561,22 +585,6 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     }));
     ctxp.append(h('div', { class: 'h ctx-section-title' }, h('span', {}, '收藏'), h('span', { class: 'mute' }, String(currentFavorites.length))), favoriteLinks);
 
-    // 文件修改（原 Diff 面板）：同一文件多次修改只留最新一条，按首次出现排列（Map 覆盖值不改键序）
-    const byPath = new Map<string, (typeof store.state.diffs)[number]>();
-    for (const d of store.state.diffs) byPath.set(d.path, d);
-    const diffs = [...byPath.values()];
-    const dl = h('div', { class: 'dlist' });
-    for (const d of diffs.slice(0, 12)) {
-      const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === d.toolCallId);
-      const { added, removed } = countChanges(d.diff);
-      const det = h('details', {}, h('summary', { class: 'row', on: { click: () => { if (d.path) openFile(d.path); } } }, h('span', { class: 'p', title: d.path }, d.path || '(未知文件)'), h('span', { class: 'mute' }, `+${added} −${removed}`), h('span', { class: 'chip' }, STATUS_LABELS[d.status])), renderDiff(d.diff));
-      if (approval && d.status === 'awaiting-approval') {
-        det.open = true;
-        det.append(h('div', { class: 'fx8 mt6' }, h('button', { class: 'btn danger', on: { click: () => void decideApproval(approval.id, false) } }, '拒绝'), h('button', { class: 'btn pri', on: { click: () => void decideApproval(approval.id, true) } }, '批准')));
-      }
-      dl.append(det);
-    }
-    if (diffs.length) ctxp.append(h('div', { class: 'k' }, `DIFF · ${diffs.length}`), dl);
     ctxp.append(todoDock);
 
   };
@@ -600,7 +608,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   for (const t of ['sessions', 'current', 'running', 'approvals', 'settings', 'workspace', 'project', 'errors'] as const) store.on(t, renderList);
   // 收藏增减后底部行的收藏条数实时刷新（renderList 只读 favorites 现值重渲，不回写收藏，无循环）
   onFavoritesChanged(() => { renderList(); scheduleCtx(); });
-  for (const t of ['current', 'todos', 'diffs', 'tasks', 'running', 'approvals', 'settings', 'workspace', 'project'] as const) store.on(t, scheduleCtx);
+  for (const t of ['current', 'messages', 'todos', 'diffs', 'tasks', 'running', 'approvals', 'settings', 'workspace', 'project'] as const) store.on(t, scheduleCtx);
   store.on('diffs', () => {
     if (!active) return;
     const diff = [...store.state.diffs].reverse().find((item) => item.path === active);
