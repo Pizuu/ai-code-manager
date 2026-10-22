@@ -9,7 +9,7 @@ const blank = { provider: 'openai', baseUrl: '', model: '', hasApiKey: { openai:
 test('blank settings report every missing field and the configure-first hint', () => {
   assert.deepEqual(builtinMissing(blank), ['Base URL', '模型', 'API Key']);
   assert.match(agentSetupHint('builtin', blank) ?? '', /^请先在设置中配置 agent：内置 agent 尚未填写 Base URL、模型、API Key/);
-  assert.equal(builtinLabel(blank), 'OpenAI 兼容 · 未配置');
+  assert.equal(builtinLabel(blank), '未配置模型');
 });
 
 test('fully configured builtin and CLI agents need no hint', () => {

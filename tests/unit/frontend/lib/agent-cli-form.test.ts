@@ -71,7 +71,7 @@ test('preview shows model, session and the prompt separator', () => {
 test('agent labels and options', () => {
   const s = { provider: 'anthropic', model: 'claude-sonnet-4-5', defaultAgent: 'builtin', agentClis: [{ id: 'oc-1', name: 'opencode', model: '', preset: 'opencode', command: 'opencode', args: [], resumeArgs: [], modelArgs: [], outputFormat: 'opencode-json', env: [] }] } as unknown as PublicSettings;
   assert.deepEqual(agentOptions(s).map((o) => o.ref), ['builtin', 'cli:oc-1']);
-  assert.equal(agentName(undefined, s), 'Claude · claude-sonnet-4-5');
+  assert.equal(agentName(undefined, s), 'claude-sonnet-4-5');
   assert.equal(agentName('cli:oc-1', s), 'opencode');
   assert.equal(agentName('cli:gone', s), '已删除的 CLI');
   assert.equal(agentWho('cli:oc-1', s), 'opencode');
