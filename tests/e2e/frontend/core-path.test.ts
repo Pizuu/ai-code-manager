@@ -312,7 +312,7 @@ test('Electron 核心路径：选目录 → 提问 → 批准/拒绝编辑 → �
     const firstReplyMs = performance.now() - launchedAt;
     assert.ok(firstReplyMs < 120_000, `SC-001：首次打开到首条流式回复 ${Math.round(firstReplyMs)} ms，超过 2 分钟`);
     assert.match((await edit1.locator('details').first().textContent()) ?? '', /\+.*HELLO/);
-    await page.locator('.ctxp .dlist .row .p').filter({ hasText: 'hello.txt' }).first().waitFor({ state: 'attached', timeout: 10_000 });
+    await page.locator('.ctxp .dlist .ctx-diff-p').filter({ hasText: 'hello.txt' }).first().waitFor({ state: 'attached', timeout: 10_000 });
     assert.equal(await fsp.readFile(target, 'utf8'), 'hello world\n', '批准前不得写入（SC-002）');
     await edit1.locator('.appr .btn.pri').click();
 
