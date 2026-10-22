@@ -221,6 +221,9 @@ export async function runServeCliTurn(session: Session, userText: string, prepar
     signal: deps.signal,
     newId: deps.newId,
     requestApproval: async (req) => {
+      // 全部允许（免审批）：opencode 仍可能因默认规则（如 doom_loop）发起询问，这里直接放行，不打扰用户；
+      // 越界目录（external_directory）不在免审批范围，规则集已拒绝，万一询问也照常交给用户。
+      if (deps.mode === 'allow-all' && req.permission !== 'external_directory') return true;
       const call = sink.calls.find((c) => c.id === req.toolCallId);
       if (call && call.status === 'running') sink.upsert({ ...call, status: 'awaiting-approval' });
       return deps.requestApproval(req);

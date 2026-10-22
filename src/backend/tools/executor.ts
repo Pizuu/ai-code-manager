@@ -101,11 +101,14 @@ async function runWrite(call: ToolCallInput, prepared: PreparedWrite, needsAppro
   return { status: 'done', output: `${verb} ${prepared.rel}（+${added} -${removed}）`, diff: prepared.diff };
 }
 
-async function runShell(call: ToolCallInput, input: RunCommandInput, root: string, ctx: ExecutorContext): Promise<ExecutionResult> {
+async function runShell(call: ToolCallInput, input: RunCommandInput, root: string, needsApproval: boolean, ctx: ExecutorContext): Promise<ExecutionResult> {
   const platform = ctx.platform ?? process.platform;
   const shell = shellFor(platform, input.command).label;
-  const approved = await ctx.requestApproval({ toolCallId: call.id, kind: 'command', command: input.command, shell });
-  if (!approved) return { status: 'rejected', output: '用户拒绝执行该命令。' };
+  // 只有权限裁决为 ask 时才挂起审批（allow-all 免审批；此前这里无条件询问，导致免审批模式仍弹出命令审批）。
+  if (needsApproval) {
+    const approved = await ctx.requestApproval({ toolCallId: call.id, kind: 'command', command: input.command, shell });
+    if (!approved) return { status: 'rejected', output: '用户拒绝执行该命令。' };
+  }
   ctx.onTerminal(call.id, 'info', `${shell}> ${input.command}\n`);
   const r = await runCommand({
     command: input.command,
@@ -168,7 +171,7 @@ export async function executeTool(call: ToolCallInput, ctx: ExecutorContext): Pr
       case 'edit_file':
         return await runWrite(call, await prepareEdit(root, call.input as unknown as EditFileInput), decision === 'ask', ctx);
       case 'run_command':
-        return await runShell(call, call.input as unknown as RunCommandInput, root, ctx);
+        return await runShell(call, call.input as unknown as RunCommandInput, root, decision === 'ask', ctx);
       default:
         return { status: 'error', output: `工具 ${def.name} 未实现` };
     }

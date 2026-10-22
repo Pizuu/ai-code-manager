@@ -315,7 +315,8 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     void runAgentTurn(session, text, {
       provider,
       model: active.model,
-      mode: active.permissionMode,
+      // 每次工具调用时实时读取权限模式：回合进行中切到「全部允许」，后续调用立即免审批。
+      get mode() { return settings.getActive().permissionMode; },
       projectRoot: root,
       system,
       signal: controller.signal,
