@@ -13,7 +13,7 @@ import { agentName, isCli } from '../lib/agent-label.ts';
 import { insertBlock } from '../lib/context-send.ts';
 import { composeMessageWithAttachments, splitMessageAttachments, type MessageAttachment } from '../lib/message-attachments.ts';
 import { hm } from '../lib/board-format.ts';
-import { avatarText, hasPendingApproval, thinkCountText, thinkShouldOpen, thinkStatusText } from '../lib/chat-turn.ts';
+import { avatarText } from '../lib/chat-turn.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
@@ -295,12 +295,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const settings = () => store.state.settings;
 
   // ── v1.8：回合制的对话渲染 ──
-  /** 思考区展开状态（消息 ID → 用户显式选择）；未记录时按「有待批准则展开」处理。 */
-  const thinkOpen = new Map<string, boolean>();
   /** 过程区滚动位置（按消息 ID），重渲染后还原。 */
   const thinkScroll = new Map<string, { top: number; atBottom: boolean }>();
-  /** 因待批准而自动展开过的消息：用户手动收起前保持展开（否则批准后卡片会突然消失）。 */
-  const thinkSticky = new Set<string>();
   /** 回合折叠状态（被折叠的回合消息 ID，用户 / 助手回合共用；仅前端内存，不落盘，切换会话时清掉）。 */
   const turnFolded = new Set<string>();
   /** 当前会话 ID（切换会话时清掉展开状态）。 */
@@ -395,23 +391,18 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
    * - v1.8+：正在思考（流式输出中）且用户未显式收起过时自动展开，思考过程可见。
    */
   const thinkBlock = (m: ChatMessage, calls: ToolCallRecord[]): HTMLElement => {
-    const det = h('details', { class: 'think' });
+    // 过程区：已删除「思考过程 / 结果」标题行（不再折叠），工具卡片直接显示；
+    // 固定高度、可滚动；待授权的调用卡片放在滚动区外（下方），授权按钮始终可见、不会被滚走。
+    const det = h('div', { class: 'think' });
     const streaming = streamingMessage()?.id === m.id;
-    const summary = h('summary', { class: 'think-sum', attrs: { title: streaming ? '展开 / 折叠思考过程' : '展开 / 折叠回答结果' } },
-      h('span', { class: 'think-caret' }, icon('caret')),
-      h('span', { class: 'think-label' }, streaming ? '思考过程' : '结果'),
-      h('span', { class: 'mute think-count' }, thinkCountText(calls)));
-    const status = thinkStatusText(calls);
-    if (status) summary.append(h('span', { class: 'mute think-detail' }, status));
-    // 过程区：固定高度、可滚动；待授权的调用卡片放在滚动区外（下方），授权按钮始终可见、不会被滚走。
-    const body = h('div', { class: 'think-body' });
+    const body = h('div', { class: 'think-body', attrs: { 'data-mid': m.id } });
     const asks = h('div', { class: 'think-approvals' });
     for (const call of calls) {
       const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === call.id);
       const card = renderToolCard(call, approval, (id, ok) => void decideApproval(id, ok), hooks.renderDiff);
       (approval ? asks : body).append(card);
     }
-    det.append(summary, body);
+    det.append(body);
     if (asks.childElementCount) det.append(asks);
     // 滚动位置跨重渲染保持；流式输出中且停在底部时自动跟随到底。
     const saved = thinkScroll.get(m.id);
@@ -420,32 +411,25 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }, { passive: true });
     requestAnimationFrame(() => {
       if (!body.isConnected) return;
-      if (!saved || (streaming && saved.atBottom)) body.scrollTop = body.scrollHeight;
+      if (!saved || ((streaming || body.dataset.follow === '1') && saved.atBottom)) body.scrollTop = body.scrollHeight;
       else body.scrollTop = saved.top;
     });
-
-    // 展开判定（优先级从高到低）：
-    // 1. 有待批准的调用 → 强制展开：批准按钮被折叠就点不到了；
-    // 2. 正在思考（流式输出中）且用户未显式收起过 → 自动展开：思考过程可见；
-    // 3. 用户显式选择过 → 用用户的选择；
-    // 4. 曾因待批准自动展开过（sticky）→ 保持展开，避免批准后卡片突然消失；
-    // 5. 其余 → 折叠（对话读起来干净）。
-    const pending = hasPendingApproval(calls) || calls.some((c) => [...store.state.approvals.values()].some((a) => a.toolCallId === c.id));
-    const explicit = thinkOpen.get(m.id);
-    const open = thinkShouldOpen({ pending, streaming, explicit, sticky: thinkSticky.has(m.id) });
-    if (pending) {
-      thinkOpen.delete(m.id); // 强制展开覆盖用户此前的收起选择
-      thinkSticky.add(m.id);
-    }
-    det.open = open;
-    // 自行接管开合（阻止 summary 的默认行为），保证重渲染后状态可还原。
-    summary.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      const next = !det.open;
-      det.open = next;
-      thinkOpen.set(m.id, next);
-    });
     return det;
+  };
+
+  /** 合并回合时把后续消息的过程区并入第一个过程区（同一个滚动区域）。 */
+  const mergeThink = (into: HTMLElement, from: HTMLElement): void => {
+    const body = into.querySelector<HTMLElement>(':scope > .think-body');
+    if (!body) return;
+    body.append(...from.querySelectorAll<HTMLElement>(':scope > .think-body > *'));
+    const moreAsks = [...from.querySelectorAll<HTMLElement>(':scope > .think-approvals > *')];
+    if (moreAsks.length) {
+      let asks = into.querySelector<HTMLElement>(':scope > .think-approvals');
+      if (!asks) { asks = h('div', { class: 'think-approvals' }); into.append(asks); }
+      asks.append(...moreAsks);
+    }
+    const sid = streamingMessage()?.id;
+    if (sid && from.querySelector(':scope > .think-body')?.getAttribute('data-mid') === sid) body.dataset.follow = '1';
   };
 
   /** 助手回合：头部（头像 / 名称 / 时间 / 操作）+ 正文 + 可折叠的思考区。 */
@@ -673,9 +657,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const sid = s?.id ?? null;
     if (sid !== lastSessionId) {
       lastSessionId = sid;
-      thinkOpen.clear();
       thinkScroll.clear();
-      thinkSticky.clear();
       turnFolded.clear();
       suppressReanswer = false;
       // 规格 004：菜单与预置都是输入框状态，不跨会话残留（清预置、关菜单、清 Esc 抑制）。
@@ -698,7 +680,12 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       const notes = store.state.notices.filter((x) => x.afterMessageId === m.id);
       if (m.role === 'assistant' && merged) {
         const part = assistantTurn(m);
-        for (const el of [...part.children]) if (!el.matches('header.turn-hd')) merged.append(el);
+        const firstThink = merged.querySelector<HTMLElement>(':scope > .think');
+        for (const el of [...part.children]) {
+          if (el.matches('header.turn-hd')) continue;
+          if (firstThink && el.matches('.think')) mergeThink(firstThink, el as HTMLElement);
+          else merged.append(el);
+        }
         merged.querySelector('header.turn-hd .acts')?.replaceWith(turnActions(m));
         merged.classList.toggle('folded', turnFolded.has(m.id));
       } else {
