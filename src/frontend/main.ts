@@ -3,6 +3,7 @@
  * 把 agent:event 分发到状态与视图。
  */
 import type { AgentEvent, BoardCard, ChatMessage, Session } from '../../contracts/ipc.ts';
+import { LiveSessionCache } from './lib/live-sessions.ts';
 import { api, errorText } from './api.ts';
 import { agentError, sessionErrorEntries, toolCallError } from './lib/error-log.ts';
 import { store } from './store.ts';
@@ -51,12 +52,18 @@ function originOf(el: Element): string {
   return 'AI Code Manager';
 }
 
-function findMessage(id: string): ChatMessage | undefined {
-  return store.state.current?.messages.find((m) => m.id === id);
+/** 运行中会话的前端实时副本（见 lib/live-sessions.ts）：切走后继续接收流式事件，切回时复用，避免思考过程丢失。 */
+const liveSessions = new LiveSessionCache<Session>();
+
+function findMessage(session: Session | null | undefined, id: string): ChatMessage | undefined {
+  return session?.messages.find((m) => m.id === id);
 }
 
 export async function selectSession(id: string): Promise<void> {
-  store.state.current = await api.invoke('sessions:get', id);
+  const isRunning = (sid: string) => store.state.running.has(sid);
+  liveSessions.leave(store.state.current, id, isRunning);
+  const live = liveSessions.enter(id, isRunning);
+  store.state.current = live ?? await api.invoke('sessions:get', id);
   store.state.notices = [];
   // P1-6：用持久化消息重建该会话的错误条目（重启后仍能看到「出错」与错误分区）
   store.setErrors(id, sessionErrorEntries(store.state.current.messages));
@@ -120,7 +127,7 @@ function handleEvent(e: AgentEvent): void {
     }
     case 'status':
       if (e.running) store.state.running.add(e.sessionId);
-      else store.state.running.delete(e.sessionId);
+      else { store.state.running.delete(e.sessionId); liveSessions.finish(e.sessionId); }
       store.emit('running');
       // 结束后以持久化版本为准（带回 CLI 会话 ID 等主进程写入的字段）
       if (!e.running && s && s.id === e.sessionId) {
@@ -157,49 +164,52 @@ function handleEvent(e: AgentEvent): void {
     default:
       break;
   }
-  if (!s || e.sessionId !== s.id) return; // 其余事件只作用于当前会话
+  // 其余事件作用于当前会话；切走但仍在运行的会话写入其实时副本（不触发界面刷新），切回时内容完整。
+  const hit = liveSessions.target(s, e.sessionId);
+  if (!hit) return;
+  const { session: target, isCurrent } = hit;
   switch (e.type) {
     case 'message-start': {
-      s.messages.push({ ...e.message });
-      store.emit('messages');
+      if (!findMessage(target, e.message.id)) target.messages.push({ ...e.message });
+      if (isCurrent) store.emit('messages');
       break;
     }
     case 'text-delta': {
-      const m = findMessage(e.messageId);
+      const m = findMessage(target, e.messageId);
       if (m) {
         m.content += e.delta;
-        chat.appendDelta(m.id);
+        if (isCurrent) chat.appendDelta(m.id);
       }
       break;
     }
     case 'tool-call': {
-      const m = findMessage(e.messageId);
+      const m = findMessage(target, e.messageId);
       if (m) {
         const calls = m.toolCalls ?? (m.toolCalls = []);
         const i = calls.findIndex((c) => c.id === e.call.id);
         if (i === -1) calls.push(e.call);
         else calls[i] = e.call;
-        store.emit('messages');
+        if (isCurrent) store.emit('messages');
       }
       // P1-6：工具失败计入该会话的错误条目（「出错」状态 + 错误分区）
       if (e.call.status === 'error') {
         const entry = toolCallError(e.call, m?.createdAt ?? new Date().toISOString());
         if (entry) store.addError(e.sessionId, entry);
       }
-      if (e.call.diff) {
+      if (isCurrent && e.call.diff) {
         const p = e.call.input.path ?? e.call.input.filePath;
         store.upsertDiff({ toolCallId: e.call.id, path: typeof p === 'string' ? p : '', diff: e.call.diff, status: e.call.status });
       }
       break;
     }
     case 'todos':
-      s.todos = e.todos;
-      store.emit('todos');
+      target.todos = e.todos;
+      if (isCurrent) store.emit('todos');
       break;
     case 'error':
       // P1-6：Agent 报错计入该会话的错误条目（可追溯）
       store.addError(e.sessionId, agentError(e.sessionId + ':' + e.message.slice(0, 64), e.message, new Date().toISOString()));
-      chat.notify(e.message);
+      if (isCurrent) chat.notify(e.message);
       break;
     default:
       break;
