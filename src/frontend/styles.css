@@ -1145,9 +1145,4 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 #settings-dialog .saved-project-dot.saved{background:var(--color-text-success)}
 #settings-dialog .saved-project-path{overflow-wrap:anywhere;word-break:break-word}
 #settings-dialog .saved-project-hint{margin-left:16px}
-#settings-dialog .cfg-sec-title{font-weight:600;font-size:13px;color:var(--color-text-secondary)}
-#settings-dialog .cfg-panel + .cfg-panel{margin-top:12px}
-#settings-dialog .saved-api{display:flex;flex-direction:column;gap:6px}
-#settings-dialog .api-entry .grow0{flex:1;min-width:0}
-#settings-dialog .api-entry .mono{overflow-wrap:anywhere;margin-top:4px}
-#settings-dialog .api-entry .btn{flex:none}
+#settings-dialog .saved-api{display:flex;flex-direction:column;gap:8px}

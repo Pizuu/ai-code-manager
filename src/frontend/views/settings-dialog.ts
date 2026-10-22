@@ -111,16 +111,7 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   const err = h('div', { class: 'error-text' });
   const testStatus = h('div', { class: 'api-test-result', attrs: { role: 'status' } });
   const keyHelp = h('div', { class: 'help' });
-  const removeKey = h('button', { class: 'btn danger', attrs: { type: 'button' } }, '删除 Key');
-  const savedProjectPath = store.state.settings?.lastProjectPath ?? null;
-  const hasSavedProject = Boolean(savedProjectPath);
-  const savedProject = h('div', { class: 'cli-item saved-project' },
-    h('div', { class: 'grow0 saved-project-main' },
-      h('div', { class: 'fx8 saved-project-title' },
-        h('span', { class: `saved-project-dot ${hasSavedProject ? 'saved' : 'empty'}`, attrs: { title: hasSavedProject ? '项目路径已保存' : '尚未选择项目', 'aria-label': hasSavedProject ? '项目路径已保存' : '尚未选择项目' } })),
-      h('div', { class: 'mono saved-project-path' }, savedProjectPath ?? '尚未选择项目')),
-    h('span', { class: 'mute saved-project-hint' }, hasSavedProject ? '当前项目配置将用于 API 会话' : '打开项目后会自动保存项目路径'));
-
+  const removeKey = h('button', { class: 'btn danger', attrs: { type: 'button' } }, '删除');
   // 「已保存」：不是固定字段表，而是由「添加」生成的条目；未添加时只给一句提示。
   const SHORT_PROVIDER: Readonly<Record<ProviderId, string>> = { openai: 'OpenAI 兼容', anthropic: 'Anthropic' };
   const savedApi = h('div', { class: 'saved-api' });
@@ -130,18 +121,22 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     const hasKey = cur?.hasApiKey[p] ?? false;
     clear(savedApi);
     if (!cur?.baseUrl && !cur?.model && !hasKey) {
-      savedApi.append(h('div', { class: 'mute' }, '还没有添加 API。在下方填写后点「添加」。'));
+      savedApi.append(h('div', { class: 'mute' }, '还没有添加 API，填写下方后点「添加」。'));
       return;
     }
-    savedApi.append(h('div', { class: 'cli-item api-entry' },
-      h('div', { class: 'grow0' },
-        h('div', { class: 'fx8' },
-          h('b', {}, cur?.model || '未填写模型'),
-          h('span', { class: 'chip' }, SHORT_PROVIDER[p]),
-          h('span', { class: `chip ${hasKey ? 'grn' : ''}` }, hasKey ? 'Key 已加密' : '无 Key')),
-        h('div', { class: 'mono' }, cur?.baseUrl || '未填写 Base URL')),
-      testBtn,
-      removeKey));
+    const inUse = (cur?.defaultAgent ?? 'builtin') === 'builtin';
+    // 条目形态与「Agent CLI」页的已配置条目一致：名称 + 使用中 + 状态点，下一行等宽摘要，右侧操作按钮。
+    savedApi.append(h('div', {},
+      h('div', { class: 'cli-item' },
+        h('div', { class: 'grow0' },
+          h('div', { class: 'fx8' },
+            h('b', {}, cur?.model || '未填写模型'),
+            inUse ? h('span', { class: 'chip grn' }, '使用中') : null,
+            h('span', { class: 'cli-state' }, h('span', { class: `cli-dot ${hasKey ? 'ok' : 'bad'}` }), h('span', { class: 'cli-state-text' }, hasKey ? 'Key 已加密' : '无 Key'))),
+          h('div', { class: 'mono' }, `${SHORT_PROVIDER[p]} · ${cur?.baseUrl || '未填写 Base URL'}`)),
+        testBtn,
+        removeKey),
+      testStatus));
   };
   const refreshKeyState = () => {
     const p = provider.value as ProviderId;
@@ -160,7 +155,7 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   });
   refreshKeyState();
 
-  const testBtn = h('button', { class: 'btn', attrs: { type: 'button' } }, '测试 API');
+  const testBtn = h('button', { class: 'btn', attrs: { type: 'button' } }, '检查');
   testBtn.addEventListener('click', async () => {
     testBtn.disabled = true;
     testStatus.className = 'api-test-result';
@@ -197,13 +192,8 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     // 标题区与 CLI 页统一形态：左 h3「设置」+ 右空槽位（CLI 页在此注入「自动检测」）。
     h('div', { class: 'dhead' }, h('h3', {}, '设置'), h('span', {})),
     tabs,
-    h('div', { class: 'cfg-panel cfg-saved' },
-      h('div', { class: 'cfg-sec-title' }, '已保存'),
-      savedProject,
+    h('div', { class: 'cfg-panel' },
       savedApi,
-      testStatus),
-    h('div', { class: 'cfg-panel cfg-add' },
-      h('div', { class: 'cfg-sec-title' }, '添加'),
       field('模型提供方', provider),
       field('Base URL', baseUrl, '必填，默认空白：填写你所用服务的接口地址（OpenAI 兼容端点或 Anthropic Messages API）。'),
       field('模型', model, '必填，默认空白：按服务商文档填写模型 ID。也可用 /model <模型名> 切换。'),

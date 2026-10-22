@@ -14,6 +14,10 @@ export interface Favorite {
   text: string;
   /** 收藏时间（epoch ms）。 */
   at: number;
+  /** 来源消息 id（可缺省：旧条目从 id 推导，任意选中文字可能没有所属消息）。 */
+  messageId?: string;
+  /** 收藏的是选中的一段文字时为 true：跳转时高亮这段文字。 */
+  quote?: boolean;
 }
 
 const KEY = 'acm.favorites.v1';
@@ -55,6 +59,8 @@ function load(): Favorite[] {
         sessionTitle: typeof f.sessionTitle === 'string' ? f.sessionTitle : '',
         text: f.text,
         at: f.at,
+        ...(typeof (f as Record<string, unknown>).messageId === 'string' ? { messageId: (f as Record<string, unknown>).messageId as string } : {}),
+        ...((f as Record<string, unknown>).quote === true ? { quote: true } : {}),
       }))
     : [];
   return cache;
@@ -110,6 +116,26 @@ function changed(): void {
 
 export function favoriteId(sessionId: string, messageId: string): string {
   return `${sessionId}:${messageId}`;
+}
+
+/** 选中文字收藏的 id：同一来源（消息或会话）下按文字内容去重。 */
+export function quoteFavoriteId(sessionId: string, messageId: string | undefined, text: string): string {
+  let h = 0;
+  for (const ch of text.trim().replace(/\s+/g, ' ')) h = (h * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
+  return `${sessionId}:${messageId ?? '-'}:q${h.toString(36)}`;
+}
+
+/** 收藏条目的来源消息 id：优先显式字段，否则从 `${sessionId}:${messageId}` 推导。 */
+export function favoriteMessageId(f: Favorite): string | undefined {
+  if (f.messageId) return f.messageId;
+  const rest = f.id.slice(f.sessionId.length + 1);
+  return rest && !rest.includes(':') ? rest : undefined;
+}
+
+/** 只添加不切换：已存在返回 false。 */
+export function addFavorite(fav: Favorite): boolean {
+  if (isFavorite(fav.id)) return false;
+  return toggleFavorite(fav);
 }
 
 /** 按收藏时间倒序（最新在前）。 */

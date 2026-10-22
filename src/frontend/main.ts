@@ -11,7 +11,7 @@ import { type ChatView } from './views/chat.ts';
 import { mountAgents } from './views/agents-view.ts';
 import { mountGit } from './views/git-view.ts';
 import { formatSendText } from './lib/context-send.ts';
-import { favoriteId, toggleFavorite } from './lib/favorites.ts';
+import { favoriteId, addFavorite, quoteFavoriteId } from './lib/favorites.ts';
 import { installContextMenu } from './views/context-menu.ts';
 import { mountSessionView, type SessionView } from './views/session-view.ts';
 import { openSettings } from './views/settings-dialog.ts';
@@ -238,22 +238,29 @@ async function bootstrap(): Promise<void> {
   installContextMenu({
     sendNew: sendToNewSession,
     originOf,
-    addTodo: async (text) => {
+    addTodo: async (text, messageId) => {
       const current = store.state.current;
       if (!current || !text.trim()) return;
       try {
+        // 待办正文就是选中的文字（或整条消息），点击待办时按正文回到来源消息并高亮
+        void messageId;
         const next = await api.invoke('sessions:todos', { sessionId: current.id, todos: [...(current.todos ?? []), { id: crypto.randomUUID(), content: text.trim(), status: 'pending' }] });
         store.state.current = next;
         store.emit('current', 'todos');
+        chat.notify('已加入待办', 'info');
       } catch (e) {
         chat.notify(errorText(e));
       }
     },
-    addFavorite: async (messageId) => {
+    addFavorite: async (messageId, quote) => {
       const current = store.state.current;
-      const message = current?.messages.find((m) => m.id === messageId);
-      if (!current || !message || (message.role !== 'assistant' && message.role !== 'user')) return;
-      toggleFavorite({ id: favoriteId(current.id, message.id), sessionId: current.id, sessionTitle: current.title, text: message.content, at: Date.now() });
+      if (!current) return;
+      const message = messageId ? current.messages.find((m) => m.id === messageId) : undefined;
+      const text = (quote ?? message?.content ?? '').trim();
+      if (!text) return;
+      const id = quote || !message ? quoteFavoriteId(current.id, message?.id, text) : favoriteId(current.id, message.id);
+      const added = addFavorite({ id, sessionId: current.id, sessionTitle: current.title, text, at: Date.now(), ...(message ? { messageId: message.id } : {}), ...(quote ? { quote: true } : {}) });
+      chat.notify(added ? '已加入收藏' : '已在收藏中', 'info');
     },
   });
   mountBoard(shell.views.board, { openGit: () => shell.setView('git'), openProject: () => void pickProject(), openCard: (c) => void openCard(c) });
