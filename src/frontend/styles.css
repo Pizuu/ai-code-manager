@@ -1200,10 +1200,14 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 .verify.tool.expanded .tool-out{display:block}
 .think-body .verify.tool:has(+ .verify.tool){margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-style:dashed}
 .think-body .verify.tool + .verify.tool{margin-top:0;border-top:0;border-top-left-radius:0;border-top-right-radius:0}
-/* 侧栏 DIFF：路径字号加大，整行可点 */
-.ctxp .dlist .row{cursor:pointer;padding:2px 0}
-.ctxp .dlist .row .p{font-size:12.5px}
-.ctxp .dlist .row:hover .p{color:var(--color-text-primary);text-decoration:underline}
 /* 侧栏项目文件树：字号 11px → 13px */
 .tree .te{font-size:13px}
 .tree .te .tag{font-size:11px}
+/* 侧栏栏目标题：数量右对齐 */
+.ctxp .ctx-k{display:flex;align-items:center;gap:6px}
+.ctxp .ctx-k .ctx-k-n{margin-left:auto;color:var(--mute)}
+/* DIFF 条目与文件条目同款 */
+.ctxp .dlist .ditem{margin-top:4px}
+.ctxp .dlist .ctx-link{background:var(--ubub);border:1px solid var(--line);border-radius:var(--border-radius-xl);padding:6px 10px}
+.ctxp .dlist .ctx-link .ctx-diff-p{flex:1}
+.ctxp .dlist .ctx-link .ctx-diff-n{flex:none;color:var(--mute);font-size:var(--font-caption)}

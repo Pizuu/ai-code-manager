@@ -179,7 +179,8 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       else void code.show(f);
     }
   };
-  const openFile = (f: string) => {
+  /** 打开文件标签；传入 diff 时以 Diff 查看模式显示（DIFF 栏目点击）。 */
+  const openFile = (f: string, diff?: string) => {
     if (!files.includes(f)) {
       files.push(f);
       if (files.length > MAX_FILE_TABS) {
@@ -190,6 +191,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       active = null; // 强制重新读取
     }
     setActive(f);
+    if (diff !== undefined) code.showDiff(f, diff);
   };
   const closeFile = (f: string) => {
     const i = files.indexOf(f);
@@ -515,6 +517,8 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     for (const diff of sessionDiffs) if (diff.path) addRelated({ path: diff.path, author: 'assistant', at: latestAt });
     for (const path of files) addRelated({ path, author: 'user', at: latestAt });
     const relatedFiles = [...relatedByPath.values()];
+    // 栏目标题：名称居左、数量右对齐
+    const ctxHead = (name: string, count: number): HTMLElement => h('div', { class: 'k ctx-k' }, h('span', {}, name), h('span', { class: 'ctx-k-n' }, String(count)));
     const renderCodeDownloads = codeDownloads.length
       ? h('div', { class: 'v ctx-files ctx-generated-files' }, ...codeDownloads.map((file) => {
         const stamp = file.at.replace(/[-:TZ.]/g, '').slice(0, 14);
@@ -526,7 +530,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         return button;
       }))
       : h('div', { class: 'v ctx-empty' }, '暂无代码块下载文件');
-    if (codeDownloads.length) ctxp.append(h('div', { class: 'k' }, `下载 · ${codeDownloads.length}`), renderCodeDownloads);
+    if (codeDownloads.length) ctxp.append(ctxHead('下载', codeDownloads.length), renderCodeDownloads);
     const renderFiles = (files: RelatedFile[], emptyText: string) => files.length
       ? h('div', { class: 'v ctx-files' }, ...files.map((file) => {
         const ext = file.path.split('.').pop()?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'txt';
@@ -548,7 +552,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         return row;
       }))
       : h('div', { class: 'v ctx-empty' }, emptyText);
-    ctxp.append(h('div', { class: 'k' }, `文件 · ${relatedFiles.length}`), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
+    ctxp.append(ctxHead('文件', relatedFiles.length), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
     // DIFF（当前会话实时）：放在「文件」下方；同一文件多次修改只留最新一条（Map 覆盖值不改键序）。
     // 只显示路径与增删行数，点击打开文件；已删除状态标签与下方展开预览。待批准时保留批准 / 拒绝按钮。
     const byPath = new Map<string, (typeof sessionDiffs)[number]>();
@@ -558,14 +562,16 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     for (const d of diffs.slice(0, 12)) {
       const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === d.toolCallId);
       const { added, removed } = countChanges(d.diff);
-      const item = h('div', { class: 'ditem' }, h('div', { class: 'row', attrs: { role: 'button', tabindex: '0' }, title: d.path ? `打开 ${d.path}` : '', on: { click: () => { if (d.path) openFile(d.path); } } },
-        h('span', { class: 'p', title: d.path }, d.path || '(未知文件)'), h('span', { class: 'mute' }, `+${added} −${removed}`)));
+      // 与「文件」条目同款：卡片式按钮，点击以 Diff 查看模式打开该文件
+      const item = h('div', { class: 'ditem' }, h('div', { class: 'ctx-file-row' },
+        h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: d.path ? `查看 ${d.path} 的 Diff` : '', on: { click: () => { if (d.path) openFile(d.path, d.diff); } } },
+          icon('file', 13), h('span', { class: 'ctx-diff-p' }, d.path || '(未知文件)'), h('span', { class: 'ctx-diff-n' }, `+${added} −${removed}`))));
       if (approval && d.status === 'awaiting-approval') {
         item.append(h('div', { class: 'fx8 mt6' }, h('button', { class: 'btn danger', on: { click: () => void decideApproval(approval.id, false) } }, '拒绝'), h('button', { class: 'btn pri', on: { click: () => void decideApproval(approval.id, true) } }, '批准')));
       }
       dl.append(item);
     }
-    if (diffs.length) ctxp.append(h('div', { class: 'k' }, `DIFF · ${diffs.length}`), dl);
+    if (diffs.length) ctxp.append(ctxHead('DIFF', diffs.length), dl);
     const currentFavorites = s ? listFavorites().filter((f) => f.sessionId === s.id) : [];
     const favoriteLinks = h('div', { class: 'v ctx-favorites' }, ...currentFavorites.map((f) => {
       const link = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '跳转到收藏消息' },
