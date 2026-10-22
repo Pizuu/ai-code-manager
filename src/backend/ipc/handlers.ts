@@ -24,6 +24,7 @@ import type { AppState } from '../app-state.ts';
 import { importFiles } from '../fs/file-import.ts';
 import { listTree } from '../fs/file-tree.ts';
 import { readFileForView } from '../fs/file-view.ts';
+import { writeTextFile } from '../fs/file-write.ts';
 import { reaskCutIndex } from '../sessions/reask.ts';
 import { summarizeSession, type SessionStore } from '../sessions/session-store.ts';
 import { builtinConfigProblem, findCliRebindCandidate, type SettingsStore } from '../settings/settings-store.ts';
@@ -48,8 +49,10 @@ import {
   ipcError,
   validateAgentCliInput,
   validateApprovalDecision,
+  validateFileWriteRequest,
   validateSendRequest,
   validateSettingsUpdate,
+  validateSessionTodosUpdate,
 } from './validate.ts';
 
 type HandlerMap = {
@@ -387,6 +390,10 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
     },
     'fs:tree': async (relDir) => listTree(requireProject(state).root, asRelDir(relDir)),
     'fs:read': async (relPath) => readFileForView(requireProject(state).root, asRelPath(relPath)),
+    'fs:write': async (request) => {
+      const input = validateFileWriteRequest(request);
+      return writeTextFile(requireProject(state).root, input.relPath, input.content);
+    },
     'files:pick': async () => (deps.pickFiles ? deps.pickFiles() : []),
     'files:import': async (absPaths) => importFiles(requireProject(state).root, asStringArray(absPaths, 'absPaths')),
     'sessions:list': async () => sessions.list(),
@@ -402,6 +409,14 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       const sid = asSessionId(id);
       if (state.running.has(sid)) throw ipcError('E_BUSY', '会话运行中，不能清空。请先停止。');
       return sessions.clear(sid);
+    },
+    'sessions:todos': async (request) => {
+      const input = validateSessionTodosUpdate(request);
+      const session = await sessions.get(input.sessionId);
+      const next = { ...session, todos: input.todos, updatedAt: new Date().toISOString() };
+      await sessions.save(next);
+      emit({ type: 'session-updated', summary: summarizeSession(next) });
+      return next;
     },
     'agent:send': async (req) => {
       const { sessionId, text, reaskLatest } = validateSendRequest(req);

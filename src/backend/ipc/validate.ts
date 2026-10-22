@@ -169,10 +169,30 @@ export function validateSendRequest(value: unknown): AgentSendRequest {
   return out;
 }
 
+const MAX_FILE_WRITE_CHARS = 2_500_000;
+export function validateFileWriteRequest(value: unknown): { relPath: string; content: string } {
+  const v = asRecord(value, 'fileWrite');
+  const content = asString(v.content, 'content', { max: MAX_FILE_WRITE_CHARS, allowEmpty: true });
+  if (content.includes('\0')) fail('content 不能包含 NUL');
+  return { relPath: asRelPath(v.relPath), content };
+}
+
 export function validateApprovalDecision(value: unknown): ApprovalDecision {
   const v = asRecord(value, 'decision');
   if (typeof v.approved !== 'boolean') fail('approved 必须是布尔值');
   return { approvalId: asString(v.approvalId, 'approvalId', { max: 100 }), approved: v.approved };
+}
+
+export function validateSessionTodosUpdate(value: unknown): { sessionId: string; todos: Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' }> } {
+  const v = asRecord(value, 'sessionTodos');
+  if (!Array.isArray(v.todos) || v.todos.length > 100) fail('todos 必须是最多 100 项的数组');
+  const todos = v.todos.map((item, i) => {
+    const t = asRecord(item, `todos[${i}]`);
+    const status = asOneOf(t.status, ['pending', 'in_progress', 'completed'] as const, `todos[${i}].status`);
+    return { id: asString(t.id, `todos[${i}].id`, { max: 100 }), content: asString(t.content, `todos[${i}].content`, { max: 1_000 }).trim(), status };
+  });
+  if (todos.some((t) => !t.content)) fail('待办内容不能为空');
+  return { sessionId: asSessionId(v.sessionId), todos };
 }
 
 // ───────── v1.6：终端模式 ─────────

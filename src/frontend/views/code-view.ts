@@ -1,8 +1,7 @@
 /**
  * 只读代码查看器（FR-301、FR-302，ADR 0008）：任务会话中列的文件标签页内容。
  * 数据来自 fs:read（主进程沙箱 + 大小 / 二进制保护）；行号 + 轻量高亮，全部用 textContent 构建。
- * T-039：编辑模式（textarea，缓冲区按文件保留，标签显示未保存圆点）。契约暂无写文件通道，保存按钮禁用；
- * 待契约新增 `fs:write` 后在 save() 中接入即可。
+ * 编辑模式（textarea，缓冲区按文件保留，标签显示未保存圆点），保存通过项目根沙箱内的 fs:write 完成。
  */
 import type { FileContent } from '../../../contracts/ipc.ts';
 import { SEND_ATTR } from '../../../contracts/ui.ts';
@@ -10,6 +9,7 @@ import { api, errorText } from '../api.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { languageFor, tokenizeLine, type LineState } from '../lib/highlight.ts';
+import { renderDiff } from './diff-view.ts';
 
 /** 超过该行数不做高亮，只显示纯文本。 */
 export const HIGHLIGHT_MAX_LINES = 5000;
@@ -23,7 +23,7 @@ function sizeText(n: number): string {
 }
 
 /** 契约没有渲染进程可用的写文件通道时的提示（T-039）。 */
-export const SAVE_UNAVAILABLE = '需后端写文件通道（契约任务）';
+export const SAVE_UNAVAILABLE = '文件不可保存';
 
 export interface CodeViewHooks {
   /** 「发送到任务会话」按钮（整个文件引用）。 */
@@ -35,6 +35,7 @@ export interface CodeViewHooks {
 export interface CodeView {
   /** 显示某文件（有编辑缓冲区时显示缓冲区，否则重新读取）。 */
   show(relPath: string): Promise<void>;
+  showDiff(relPath: string, diff: string): void;
   isDirty(relPath: string): boolean;
   /** 丢弃该文件的编辑缓冲区（关闭标签时）。 */
   discard(relPath: string): void;
@@ -81,7 +82,7 @@ export function mountCodeView(pane: HTMLElement, hooks: CodeViewHooks): CodeView
     void show(current);
   } } }, '刷新');
   const editBtn = h('button', { class: 'btn sm', attrs: { type: 'button' }, title: '编辑此文件', on: { click: () => toggleEdit() } }, '编辑');
-  const saveBtn = h('button', { class: 'btn sm pri', attrs: { type: 'button', disabled: '' }, title: SAVE_UNAVAILABLE }, '保存');
+  const saveBtn = h('button', { class: 'btn sm pri', attrs: { type: 'button' }, title: '保存文件' }, '保存');
   const send = h('button', { class: 'btn sm', attrs: { type: 'button' }, title: '把文件引用插入任务会话输入框', on: { click: () => hooks.sendFile(current) } }, '发送到任务会话');
   const banner = h('div', { class: 'cv-banner' });
   const body = h('div', { class: 'cvb' });
@@ -101,14 +102,30 @@ export function mountCodeView(pane: HTMLElement, hooks: CodeViewHooks): CodeView
     mode.classList.toggle('edit', editing);
     editBtn.textContent = editing ? '完成编辑' : '编辑';
     saveBtn.hidden = !editing;
+    saveBtn.disabled = !editing || !isDirty(current);
     // 编辑时让出标题栏宽度：隐藏「发送到任务会话」
     send.hidden = editing;
   };
-  const save = () => {
-    // 契约暂无写文件通道：不发起任何 IPC，只提示
-    banner.hidden = false;
-    banner.textContent = `无法保存：${SAVE_UNAVAILABLE}。修改仅保留在本标签内存中。`;
+  const save = async () => {
+    const buf = bufs.get(current);
+    if (!buf || !isDirty(current)) return;
+    saveBtn.disabled = true;
+    banner.hidden = true;
+    try {
+      const f = await api.invoke('fs:write', { relPath: current, content: buf.text });
+      buf.original = buf.text;
+      loaded = f;
+      loadedPath = current;
+      hooks.onDirty?.(current, false);
+      meta.textContent = `${f.content.split(/\r\n?|\n/).length} 行 · 已保存`;
+      setMode(true);
+    } catch (e) {
+      banner.hidden = false;
+      banner.textContent = `保存失败：${errorText(e)}`;
+      setMode(true);
+    }
   };
+  saveBtn.addEventListener('click', () => void save());
   const renderEditor = (buf: EditBuf) => {
     const ta = h('textarea', { class: 'cv-ed', attrs: { spellcheck: 'false', wrap: 'off', 'aria-label': `编辑 ${current}` } });
     ta.value = buf.text;
@@ -125,7 +142,7 @@ export function mountCodeView(pane: HTMLElement, hooks: CodeViewHooks): CodeView
     ta.addEventListener('keydown', (ev) => {
       if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') {
         ev.preventDefault();
-        save();
+        void save();
       } else if (ev.key === 'Tab' && !ev.shiftKey) {
         ev.preventDefault();
         ta.setRangeText('  ', ta.selectionStart, ta.selectionEnd, 'end');
@@ -211,6 +228,20 @@ export function mountCodeView(pane: HTMLElement, hooks: CodeViewHooks): CodeView
       body.replaceChildren(h('div', { class: 'cv-empty error-text' }, errorText(e)));
     }
   };
+  const showDiff = (relPath: string, diff: string): void => {
+    ++token;
+    current = relPath;
+    path.textContent = relPath;
+    meta.textContent = '工具修改 Diff';
+    mode.textContent = 'Diff';
+    mode.classList.remove('edit');
+    editBtn.disabled = true;
+    saveBtn.hidden = true;
+    send.hidden = false;
+    banner.hidden = true;
+    body.classList.remove('edit');
+    body.replaceChildren(renderDiff(diff));
+  };
   setMode(false);
-  return { show, isDirty, discard };
+  return { show, showDiff, isDirty, discard };
 }

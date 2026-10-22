@@ -13,6 +13,8 @@ export interface ContextMenuHooks {
   sendNew(text: string): Promise<void>;
   /** 元素所在区域的中文名（用于选中文本的来源标注）。 */
   originOf(el: Element): string;
+  addTodo?(text: string): Promise<void>;
+  addFavorite?(messageId: string): Promise<void>;
 }
 
 const lineOf = (n: Node | null): number => {
@@ -62,15 +64,20 @@ export function installContextMenu(hooks: ContextMenuHooks): void {
     // 输入框内保留默认菜单（粘贴等）
     if (target.closest('textarea, input, select, [contenteditable="true"]')) return;
     const r = resolveSource(target, hooks);
-    if (!r) {
+    const assistantId = target.closest('article.turn.assistant')?.querySelector<HTMLElement>('.msg[data-id]')?.dataset.id;
+    if (!r && !assistantId) {
       close();
       return;
     }
     ev.preventDefault();
-    const text = formatSendText(r.source);
+    const text = r ? formatSendText(r.source) : '';
     const item = (label: string, sub: string, fn: () => void) => h('button', { class: 'mi', attrs: { type: 'button', role: 'menuitem' }, on: { click: () => { close(); fn(); } } }, h('span', {}, label), sub ? h('span', { class: 'mute' }, sub) : null);
-    const items: HTMLElement[] = [item(NEW_SESSION_LABEL, describeSource(r.source), () => void hooks.sendNew(text))];
-    if (r.selected) items.push(item('复制', '', () => void navigator.clipboard.writeText(r.selected).catch(() => undefined)));
+    const items: HTMLElement[] = r ? [item(NEW_SESSION_LABEL, describeSource(r.source), () => void hooks.sendNew(text))] : [];
+    if (r?.selected) {
+      if (hooks.addTodo && target.closest('#wb-session')) items.push(item('加入待办', '添加到当前任务会话', () => void hooks.addTodo?.(r.selected)));
+    }
+    if (assistantId && hooks.addFavorite) items.push(item('加入收藏', '收藏这条回答', () => void hooks.addFavorite?.(assistantId)));
+    if (r?.selected) items.push(item('复制', '', () => void navigator.clipboard.writeText(r.selected).catch(() => undefined)));
     menu.replaceChildren(...items);
     menu.hidden = false;
     const { innerWidth: W, innerHeight: H } = window;

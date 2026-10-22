@@ -155,6 +155,11 @@ export interface TodoItem {
   status: TodoStatus;
 }
 
+export interface SessionTodosUpdate {
+  sessionId: string;
+  todos: TodoItem[];
+}
+
 export interface SessionSummary {
   id: string;
   title: string;
@@ -167,6 +172,14 @@ export interface SessionSummary {
   lastTurnMs?: number;
   /** v1.10：会话累计 token 用量（与 `Session.usage` 同口径）；未采集用量的会话缺省。 */
   usage?: SessionUsage;
+  /** 项目级待办摘要；空列表时省略。 */
+  todos?: TodoItem[];
+}
+
+/** fs:write 的项目内 UTF-8 文本写入请求，仅允许覆盖已有普通文件。 */
+export interface FileWriteRequest {
+  relPath: string;
+  content: string;
 }
 
 /** v1.8：会话累计 token 用量（opencode step_finish 的 part.tokens 累加；cache 取 tokens.cache 的 read/write）。 */
@@ -284,6 +297,8 @@ export interface IpcInvokeMap {
   'sessions:delete': { args: [id: string];               result: void };
   /** 清空消息与待办，保留会话（/clear）。 */
   'sessions:clear':  { args: [id: string];               result: Session };
+  /** 更新当前会话待办（用户侧勾选、删除和右键新增）。 */
+  'sessions:todos':  { args: [request: SessionTodosUpdate]; result: Session };
   /** 发送用户消息并启动 agent 循环；增量通过 agent:event 推送。 */
   'agent:send':      { args: [req: AgentSendRequest];    result: void };
   'agent:stop':      { args: [sessionId: string];        result: void };
@@ -314,6 +329,9 @@ export interface IpcInvokeMap {
   // ── v1.2（功能 003）──
   /** 只读读取项目内文件供代码查看器显示；路径经项目根沙箱（宪法 十一），大文件截断 / 拒绝，二进制不返回内容。 */
   'fs:read':          { args: [relPath: string];          result: FileContent };
+  
+  /** 将编辑器中的 UTF-8 文本覆盖写回项目内已有普通文件。 */
+  'fs:write':         { args: [request: FileWriteRequest]; result: FileContent };
   // ── v1.12（系统文件选择）──
   /** 弹出系统原生文件选择框（多选）；返回选中的文件绝对路径数组，用户取消返回空数组。 */
   'files:pick':       { args: [];                         result: string[] };

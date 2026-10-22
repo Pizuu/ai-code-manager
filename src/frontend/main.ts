@@ -11,6 +11,7 @@ import { type ChatView } from './views/chat.ts';
 import { mountAgents } from './views/agents-view.ts';
 import { mountGit } from './views/git-view.ts';
 import { formatSendText } from './lib/context-send.ts';
+import { favoriteId, toggleFavorite } from './lib/favorites.ts';
 import { installContextMenu } from './views/context-menu.ts';
 import { mountSessionView, type SessionView } from './views/session-view.ts';
 import { openSettings } from './views/settings-dialog.ts';
@@ -216,6 +217,7 @@ async function bootstrap(): Promise<void> {
   shell = mountShell(document.getElementById('app') as HTMLElement, {
     onNewSession: () => void newSession(),
     onOpenSettings: () => openSettings(),
+    onSessionView: () => sessionView?.showChat(),
     onFileClick: (rel) => {
       shell.setView('session');
       sessionView.openFile(rel);
@@ -229,9 +231,30 @@ async function bootstrap(): Promise<void> {
     // 先切到看板（视图以 hidden 显隐，隐藏态下 scrollIntoView 无效），再登记定位：看板已挂载，applier 立即消费
     focusCard: (id: string) => { shell.setView('board'); focusBoardCard(id); },
     sendFile: (rel) => sendToSession(formatSendText({ kind: 'file', path: rel, dir: false })),
+    onFileState: (states) => shell.setFileStates(states),
   });
   chat = sessionView.chat;
-  installContextMenu({ sendNew: sendToNewSession, originOf });
+  installContextMenu({
+    sendNew: sendToNewSession,
+    originOf,
+    addTodo: async (text) => {
+      const current = store.state.current;
+      if (!current || !text.trim()) return;
+      try {
+        const next = await api.invoke('sessions:todos', { sessionId: current.id, todos: [...(current.todos ?? []), { id: crypto.randomUUID(), content: text.trim(), status: 'pending' }] });
+        store.state.current = next;
+        store.emit('current', 'todos');
+      } catch (e) {
+        chat.notify(errorText(e));
+      }
+    },
+    addFavorite: async (messageId) => {
+      const current = store.state.current;
+      const message = current?.messages.find((m) => m.id === messageId);
+      if (!current || !message || message.role !== 'assistant') return;
+      toggleFavorite({ id: favoriteId(current.id, message.id), sessionId: current.id, sessionTitle: current.title, text: message.content, at: Date.now() });
+    },
+  });
   mountBoard(shell.views.board, { openGit: () => shell.setView('git'), openProject: () => void pickProject(), openCard: (c) => void openCard(c) });
   mountGit(shell.views.git, { openBoard: () => shell.setView('board'), openAgents: () => shell.setView('agents'), openProject: () => void pickProject(), notify: (t) => chat.notify(t, 'info') });
   mountAgents(shell.views.agents, {

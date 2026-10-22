@@ -35,6 +35,15 @@ test('summarizeSession takes the last Q&A pair (wall clock, tool messages includ
   assert.equal(summarizeSession(s).lastTurnMs, 30000);
 });
 
+test('summarizeSession uses session completion time for streaming/tool turns', () => {
+  const s = session([
+    msg('user', '2026-01-01T00:00:00.000Z'),
+    msg('assistant', '2026-01-01T00:00:01.000Z'),
+  ]);
+  s.updatedAt = '2026-01-01T00:00:45.000Z';
+  assert.equal(summarizeSession(s).lastTurnMs, 45000);
+});
+
 test('summarizeSession carries usage as a copy when the session has usage (v1.10)', () => {
   const s = session([]);
   s.usage = { total: 15, input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 };

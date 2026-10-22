@@ -17,7 +17,6 @@ import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
-import { activityTarget, sessionStateCounts } from '../lib/session-activity.ts';
 import { parseSlashCommand, suggestCommands, type SlashCommandInfo } from '../lib/slash-commands.ts';
 import { filledTextFor, isPrimedText, wrapIndex } from '../lib/slash-menu.ts';
 import { store } from '../store.ts';
@@ -25,8 +24,57 @@ import { renderToolCard, type DiffRenderer } from './tool-card.ts';
 
 export const MODE_LABELS: Readonly<Record<PermissionMode, string>> = { ask: '每次询问', 'auto-edits': '自动批准编辑', plan: '仅规划（只读）', 'allow-all': '全部允许（免审批）' };
 
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove();
+}
+
+function enhanceCodeBlocks(root: HTMLElement, autoFold = true, favorite?: { id: string; text: string }): void {
+  const maxHeight = Math.max(240, Math.floor(window.innerHeight * 2 / 3));
+  for (const pre of root.querySelectorAll('pre')) {
+    if (pre.classList.contains('code-enhanced')) continue;
+    const code = pre.querySelector('code');
+    if (!code) continue;
+    pre.classList.add('code-enhanced');
+    const actions = h('div', { class: 'code-actions' });
+    const toggle = h('button', { class: 'code-action', attrs: { type: 'button' }, title: '展开 / 折叠代码', on: { click: () => {
+      pre.classList.toggle('collapsed');
+      toggle.setAttribute('aria-label', pre.classList.contains('collapsed') ? '展开代码' : '折叠代码');
+    } } }, icon('caret', 14));
+    const copy = h('button', { class: 'code-action', attrs: { type: 'button' }, title: '复制代码', on: { click: () => {
+      void copyText(code.textContent ?? '').then(() => { copy.title = '已复制'; window.setTimeout(() => { copy.title = '复制代码'; }, 1200); });
+    } } }, icon('copy', 14));
+    const download = h('button', { class: 'code-action', attrs: { type: 'button' }, title: '下载代码', on: { click: () => {
+      const blob = new Blob([code.textContent ?? ''], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      const lang = [...code.classList].find((name) => name.startsWith('lang-'))?.slice(5).toLowerCase() ?? '';
+      const ext: Readonly<Record<string, string>> = { ts: 'ts', typescript: 'ts', js: 'js', javascript: 'js', json: 'json', css: 'css', html: 'html', xml: 'xml', sh: 'sh', bash: 'sh', shell: 'sh', py: 'py', python: 'py', md: 'md', markdown: 'md', yaml: 'yaml', yml: 'yml', sql: 'sql', java: 'java', go: 'go', rs: 'rs', cpp: 'cpp', c: 'c' };
+      window.dispatchEvent(new CustomEvent('acm-code-download', { detail: { sessionId: store.state.current?.id ?? '', content: code.textContent ?? '', ext: ext[lang] ?? 'txt', at: new Date().toISOString() } }));
+      a.href = url; a.download = `code.${ext[lang] ?? 'txt'}`; a.click(); URL.revokeObjectURL(url);
+    } } }, icon('download', 14));
+    let fav: HTMLButtonElement | null = null;
+    if (favorite) {
+      fav = h('button', { class: `code-action code-favorite${isFavorite(favorite.id) ? ' on' : ''}`, attrs: { type: 'button' }, title: '收藏回答', on: { click: () => {
+        const s = store.state.current;
+        if (!s || !fav) return;
+        const active = toggleFavorite({ id: favorite.id, sessionId: s.id, sessionTitle: s.title, text: favorite.text, at: Date.now() });
+        fav.classList.toggle('on', active);
+      } } }, icon('star', 14));
+    }
+    actions.append(toggle, copy, download);
+    if (fav) actions.append(fav);
+    pre.append(actions);
+    if (autoFold) requestAnimationFrame(() => {
+      if (pre.scrollHeight > maxHeight) pre.classList.add('collapsed');
+    });
+  }
+}
+
 export interface ChatHooks {
   renderDiff?: DiffRenderer;
+  onOpenAttachment?(path: string): void;
   onNewSession(): void;
   onToggleList(): void;
   /** 点击对话区红点时跳到目标出错会话（session-view 透传其 selectSession）；未提供时红点只开关错误日志层。 */
@@ -42,6 +90,7 @@ export interface ChatView {
   /** 003：在光标处插入一段带来源标注的内容（前后补换行），不发送。 */
   insertBlock(text: string): void;
   notify(text: string, kind?: 'notice' | 'info'): void;
+  focusMessage(messageId: string, sourceText?: string): void;
 }
 
 export async function decideApproval(approvalId: string, approved: boolean): Promise<void> {
@@ -77,15 +126,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   liveEl.hidden = true;
   // ── .comp ──
   /** 当前会话累计 token 数（Session.usage，opencode 聚合；无数据时隐藏）。 */
-  const ctxUsage = h('span', { class: 'chip' });
+  const ctxUsage = h('span', { class: 'chip ft-tokens' });
   ctxUsage.hidden = true;
-  /** 会话三态计数圆点组（原状态栏三色圆，依次为出错 / 回答中 / 回答完成，迁入 .ctx 条靠右成组；样式已中性化，不再用红黄绿彩色底）：
-   * 计数与显隐口径与状态栏时期一致（0 时淡显 .zero 且无点击行为）；红点点击直接跳到错误位置（见下方 jumpToError），
-   * 目标会话正在回答时挂起、等回答完成再跳，不打断输出；黄 / 绿点点击跳到该状态的第一个会话（经 hooks.onJumpToSession）。 */
-  const errDot = h('button', { class: 'st-dot r zero', attrs: { type: 'button' } }, '0');
-  const runDot = h('button', { class: 'st-dot y zero', attrs: { type: 'button' } }, '0');
-  const doneDot = h('button', { class: 'st-dot g zero', attrs: { type: 'button' } }, '0');
-  const stDots = h('span', { class: 'st-dots' }, errDot, runDot, doneDot);
   const slashMenu = h('div', { class: 'slash-menu' });
   slashMenu.hidden = true;
   // 规格 004 两段式预置条：与附件托盘同处 .box 内（托盘之上）；选择命令后显示，真正发送前一直保留。
@@ -136,146 +178,11 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const attray = h('div', { class: 'attray' });
   attray.hidden = true;
   const comp = h('div', { class: 'comp' },
-    h('div', { class: 'ctx' }, ctxUsage, stDots),
     slashMenu,
     h('div', { class: 'box' }, primebar, attray, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
-    h('div', { class: 'ft' }, modelPick, modeSel));
+    h('div', { class: 'ft' }, ctxUsage, modelPick, modeSel));
   container.append(thd, log, comp);
 
-  /** 三点计数：与图标栏徽标共用 lib 的 sessionStateCounts，口径永不漂移。 */
-  const dotCounts = () => sessionStateCounts({
-    sessions: store.state.sessions,
-    running: store.state.running,
-    approvalSessionIds: [...store.state.approvals.values()].map((a) => a.sessionId),
-    errorsOf: (id) => store.errorsOf(id),
-  });
-  /** 黄点跳转目标的活动入参（与状态栏时期 renderActivity 传给 activityTarget 的入参构造逐字一致）。 */
-  const activityInput = () => {
-    const cur = store.state.current;
-    const approvals = [...store.state.approvals.values()];
-    return {
-      running: store.state.running,
-      pending: approvals.length,
-      toolCalls: (cur?.messages ?? []).flatMap((m) => m.toolCalls ?? []),
-      currentSessionId: cur?.id ?? null,
-      approvalSessionIds: approvals.map((a) => a.sessionId),
-    };
-  };
-  // ── 红点「跳到错误位置」：目标 = 第一个有错误条目的会话（当前会话优先），定位其第一条错误 ──
-  // 锚点解析：tool 条目按 callId 回查含该工具调用的消息；agent 条目取错误时刻之前最近的一条助手消息。
-  // 目标会话正在回答时不打断输出：点击只登记挂起（只留最新一次），等它回答完成再跳（见 checkPendingErrorJump）。
-  let pendingErrorJump: { sessionId: string } | null = null;
-
-  /** 选定跳转目标会话：当前会话有错误条目时优先当前会话，否则按会话列表顺序取第一个有错误条目的会话。 */
-  const pickErrorTarget = (): string | null => {
-    const curId = store.state.current?.id ?? null;
-    if (curId && store.errorsOf(curId).length) return curId;
-    return store.state.sessions.find((s) => store.errorsOf(s.id).length)?.id ?? null;
-  };
-
-  /** 锚点解析：tool 条目按 callId 回查含该工具调用的消息（找不到退化为最后一条助手消息）；agent 条目取错误时刻之前最近的一条助手消息。 */
-  const errorAnchorMsgId = (sessionId: string): string | null => {
-    const s = store.state.current;
-    const entry = store.errorsOf(sessionId)[0];
-    if (!s || !entry) return null;
-    const msgs = s.messages.filter((m) => m.role !== 'tool');
-    if (entry.kind === 'tool') {
-      const callId = entry.id.startsWith('tool:') ? entry.id.slice('tool:'.length) : entry.id;
-      return msgs.find((m) => (m.toolCalls ?? []).some((c) => c.id === callId))?.id
-        ?? msgs.filter((m) => m.role === 'assistant').at(-1)?.id
-        ?? null;
-    }
-    return msgs.filter((m) => m.role === 'assistant' && m.createdAt <= entry.at).at(-1)?.id ?? null;
-  };
-
-  /** 在当前已渲染的日志里定位目标会话的第一条错误并滚动高亮；返回 false 表示目标会话尚未成为当前会话 / 消息未渲染（可重试）。 */
-  const locateErrorInLog = (sessionId: string): boolean => {
-    const s = store.state.current;
-    if (!s || s.id !== sessionId) return false;
-    if (!store.errorsOf(sessionId).length) return true; // 错误已清空：无可定位，按完成处理
-    const msgId = errorAnchorMsgId(sessionId);
-    if (!msgId) { log.scrollTop = log.scrollHeight; return true; } // 无锚点消息：退化为滚到底部
-    const el = log.querySelector(`.msg[data-id="${CSS.escape(msgId)}"]`);
-    if (!el) return false;
-    // 目标在折叠回合内先展开（状态与 DOM 同步，免得重渲染又折回去）；祖先 details 一并打开
-    const art = el.closest('article.turn');
-    if (art?.classList.contains('folded')) {
-      art.classList.remove('folded');
-      turnFolded.delete(msgId);
-      art.querySelector('.act-fold')?.setAttribute('data-tip', '折叠');
-    }
-    for (let p = el.parentElement; p && p !== log; p = p.parentElement) {
-      if (p instanceof HTMLDetailsElement) p.open = true;
-    }
-    el.scrollIntoView({ block: 'center' });
-    el.classList.add('appr-flash');
-    setTimeout(() => el.classList.remove('appr-flash'), 1600);
-    return true;
-  };
-
-  /** 执行一次错误跳转：跨会话先切过去，再等渲染落定（重试上限约 2 秒）后定位滚动。 */
-  const jumpToError = (sessionId: string) => {
-    if (store.state.current?.id !== sessionId) hooks.onJumpToSession?.(sessionId);
-    let tries = 0;
-    const attempt = () => {
-      if (locateErrorInLog(sessionId)) return;
-      if (++tries < 40) setTimeout(attempt, 50);
-    };
-    requestAnimationFrame(attempt);
-  };
-
-  /** 挂起跳转的推进检查（挂在 running / errors 订阅链上）：目标错误已清空则丢弃；仍在回答则继续等；已完成则执行并清空。 */
-  const checkPendingErrorJump = () => {
-    if (!pendingErrorJump) return;
-    const { sessionId } = pendingErrorJump;
-    if (!store.errorsOf(sessionId).length) { pendingErrorJump = null; return; }
-    if (store.state.running.has(sessionId)) return;
-    pendingErrorJump = null;
-    jumpToError(sessionId);
-  };
-
-  const renderStatusDots = () => {
-    const { nErr, nRun, nDone } = dotCounts();
-    errDot.textContent = String(nErr);
-    errDot.className = `st-dot r${nErr ? '' : ' zero'}`;
-    errDot.title = `出错会话 ${nErr}`;
-    runDot.textContent = String(nRun);
-    runDot.className = `st-dot y${nRun ? '' : ' zero'}`;
-    runDot.title = `回答中会话 ${nRun}`;
-    doneDot.textContent = String(nDone);
-    doneDot.className = `st-dot g${nDone ? '' : ' zero'}`;
-    doneDot.title = `回答完成会话 ${nDone}`;
-    checkPendingErrorJump();
-  };
-  errDot.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    const targetId = pickErrorTarget();
-    if (!targetId) return; // 无任何错误条目时无点击行为
-    // 目标会话正在回答：只登记挂起（覆盖旧挂起，只留最新一次），等回答完成再跳，绝不打断输出
-    if (store.state.running.has(targetId)) {
-      pendingErrorJump = { sessionId: targetId };
-      notify('将在回答完成后跳转到错误位置');
-      return;
-    }
-    jumpToError(targetId);
-  });
-  runDot.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    const { nRun } = dotCounts();
-    if (!nRun) return; // 计数为 0 时无点击行为（与红点一致）
-    // 跳到第一个回答中的会话（运行中优先、其次待批准），口径与状态栏时期一致
-    const input = activityInput();
-    const target = activityTarget('running', input) ?? activityTarget('pending', input);
-    if (target) hooks.onJumpToSession?.(target);
-  });
-  doneDot.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    const { nDone, isAnswering, isErrored } = dotCounts();
-    if (!nDone) return; // 计数为 0 时无点击行为（与红点一致）
-    // 跳到第一个回答完成的会话（非回答中、非出错），口径与状态栏时期一致
-    const target = store.state.sessions.find((s) => !isAnswering(s.id) && !isErrored(s.id));
-    if (target) hooks.onJumpToSession?.(target.id);
-  });
 
   // ── 待发送附件：选好的文件先停在托盘（pendingAttachments），点发送时才经 composeMessageWithAttachments
   // 拼成「正文 + 尾随 @路径块」的完整消息（拼装/拆分口径唯一在 lib/message-attachments）。
@@ -286,8 +193,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const attName = (p: string): string => p.split(/[\\/]/).filter((s) => s !== '').at(-1) ?? p;
 
   /** 附件 chip（托盘与用户回合共用 .attchip 样式；托盘版多一个 × 移除按钮）。 */
-  const attChip = (a: MessageAttachment, removable: boolean): HTMLElement =>
-    h('span', { class: 'attchip', attrs: { title: a.path } },
+  const attChip = (a: MessageAttachment, removable: boolean): HTMLElement => {
+    const chip = h('span', { class: `attchip${removable ? '' : ' attchip-link'}`, attrs: { title: a.path, ...(removable ? {} : { role: 'link', tabindex: '0' }) } },
       icon('file'),
       h('span', { class: 'att-name' }, a.name),
       removable
@@ -298,6 +205,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
             },
           } }, '×')
         : null);
+    if (!removable && hooks.onOpenAttachment) chip.addEventListener('click', () => hooks.onOpenAttachment?.(a.path));
+    return chip;
+  };
 
   const renderAttTray = () => {
     clear(attray);
@@ -399,10 +309,12 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const folded = turnFolded.has(m.id);
     // 流式生成中的回合不显示折叠按钮（正文还在变长，折叠无意义）；回合结束重渲染后出现。
     const streaming = streamingMessage()?.id === m.id;
+    const latestAssistantId = [...(store.state.current?.messages ?? [])].reverse().find((item) => item.role === 'assistant')?.id;
+    const canReanswer = !(suppressReanswer && latestAssistantId === m.id);
     return h('span', { class: 'acts' },
       m.content ? h('button', { class: 'act', attrs: { type: 'button', 'data-tip': '复制' }, on: { click: () => void navigator.clipboard.writeText(m.content) } }, icon('copy')) : null,
       streaming ? null : h('button', { class: 'act act-fold', attrs: { type: 'button', 'data-tip': folded ? '展开' : '折叠' }, on: { click: (ev) => toggleFold(m.id, ev) } }, icon('caret')),
-      h('button', { class: 'act', attrs: { type: 'button', 'data-tip': '重新回答' }, on: { click: () => reanswerFrom(m.id) } }, icon('retry')),
+      canReanswer ? h('button', { class: 'act', attrs: { type: 'button', 'data-tip': '重新回答' }, on: { click: () => reanswerFrom(m.id) } }, icon('retry')) : null,
       m.content && fid ? h('button', { class: `act act-fav${isFavorite(fid) ? ' on' : ''}`, attrs: { type: 'button', 'data-fav': fid, 'data-tip': '收藏' }, on: { click: () => toggleFav(m, fid) } }, icon('star')) : null);
   };
 
@@ -412,6 +324,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
    * agent:send（契约 v1.11 reaskLatest，后端据此截断旧问答只保留最新一轮）。
    */
   let pendingReask = false;
+  let suppressReanswer = false;
 
   /** 目标 user 消息是否为当前会话最后一条 user 消息（从尾部向前找第一条 user 消息比对）。 */
   const isLastUserMessage = (m: ChatMessage): boolean => {
@@ -462,9 +375,10 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
    */
   const thinkBlock = (m: ChatMessage, calls: ToolCallRecord[]): HTMLElement => {
     const det = h('details', { class: 'think' });
-    const summary = h('summary', { class: 'think-sum', attrs: { title: '展开 / 折叠思考过程' } },
+    const streaming = streamingMessage()?.id === m.id;
+    const summary = h('summary', { class: 'think-sum', attrs: { title: streaming ? '展开 / 折叠思考过程' : '展开 / 折叠回答结果' } },
       h('span', { class: 'think-caret' }, icon('caret')),
-      h('span', { class: 'think-label' }, '思考过程'),
+      h('span', { class: 'think-label' }, streaming ? '思考过程' : '结果'),
       h('span', { class: 'mute think-count' }, thinkCountText(calls)));
     const status = thinkStatusText(calls);
     if (status) summary.append(h('span', { class: 'mute think-detail' }, status));
@@ -483,7 +397,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     // 5. 其余 → 折叠（对话读起来干净）。
     const pending = hasPendingApproval(calls) || calls.some((c) => [...store.state.approvals.values()].some((a) => a.toolCallId === c.id));
     const explicit = thinkOpen.get(m.id);
-    const open = thinkShouldOpen({ pending, streaming: streamingMessage()?.id === m.id, explicit, sticky: thinkSticky.has(m.id) });
+    const open = thinkShouldOpen({ pending, streaming, explicit, sticky: thinkSticky.has(m.id) });
     if (pending) {
       thinkOpen.delete(m.id); // 强制展开覆盖用户此前的收起选择
       thinkSticky.add(m.id);
@@ -503,6 +417,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const assistantTurn = (m: ChatMessage): HTMLElement => {
     const body = h('div', { class: 'md' });
     setTrustedHtml(body, renderMarkdown(m.content));
+    const sessionId = store.state.current?.id;
+    enhanceCodeBlocks(body, !store.isRunning(), sessionId ? { id: favoriteId(sessionId, m.id), text: m.content } : undefined);
     const who = agentWho(m.agent ?? 'builtin', settings());
     const turn = h('article', { class: `turn assistant${turnFolded.has(m.id) ? ' folded' : ''}` },
       h('header', { class: 'turn-hd' },
@@ -546,6 +462,34 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     // 提示刚出现时把对话底部带进视野（否则提示会被裁在可视区外）。
     if (wasHidden && !liveEl.hidden && log.scrollHeight - log.scrollTop - log.clientHeight < 80) {
       log.scrollTop = log.scrollHeight;
+    }
+  };
+
+  const focusMessage = (messageId: string, sourceText?: string): void => {
+    const message = log.querySelector(`.msg[data-id="${CSS.escape(messageId)}"]`);
+    const target = message?.closest('.turn');
+    if (!(target instanceof HTMLElement)) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.remove('ctx-focus');
+    void target.offsetWidth;
+    target.classList.add('ctx-focus');
+    window.setTimeout(() => target.classList.remove('ctx-focus'), 1400);
+    if (message && sourceText?.trim()) {
+      const walker = document.createTreeWalker(message, NodeFilter.SHOW_TEXT);
+      let node: Text | null;
+      while ((node = walker.nextNode() as Text | null)) {
+        const value = node.nodeValue ?? '';
+        const start = value.indexOf(sourceText);
+        if (start < 0) continue;
+        const range = document.createRange();
+        range.setStart(node, start);
+        range.setEnd(node, start + sourceText.length);
+        const mark = document.createElement('mark');
+        mark.className = 'source-highlight';
+        range.surroundContents(mark);
+        window.setTimeout(() => mark.replaceWith(document.createTextNode(mark.textContent ?? '')), 1400);
+        break;
+      }
     }
   };
 
@@ -607,8 +551,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
     // 菜单锚定的会话已切换（或不再是 CLI 会话）时关掉，避免对旧会话写模型。
     if (modelMenuFor && (modelMenuFor.sessionId !== s?.id || !cli)) closeModelMenu();
-    // .ctx 条三点随头部一并刷新（计数源含 current / sessions / approvals 等多路变化）。
-    renderStatusDots();
   };
 
   const renderAll = () => {
@@ -622,6 +564,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       thinkOpen.clear();
       thinkSticky.clear();
       turnFolded.clear();
+      suppressReanswer = false;
       // 规格 004：菜单与预置都是输入框状态，不跨会话残留（清预置、关菜单、清 Esc 抑制）。
       clearSlashState();
     }
@@ -663,7 +606,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       for (const id of pendingDeltas) {
         const m = store.state.current?.messages.find((x) => x.id === id);
         const body = log.querySelector(`.msg[data-id="${CSS.escape(id)}"] .md`);
-        if (m && body) setTrustedHtml(body, renderMarkdown(m.content));
+        if (m && body) { setTrustedHtml(body, renderMarkdown(m.content)); enhanceCodeBlocks(body as HTMLElement, false); }
       }
       pendingDeltas.clear();
       if (nearBottom) log.scrollTop = log.scrollHeight;
@@ -971,6 +914,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     // 消费一次性重提标记：入口处读取并立即清零，发送失败回填 / 早退等路径都不残留。
     const reaskLatest = pendingReask;
     pendingReask = false;
+    suppressReanswer = reaskLatest;
     const raw = textarea.value.trim();
     // 托盘附件只挂普通发送：重提路径发的就是消息原文（已含尾随引用块），不经托盘、不清托盘。
     const withTray = !reaskLatest && pendingAttachments.length > 0;
@@ -1007,6 +951,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     try {
       await api.invoke('agent:send', reaskLatest ? { sessionId: s.id, text, reaskLatest: true } : { sessionId: s.id, text });
     } catch (e) {
+      suppressReanswer = false;
       s.messages.splice(s.messages.indexOf(local), 1);
       renderAll();
       textarea.value = raw;
@@ -1081,15 +1026,12 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   store.on('messages', renderAll);
   store.on('approvals', renderAll);
   store.on('workspace', renderAll);
-  // 错误条目变化（新增 / 清空）时头部未必重渲，三点计数单独订阅刷新（renderStatusDots 内含挂起跳转推进检查）。
-  store.on('errors', renderStatusDots);
   // 运行状态变化：只更新头部与「正在思考…」提示 / 流式光标（不整体重渲染，避免打断流式输出）。
   // 挂起的错误跳转也在这里推进：目标会话回答一结束（running 移除）就执行跳转。
   store.on('running', () => {
     renderHeader();
     updateLive();
     setCaret();
-    checkPendingErrorJump();
   });
   store.on('settings', renderAll);
   store.on('project', renderHeader);
@@ -1109,6 +1051,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     renderAll,
     appendDelta,
     notify,
+    focusMessage,
     insertText: insertAtCursor,
     insertBlock: (text) => {
       const r = insertBlock(textarea.value, textarea.selectionStart, textarea.selectionEnd, text);

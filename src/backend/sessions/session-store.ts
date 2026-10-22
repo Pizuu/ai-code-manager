@@ -15,29 +15,35 @@ export function newSessionId(now: number = Date.now()): string {
 }
 
 /**
- * 最后一个完整问答的耗时（v1.9）：最后一个 assistant 消息与其之前最近的一个 user 消息的时间差。
- * 口径为墙钟时间——中间夹的 tool 角色消息（工具执行）一并计入。找不到完整问答、时间戳非法
- * 或差值 <= 0 时返回 undefined（摘要不带 lastTurnMs 字段）。
+ * 最后一个完整问答的耗时（v1.9）：本轮完成时间与其之前最近的一个 user 消息的时间差。
+ * 优先使用会话 updatedAt 作为完成时间；若旧数据的 updatedAt 早于 assistant 时间，则回退到最后
+ * 一个 assistant 消息时间。这样会把流式输出和中间 tool 执行完整计入，而不是只计算 assistant
+ * 消息创建到 user 消息的短暂间隔。找不到完整问答、时间戳非法或差值 <= 0 时返回 undefined。
  */
 export function lastTurnMs(s: Session): number | undefined {
   let userAt: number | undefined;
-  let ms: number | undefined;
+  let answerAt: number | undefined;
   for (const m of s.messages) {
     if (m.role === 'user') {
       userAt = Date.parse(m.createdAt);
-    } else if (m.role === 'assistant' && userAt !== undefined) {
-      const d = Date.parse(m.createdAt) - userAt;
-      ms = Number.isFinite(d) && d > 0 ? d : undefined;
+      answerAt = undefined;
+    } else if (m.role === 'assistant' && userAt !== undefined && Number.isFinite(userAt)) {
+      const at = Date.parse(m.createdAt);
+      if (Number.isFinite(at) && at > userAt) answerAt = at;
     }
   }
-  return ms;
+  if (userAt === undefined || answerAt === undefined || !Number.isFinite(userAt)) return undefined;
+  const updatedAt = Date.parse(s.updatedAt);
+  const end = Number.isFinite(updatedAt) && updatedAt > answerAt ? updatedAt : answerAt;
+  const ms = end - userAt;
+  return Number.isFinite(ms) && ms > 0 ? ms : undefined;
 }
 
 export function summarizeSession(s: Session): SessionSummary {
   const turnMs = lastTurnMs(s);
   // v1.10：usage 随摘要走 session-updated 实时推送（回合中途的 step-finish / usage_update 落盘即带上），
   // 渲染进程据此刷新 Tokens chip，不必等回合结束重拉整会话。传副本，避免下游改动回写会话对象。
-  return { id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: s.messages.length, ...(s.agent ? { agent: s.agent } : {}), ...(turnMs !== undefined ? { lastTurnMs: turnMs } : {}), ...(s.usage ? { usage: { ...s.usage } } : {}) };
+  return { id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: s.messages.length, ...(s.agent ? { agent: s.agent } : {}), ...(turnMs !== undefined ? { lastTurnMs: turnMs } : {}), ...(s.usage ? { usage: { ...s.usage } } : {}), ...(s.todos.length ? { todos: s.todos.map((todo) => ({ ...todo })) } : {}) };
 }
 
 interface SaveWaiter {

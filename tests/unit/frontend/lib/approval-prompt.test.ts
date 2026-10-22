@@ -8,7 +8,7 @@ const base = (kind: ApprovalKind, extra: Partial<ApprovalRequest> = {}): Approva
 test('edit / command text is identical to the v1.2 wording', () => {
   assert.equal(approvalText(approvalPrompt(base('edit', { path: 'src/a.ts' }), 'edit_file')), '应用对 src/a.ts 的修改？');
   assert.equal(approvalText(approvalPrompt(base('command', { shell: 'bash', command: 'npm test' }), 'run_command')), '在 bash 中执行此命令？\nnpm test');
-  assert.equal(approvalText(approvalPrompt(base('command', { command: 'opencode run' }), 'agent_cli')), '启动外部 CLI？\nopencode run');
+  assert.equal(approvalText(approvalPrompt(base('command', { command: 'opencode run' }), 'agent_cli')), 'OpenCLI 请求启动，需要你的审批？\nopencode run\n批准后才会继续本次 OpenCLI 回答；拒绝将结束本次启动。');
   assert.equal(approvalText(approvalPrompt(base('command'), 'bash')), '在 shell 中执行此命令？\n');
   assert.equal(approvalPrompt(base('edit')).tone, 'warn');
 });
@@ -47,4 +47,11 @@ test('other and unknown kinds fall back to permission + patterns', () => {
   const withPerm = approvalPrompt({ ...base('other'), kind: 'x' as ApprovalKind, permission: 'mcp', patterns: ['srv/*'] });
   assert.deepEqual(withPerm.lines, ['匹配：srv/*']);
   assert.equal(withPerm.title, '授予权限「mcp」？');
+});
+
+test('question permission is presented as an OpenCLI answer choice', () => {
+  const p = approvalPrompt(base('other', { permission: 'question', description: '请选择目标环境', patterns: ['dev', 'prod'] }));
+  assert.equal(p.title, 'OpenCLI 正在等待你的回答选择？');
+  assert.match(p.note, /请选择目标环境/);
+  assert.match(p.note, /未作选择前流程不会继续/);
 });

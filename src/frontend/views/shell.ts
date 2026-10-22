@@ -21,6 +21,7 @@ export interface ShellHooks {
   onOpenSettings(): void;
   /** 单击文件：在任务会话中列打开只读代码标签（003）。 */
   onFileClick(relPath: string): void;
+  onSessionView?(): void;
   onError(text: string): void;
 }
 
@@ -29,6 +30,7 @@ export interface ShellView {
   views: Record<ViewId, HTMLElement>;
   setView(v: ViewId): void;
   refreshWorkspace(): Promise<void>;
+  setFileStates(states: ReadonlyArray<{ path: string; mode: 'readonly' | 'editing'; dirty: boolean }>): void;
 }
 
 /**
@@ -78,6 +80,17 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   // 板块图标与项目栏导航同序（泳道看板 → 任务会话 → Git 与集成，T-039）；切换项目入口在项目选择器与 ⋯ 菜单
   const railView = {} as Record<ViewId, HTMLAnchorElement>;
   const railBtn = (name: IconName, title: string, onClick: () => void) => h('a', { class: 'ri', title, on: { click: onClick } }, icon(name));
+  const railToggle = railBtn('menu', '展开侧栏', () => {
+    explorer.toggleAttribute('hidden');
+    syncRailToggle();
+  });
+  const syncRailToggle = () => {
+    const expanded = !explorer.hidden;
+    railToggle.replaceChildren(icon(expanded ? 'side' : 'menu'));
+    railToggle.title = expanded ? '收起侧栏' : '展开侧栏';
+    railToggle.setAttribute('aria-expanded', String(expanded));
+    for (const id of Object.keys(railView) as ViewId[]) railView[id].hidden = expanded;
+  };
   const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code', agents: 'wt' };
   for (const [id, label] of NAV) railView[id] = railBtn(RAIL_ICON[id], label, () => setView(id));
   // P0-3：任务会话图标上的活动徽标（运行中 / 待批准 / 出错）
@@ -97,17 +110,27 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     themeBtn.title = `切换主题（当前：${dark ? '深色' : '浅色'}）`;
   };
   syncThemeBtn();
+  const filesBtn = h('a', { class: 'ri', title: '打开文件列表', on: { click: () => {
+    const opening = explorer.hidden;
+    explorer.hidden = !opening;
+    if (opening) {
+      setTreeCollapsed(false);
+      void renderTree();
+    }
+    syncRailToggle();
+  } } }, icon('file'));
   const rail = h('nav', { class: 'rail' },
-    railBtn('side', '侧栏', () => explorer.toggleAttribute('hidden')),
+    railToggle,
     h('div', { class: 'gap26' }),
     ...NAV.map(([id]) => railView[id]),
     h('div', { class: 'sp' }),
     themeBtn,
+    filesBtn,
     h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
   );
-  // 快速教程（高亮步进器，lib/tour.ts）：按钮插在主题按钮与设置齿轮之间（齿轮上方），navigate 透传 setView 供跨视图步骤切换。
+  // 快速教程（高亮步进器，lib/tour.ts）：固定放在 rail 最底部，navigate 透传 setView 供跨视图步骤切换。
   const tourBtn = mountTourButton(rail, { navigate: (v) => setView(v) });
-  rail.insertBefore(tourBtn, rail.lastElementChild);
+  rail.append(tourBtn);
 
   // ── explorer（原型 explorer()）──
   // 顶部品牌区：应用 logo + 名称（纯展示，无点击行为）
@@ -119,6 +142,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const navloc = h('div', { class: 'navloc' });
   const navItems = {} as Record<ViewId, HTMLAnchorElement>;
   const nav = h('div', { class: 'nav' });
+  const fileStates = new Map<string, { mode: 'readonly' | 'editing'; dirty: boolean }>();
   for (const [id, label, ic, parent] of NAV) {
     navItems[id] = h('a', { class: parent ? 'sub' : '', title: parent ? `${VIEW_TITLES[parent]} › ${label}` : label, on: { click: () => setView(id) } }, icon(ic), h('span', {}, label));
     nav.append(navItems[id]);
@@ -140,6 +164,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const psel = h('div', { class: 'psel', title: '点击打开文件夹作为工程根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
     h('div', { class: 'pid' }, pname, pdesc), pselCaret);
   const explorer = h('aside', { class: 'explorer' }, brand, navloc, nav, tree, psel);
+  syncRailToggle();
 
   // ── 分支下拉：点击页头面包屑的分支 chip 展开本地分支列表，选中走 git:checkout 切换并全量同步 ──
   const brMenu = h('div', { class: 'ctxmenu brmenu', attrs: { role: 'menu' } });
@@ -367,7 +392,15 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     const open = dir && expanded.has(n.relPath);
     const el = h('div', { class: `te click${auth ? ' auth' : ''}${dir ? ' dir' : ''}${open ? ' open' : ''}`, title: n.relPath, attrs: { ...nodeAttrs(n), ...(dir ? { 'aria-expanded': String(open) } : {}) } },
       dir ? h('span', { class: 'tw' }, icon('caret', 12)) : h('span', { class: 'tw' }),
-      icon(dir ? 'dir' : 'file', 14), h('span', { class: 'nm' }, `${n.name}${dir ? '/' : ''}`), tag);
+      icon(dir ? 'dir' : 'file', 14), h('span', { class: 'nm' }, `${n.name}${dir ? '/' : ''}`),
+      !dir && fileStates.has(n.relPath) ? h('span', { class: `file-state-dot ${fileStates.get(n.relPath)?.mode ?? 'readonly'}${fileStates.get(n.relPath)?.dirty ? ' dirty' : ''}`, title: fileStates.get(n.relPath)?.dirty ? '已修改未保存' : fileStates.get(n.relPath)?.mode === 'editing' ? '编辑中' : '只读' }) : null,
+      tag);
+    if (!dir) {
+      const state = fileStates.get(n.relPath);
+      el.classList.toggle('file-open', Boolean(state));
+      el.classList.toggle('file-editing', state?.mode === 'editing');
+      el.classList.toggle('file-dirty', Boolean(state?.dirty));
+    }
     el.style.paddingLeft = `${4 + depth * 14}px`;
     el.addEventListener('click', () => {
       if (!dir) return hooks.onFileClick(n.relPath);
@@ -411,6 +444,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   };
 
   const setView = (v: ViewId) => {
+    if (v === 'session') hooks.onSessionView?.();
     store.state.view = v;
     for (const id of Object.keys(views) as ViewId[]) {
       views[id].hidden = id !== v;
@@ -471,5 +505,10 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   });
   renderChrome();
   void renderTree();
-  return { views, setView, refreshWorkspace };
+  const setFileStates = (states: ReadonlyArray<{ path: string; mode: 'readonly' | 'editing'; dirty: boolean }>) => {
+    fileStates.clear();
+    for (const state of states) fileStates.set(state.path, { mode: state.mode, dirty: state.dirty });
+    void renderTree();
+  };
+  return { views, setView, refreshWorkspace, setFileStates };
 }

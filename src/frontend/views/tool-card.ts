@@ -92,10 +92,11 @@ export function renderToolCard(call: ToolCallRecord, approval: ApprovalRequest |
   if (call.status === 'awaiting-approval' && approval) {
     // 文案按种类区分（T128）；未知种类回退为权限名 + 模式，始终需要用户点击，不自动批准
     const p = approvalPrompt(approval, call.name);
+    const isOpenCli = call.name === 'agent_cli';
     card.append(h('div', { class: p.tone === 'danger' ? 'appr danger' : 'appr', attrs: { 'data-kind': String(approval.kind) } },
       h('span', { class: 'q' }, approvalText(p)),
-      h('button', { class: 'btn danger', on: { click: () => onDecide(approval.id, false) } }, '拒绝'),
-      h('button', { class: 'btn pri', on: { click: () => onDecide(approval.id, true) } }, '批准')));
+      h('button', { class: 'btn danger', title: isOpenCli ? '拒绝启动本次 OpenCLI' : '拒绝此操作', on: { click: () => onDecide(approval.id, false) } }, isOpenCli ? '拒绝启动' : '拒绝'),
+      h('button', { class: 'btn pri', title: isOpenCli ? '批准后继续本次 OpenCLI 回答' : '批准此操作', on: { click: () => onDecide(approval.id, true) } }, isOpenCli ? '允许本次' : '批准')));
   }
   return card;
 }

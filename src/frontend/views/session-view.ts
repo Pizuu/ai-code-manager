@@ -42,6 +42,7 @@ export interface SessionHooks {
   focusCard(id: string): void;
   /** 代码查看器「发送到任务会话」（整个文件引用）。 */
   sendFile(relPath: string): void;
+  onFileState?(states: ReadonlyArray<{ path: string; mode: 'readonly' | 'editing'; dirty: boolean }>): void;
 }
 
 export interface SessionView {
@@ -90,6 +91,9 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     renderList();
   };
   const list = h('div');
+  const todoDock = h('div', { class: 'slist-todos' });
+  let todoDockOpen = false;
+  let todoDockPinned = false;
   const slist = h('div', { class: 'slist' },
     h('div', { class: 'hd' }, h('span', {}, '任务会话'), newBtn), search, list);
 
@@ -115,9 +119,38 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   // ── 文件窗格标签页（与对话并列）──
   const files: string[] = [];
   let active: string | null = null; // null = 未打开文件
+  let fileFocusSnapshot: { slist: boolean; chat: boolean; terminal: boolean; context: boolean } | null = null;
+  const syncFileFocus = () => {
+    if (files.length > 0) {
+      if (!fileFocusSnapshot) fileFocusSnapshot = { slist: Boolean(slist.hidden), chat: Boolean(chatCol.hidden), terminal: Boolean(termCol.hidden), context: Boolean(ctxp.hidden) };
+      slist.hidden = true;
+      chatCol.hidden = true;
+      termCol.hidden = true;
+      ctxp.hidden = true;
+      sx.classList.add('file-focus');
+      return;
+    }
+    if (!fileFocusSnapshot) return;
+    slist.hidden = fileFocusSnapshot.slist;
+    chatCol.hidden = fileFocusSnapshot.chat;
+    termCol.hidden = fileFocusSnapshot.terminal;
+    ctxp.hidden = fileFocusSnapshot.context;
+    fileFocusSnapshot = null;
+    sx.classList.remove('file-focus');
+  };
+  const exitFileFocus = () => {
+    if (!fileFocusSnapshot) return;
+    slist.hidden = fileFocusSnapshot.slist;
+    chatCol.hidden = fileFocusSnapshot.chat;
+    termCol.hidden = fileFocusSnapshot.terminal;
+    ctxp.hidden = fileFocusSnapshot.context;
+    fileFocusSnapshot = null;
+    sx.classList.remove('file-focus');
+  };
   const renderTabs = () => {
     filePane.hidden = files.length === 0;
     sx.classList.toggle('has-file', files.length > 0);
+    syncFileFocus();
     const tab = (label: string, on: boolean, onClick: () => void, title: string, onClose?: () => void, dirty = false) => {
       const el = h('div', { class: `ft${on ? ' on' : ''}`, title, attrs: { role: 'tab' }, on: { click: onClick } }, h('span', { class: 'nm' }, label), dirty ? h('span', { class: 'dirty', title: '未保存' }) : null);
       if (onClose) el.append(h('button', { class: 'x', title: '关闭', attrs: { type: 'button' }, on: { click: (ev) => { ev.stopPropagation(); onClose(); } } }, '✕'));
@@ -130,12 +163,21 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         return el;
       }));
     ftabs.querySelector('.ft.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    hooks.onFileState?.(files.map((path) => ({
+      path,
+      mode: active === path && code.isDirty(path) ? 'editing' : 'readonly',
+      dirty: code.isDirty(path),
+    })));
   };
   const setActive = (f: string | null) => {
     const changed = active !== f;
     active = f;
     renderTabs();
-    if (f && changed) void code.show(f);
+    if (f && changed) {
+      const diff = [...store.state.diffs].reverse().find((item) => item.path === f);
+      if (diff) code.showDiff(f, diff.diff);
+      else void code.show(f);
+    }
   };
   const openFile = (f: string) => {
     if (!files.includes(f)) {
@@ -162,6 +204,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
 
   const chat = mountChat(chatCol, {
     renderDiff,
+    onOpenAttachment: openFile,
     onNewSession: () => void hooks.newSession(),
     onToggleList: () => slist.toggleAttribute('hidden'),
     // 对话区红点点击跳出错会话：与会话列表条目点击同路（selectSession）。
@@ -173,7 +216,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const terminal = mountTerminal(termCol, { notify: (t, k) => chat.notify(t, k) });
 
   const applyMode = (): void => {
-    chatCol.hidden = false;
+    chatCol.hidden = fileFocusSnapshot !== null;
     termCol.hidden = true;
     terminal.focus();
   };
@@ -226,6 +269,54 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     }
   };
 
+  const renderTodoDock = () => {
+    const sessionTodos = new Map(store.state.sessions.map((session) => [session.id, session.todos ?? []]));
+    const current = store.state.current;
+    if (current) sessionTodos.set(current.id, current.todos);
+    const entries = [...sessionTodos.entries()].flatMap(([sessionId, todos]) => todos.map((todo) => ({ sessionId, todo })));
+    const save = (sessionId: string, next: TodoItem[]) => {
+      void api.invoke('sessions:todos', { sessionId, todos: next }).then((updated) => {
+        sessionTodos.set(updated.id, updated.todos);
+        if (store.state.current?.id !== updated.id) {
+          const summary = store.state.sessions.find((session) => session.id === updated.id);
+          if (summary) summary.todos = updated.todos;
+        }
+        if (store.state.current?.id === updated.id) store.state.current = updated;
+        store.emit('current', 'todos');
+      }).catch((e: unknown) => chat.notify(errorText(e)));
+    };
+    const rows = entries.slice(0, 12).map(({ sessionId, todo }) => {
+      const check = h('button', { class: `todo-check${todo.status === 'completed' ? ' done' : ''}`, attrs: { type: 'button' }, title: '切换完成状态' }, todo.status === 'completed' ? '✓' : '○');
+      check.addEventListener('click', () => save(sessionId, (sessionTodos.get(sessionId) ?? []).map((x) => x.id === todo.id ? { ...x, status: x.status === 'completed' ? 'pending' : 'completed' } : x)));
+      const del = h('button', { class: 'todo-delete', attrs: { type: 'button' }, title: '删除待办' }, '×');
+      del.addEventListener('click', () => save(sessionId, (sessionTodos.get(sessionId) ?? []).filter((x) => x.id !== todo.id)));
+      const owner = store.state.sessions.find((session) => session.id === sessionId)?.title ?? '当前会话';
+      const content = h('span', { class: 'todo-content', title: `${owner}：跳转到来源对话`, on: { click: async () => {
+        try {
+          if (store.state.current?.id !== sessionId) await hooks.selectSession(sessionId);
+          const message = store.state.current?.messages.find((item) => item.content.includes(todo.content));
+          if (message) chat.focusMessage(message.id, todo.content);
+        } catch (e) {
+          chat.notify(errorText(e));
+        }
+      } } }, `${todo.content} · ${owner}`);
+      return h('div', { class: `todo-row${todo.status === 'completed' ? ' todo-done' : ''}` }, check, content, del);
+    });
+    const completed = entries.filter(({ todo }) => todo.status === 'completed').length;
+    const title = h('button', { class: 'todo-dock-title', attrs: { type: 'button', 'aria-expanded': String(todoDockOpen) }, title: '展开项目待办卡片' }, h('span', {}, '项目待办'), h('span', { class: 'todo-dock-count' }, `${completed}/${entries.length}`), icon('caret', 14));
+    title.addEventListener('click', () => { todoDockOpen = !todoDockOpen; renderTodoDock(); });
+    const pin = h('button', { class: `todo-pin${todoDockPinned ? ' on' : ''}`, attrs: { type: 'button', 'aria-pressed': String(todoDockPinned) }, title: todoDockPinned ? '取消固定' : '固定待办卡片' }, '⌖');
+    pin.addEventListener('click', (event) => { event.stopPropagation(); todoDockPinned = !todoDockPinned; renderTodoDock(); });
+    const close = h('button', { class: 'todo-close', attrs: { type: 'button', 'aria-label': '关闭待办卡片' }, title: '关闭待办卡片' }, '×');
+    close.addEventListener('click', (event) => { event.stopPropagation(); todoDockOpen = false; renderTodoDock(); });
+    const head = h('div', { class: 'todo-dock-head' }, title, pin, todoDockOpen ? close : null);
+    const card = h('div', { class: 'todo-dock-card' });
+    card.hidden = !todoDockOpen;
+    card.append(...(rows.length ? rows : [h('div', { class: 'mute todo-empty' }, '暂无项目待办')]));
+    todoDock.classList.toggle('todo-pinned', todoDockPinned);
+    todoDock.replaceChildren(head, card);
+  };
+
   const renderList = () => {
     const cur = store.state.current?.id;
     const q = query.trim().toLowerCase();
@@ -255,7 +346,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       const dotCls = status === '出错' ? 'r' : status === '回答中' ? 'y' : 'g';
       // 底部行右下角：收藏标记（有收藏才显示）+ 待确认删除提醒（armed 时出现、可点击直接确认）
       const favCount = favCounts.get(s.id) ?? 0;
-      const delWarn = armed ? h('span', { class: 'si-delwarn', title: '确认删除此会话' }, '再点一次确认删除') : null;
+      const delWarn = armed ? h('span', { class: 'si-delwarn', title: '确认删除此会话' }, '确认') : null;
       if (delWarn) delWarn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         void executeDelete(s);
@@ -266,6 +357,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         h('div', { class: 'c' },
           h('span', {}, `${s.messageCount} 条消息`),
           h('span', { class: 'si-br' },
+            h('span', { class: `si-status ${dotCls}`, title: `状态：${status}` }, status),
             favCount > 0 ? h('span', { class: 'si-fav', title: `本会话已收藏 ${favCount} 条回答` }, icon('star'), h('span', {}, String(favCount))) : null,
             delWarn)));
       el.addEventListener('click', () => {
@@ -284,6 +376,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       });
       list.append(el);
     }
+    renderTodoDock();
   };
   search.addEventListener('input', () => {
     query = search.value;
@@ -292,7 +385,19 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
 
   // ── 右列 ──
   const kv = (k: string, v: string | Node, mono = false) => [h('div', { class: 'k' }, k), h('div', { class: `v${mono ? ' mono' : ''}` }, v)];
-  const todoList = (todos: TodoItem[]) => h('ul', { class: 'v' }, ...(todos.length ? todos.map((t) => h('li', {}, `${t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '◐' : '○'} ${t.content}`)) : [h('li', { class: 'mute' }, '暂无待办')]));
+  const generatedFiles: Array<{ sessionId: string; content: string; ext: string; at: string }> = [];
+  const downloadedFiles = new Set<string>();
+  const conversationFiles = (s: NonNullable<typeof store.state.current>): Array<{ path: string; author: 'assistant' | 'user'; at: string }> => {
+    const found = new Map<string, { path: string; author: 'assistant' | 'user'; at: string }>();
+    for (const m of s.messages) {
+      if (m.role !== 'assistant' && m.role !== 'user') continue;
+      for (const hit of m.content.matchAll(/\b(?:src|contracts|tests|docs|scripts)\/[A-Za-z0-9._/-]+/g)) {
+        const value = hit[0]?.replace(/[),.;:]+$/, '');
+        if (value && !found.has(value)) found.set(value, { path: value, author: m.role, at: m.createdAt });
+      }
+    }
+    return [...found.values()].slice(0, 30);
+  };
 
   const taskContext = (c: BoardCard): HTMLElement[] => {
     const snap = store.state.board;
@@ -378,9 +483,61 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       ...kv('Agent', agentName(agent, st)),
       ...kv('工作目录', store.state.project?.root ?? '未打开项目', true),
       ...(cliId ? kv('CLI 会话（续接）', s?.cliSessions?.[cliId] ?? '首轮后建立', true) : []),
-      h('hr'),
-      h('div', { class: 'k acc' }, `待办 · ${(s?.todos ?? []).filter((t) => t.status === 'completed').length} / ${(s?.todos ?? []).length}`),
-      todoList(s?.todos ?? []));
+      h('hr'));
+
+    const filesInConversation = s ? conversationFiles(s) : [];
+    const codeDownloads = s ? generatedFiles.filter((file) => file.sessionId === s.id) : [];
+    const renderCodeDownloads = codeDownloads.length
+      ? h('div', { class: 'v ctx-files ctx-generated-files' }, ...codeDownloads.map((file) => {
+        const stamp = file.at.replace(/[-:TZ.]/g, '').slice(0, 14);
+        const name = `assistant-${stamp}.${file.ext}`;
+        const button = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '重新下载代码块文件', on: { click: () => {
+          const url = URL.createObjectURL(new Blob([file.content], { type: 'text/plain;charset=utf-8' }));
+          const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
+        } } }, icon('download', 13), h('span', {}, name));
+        return button;
+      }))
+      : h('div', { class: 'v ctx-empty' }, '暂无代码块下载文件');
+    if (codeDownloads.length) ctxp.append(h('div', { class: 'k' }, `代码块下载 · ${codeDownloads.length}`), renderCodeDownloads);
+    const renderFiles = (files: typeof filesInConversation, emptyText: string) => files.length
+      ? h('div', { class: 'v ctx-files' }, ...files.map((file) => {
+        const ext = file.path.split('.').pop()?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'txt';
+        const stamp = file.at.replace(/[-:TZ.]/g, '').slice(0, 14) || String(Date.now());
+        const download = h('button', { class: 'ctx-download', attrs: { type: 'button' }, title: downloadedFiles.has(file.path) ? '文件已下载，点击跳转' : '下载对话文件' }, downloadedFiles.has(file.path) ? '↗' : '↓');
+        download.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          if (downloadedFiles.has(file.path)) { openFile(file.path); return; }
+          try {
+            const content = await api.invoke('fs:read', file.path);
+            if (content.kind !== 'text') return;
+            const url = URL.createObjectURL(new Blob([content.content], { type: 'text/plain;charset=utf-8' }));
+            const a = document.createElement('a'); a.href = url; a.download = `${file.author}-${stamp}.${ext}`; a.click(); URL.revokeObjectURL(url);
+            downloadedFiles.add(file.path);
+            openFile(file.path);
+          } catch (e) { chat.notify(`下载失败：${errorText(e)}`); }
+        });
+        const row = h('div', { class: 'ctx-file-row' }, h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: `打开 ${file.path}`, on: { click: () => openFile(file.path) } }, icon('file', 13), h('span', {}, file.path)), download);
+        return row;
+      }))
+      : h('div', { class: 'v ctx-empty' }, emptyText);
+    const replyFiles = filesInConversation.filter((file) => file.author === 'assistant');
+    if (replyFiles.length) ctxp.append(h('div', { class: 'k' }, `助手回复引用文件 · ${replyFiles.length}`), renderFiles(replyFiles, ''));
+
+    const currentFavorites = s ? listFavorites().filter((f) => f.sessionId === s.id) : [];
+    const sessionId = s?.id ?? '';
+    const favoriteLinks = h('div', { class: 'v ctx-favorites' }, ...currentFavorites.map((f) => {
+      const link = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '跳转到收藏回答' },
+        icon(f.text.includes('```') ? 'code' : 'text', 13), h('span', {}, f.text.replace(/\s+/g, ' ').slice(0, 100)));
+      link.addEventListener('click', () => {
+        chat.focusMessage(f.id.slice(sessionId.length + 1));
+        link.classList.remove('ctx-favorite-jump');
+        void link.offsetWidth;
+        link.classList.add('ctx-favorite-jump');
+        window.setTimeout(() => link.classList.remove('ctx-favorite-jump'), 1400);
+      });
+      return link;
+    }));
+    ctxp.append(h('div', { class: 'h ctx-section-title' }, h('span', {}, '收藏'), h('span', { class: 'mute' }, String(currentFavorites.length))), favoriteLinks);
 
     // 文件修改（原 Diff 面板）：同一文件多次修改只留最新一条，按首次出现排列（Map 覆盖值不改键序）
     const byPath = new Map<string, (typeof store.state.diffs)[number]>();
@@ -390,29 +547,16 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     for (const d of diffs.slice(0, 12)) {
       const approval = [...store.state.approvals.values()].find((a) => a.toolCallId === d.toolCallId);
       const { added, removed } = countChanges(d.diff);
-      const det = h('details', {}, h('summary', { class: 'row' }, h('span', { class: 'p', title: d.path }, d.path || '(未知文件)'), h('span', { class: 'mute' }, `+${added} −${removed}`), h('span', { class: 'chip' }, STATUS_LABELS[d.status])), renderDiff(d.diff));
+      const det = h('details', {}, h('summary', { class: 'row', on: { click: () => { if (d.path) openFile(d.path); } } }, h('span', { class: 'p', title: d.path }, d.path || '(未知文件)'), h('span', { class: 'mute' }, `+${added} −${removed}`), h('span', { class: 'chip' }, STATUS_LABELS[d.status])), renderDiff(d.diff));
       if (approval && d.status === 'awaiting-approval') {
         det.open = true;
         det.append(h('div', { class: 'fx8 mt6' }, h('button', { class: 'btn danger', on: { click: () => void decideApproval(approval.id, false) } }, '拒绝'), h('button', { class: 'btn pri', on: { click: () => void decideApproval(approval.id, true) } }, '批准')));
       }
       dl.append(det);
     }
-    ctxp.append(h('div', { class: 'k' }, `文件修改 · ${diffs.length}`), ...(diffs.length ? [dl] : []));
+    if (diffs.length) ctxp.append(dl);
+    ctxp.append(todoDock);
 
-    // 所属分工（原终端输出面板）：关联任务卡的泳道分工详情
-    const laneMeta = card ? store.state.board?.lanes.find((l) => l.name === card.lane) : undefined;
-    ctxp.append(h('div', { class: 'k' }, card ? `所属分工 · ${card.lane}` : '所属分工'));
-    if (card) {
-      const allowGlobs = (laneMeta?.globs ?? []).filter((g) => !g.startsWith('!'));
-      ctxp.append(
-        ...kv('执行者', card.assignee || '—'),
-        ...kv('泳道角色', laneMeta?.ownerRole ?? '—'),
-        ...kv('任务状态', STATUS_META[card.status].label),
-        ...kv('允许路径', allowGlobs.join(' · ') || '—', true),
-        ...kv('分支', card.branch ?? '—', true));
-    } else {
-      ctxp.append(h('div', { class: 'v mute' }, '未关联任务卡'));
-    }
   };
 
   let ctxFrame = 0;
@@ -423,16 +567,28 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       renderCtx();
     });
   };
+  window.addEventListener('acm-code-download', (event) => {
+    const detail = (event as CustomEvent<{ sessionId?: string; content?: string; ext?: string; at?: string }>).detail;
+    if (!detail?.sessionId || typeof detail.content !== 'string' || !detail.ext || !detail.at) return;
+    generatedFiles.unshift({ sessionId: detail.sessionId, content: detail.content, ext: detail.ext, at: detail.at });
+    if (generatedFiles.length > 50) generatedFiles.pop();
+    scheduleCtx();
+  });
 
   for (const t of ['sessions', 'current', 'running', 'approvals', 'settings', 'workspace', 'project', 'errors'] as const) store.on(t, renderList);
   // 收藏增减后底部行的收藏条数实时刷新（renderList 只读 favorites 现值重渲，不回写收藏，无循环）
-  onFavoritesChanged(() => renderList());
+  onFavoritesChanged(() => { renderList(); scheduleCtx(); });
   for (const t of ['current', 'todos', 'diffs', 'tasks', 'running', 'approvals', 'settings', 'workspace', 'project'] as const) store.on(t, scheduleCtx);
+  store.on('diffs', () => {
+    if (!active) return;
+    const diff = [...store.state.diffs].reverse().find((item) => item.path === active);
+    if (diff) code.showDiff(active, diff.diff);
+  });
   store.on('project', () => void refreshTasks().catch(() => undefined));
   renderList();
   renderCtx();
   applyMode();
   void refreshTasks().catch(() => undefined);
   // 界面恒为对话模式：showChat / showTerminal 都只确保对话列可见（终端列恒隐藏）。
-  return { chat, openFile, showChat: () => applyMode(), showTerminal: () => applyMode() };
+  return { chat, openFile, showChat: () => { exitFileFocus(); applyMode(); }, showTerminal: () => applyMode() };
 }

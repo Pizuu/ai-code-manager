@@ -35,8 +35,10 @@ export function approvalPrompt(req: ApprovalRequest, callName = ''): ApprovalPro
   switch (kind) {
     case 'command':
       return {
-        title: `${callName === 'agent_cli' ? '启动外部 CLI' : `在 ${req.shell ?? 'shell'} 中执行此命令`}？`,
-        lines: [req.command ?? ''], note: '', tone: 'warn',
+        title: `${callName === 'agent_cli' ? 'OpenCLI 请求启动，需要你的审批' : `在 ${req.shell ?? 'shell'} 中执行此命令`}？`,
+        lines: [req.command ?? ''],
+        note: callName === 'agent_cli' ? '批准后才会继续本次 OpenCLI 回答；拒绝将结束本次启动。' : '',
+        tone: 'warn',
       };
     case 'edit':
       return { title: `应用对 ${req.path ?? ''} 的修改？`, lines: [], note: '', tone: 'warn' };
@@ -65,10 +67,11 @@ export function approvalPrompt(req: ApprovalRequest, callName = ''): ApprovalPro
       };
     default: {
       const pats = patternsOf(req);
+      const isQuestion = req.permission === 'question';
       return {
-        title: `授予权限「${req.permission || kind || '未知'}」？`,
+        title: isQuestion ? 'OpenCLI 正在等待你的回答选择？' : `授予权限「${req.permission || kind || '未知'}」？`,
         lines: pats.length ? [`匹配：${pats.join('、')}`] : [],
-        note: desc,
+        note: isQuestion ? `${desc || '请选择是否允许 OpenCLI 继续本次回答。'} 未作选择前流程不会继续。` : desc,
         tone: 'warn',
       };
     }
