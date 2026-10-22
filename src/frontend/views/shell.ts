@@ -128,9 +128,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     filesBtn,
     h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
   );
-  // 快速教程（高亮步进器，lib/tour.ts）：放在设置按钮上方、rail 底部区域，navigate 透传 setView 供跨视图步骤切换。
+  // 快速教程（高亮步进器，lib/tour.ts）：放在设置按钮下方并固定于 rail 最底部，navigate 透传 setView 供跨视图步骤切换。
   const tourBtn = mountTourButton(rail, { navigate: (v) => setView(v) });
-  rail.insertBefore(tourBtn, rail.lastElementChild);
+  rail.append(tourBtn);
 
   // ── explorer（原型 explorer()）──
   // 顶部品牌区：应用 logo + 名称（纯展示，无点击行为）

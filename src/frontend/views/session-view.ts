@@ -14,7 +14,7 @@ import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
 import { clear, h } from '../lib/dom.ts';
-import { listFavorites, onFavoritesChanged, removeFavorite } from '../lib/favorites.ts';
+import { listFavorites, onFavoritesChanged, removeFavorite, updateFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
 import { decideApproval, MODE_LABELS, mountChat, type ChatView } from './chat.ts';
@@ -59,6 +59,7 @@ export interface SessionView {
 /** 同时保留的文件标签上限，超出关闭最早打开的。 */
 const MAX_FILE_TABS = 8;
 const PINNED_KEY = 'acm.pinnedSessions';
+type RelatedFile = { path: string; author: 'assistant' | 'user'; at: string };
 
 function loadPinned(): Set<string> {
   try {
@@ -94,7 +95,6 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const list = h('div');
   const todoDock = h('div', { class: 'slist-todos' });
   let todoDockOpen = false;
-  let todoDockPinned = false;
   const slist = h('div', { class: 'slist' },
     h('div', { class: 'hd' }, h('span', {}, '任务会话'), newBtn), search, list);
 
@@ -201,6 +201,12 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     if (active === f) setActive(files[i] ?? files[i - 1] ?? null);
     else renderTabs();
   };
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented || !active) return;
+    if (document.querySelector('dialog[open], .ctxmenu:not([hidden]), .slash-menu:not([hidden])')) return;
+    event.preventDefault();
+    closeFile(active);
+  });
   renderTabs();
 
   const chat = mountChat(chatCol, {
@@ -288,35 +294,44 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         store.emit('current', 'todos');
       }).catch((e: unknown) => chat.notify(errorText(e)));
     };
-    const rows = entries.slice(0, 12).map(({ sessionId, todo }) => {
+    const rows = entries.map(({ sessionId, todo }) => {
       const check = h('button', { class: `todo-check${todo.status === 'completed' ? ' done' : ''}`, attrs: { type: 'button' }, title: '切换完成状态' }, todo.status === 'completed' ? '✓' : '○');
       check.addEventListener('click', () => save(sessionId, (sessionTodos.get(sessionId) ?? []).map((x) => x.id === todo.id ? { ...x, status: x.status === 'completed' ? 'pending' : 'completed' } : x)));
+      const edit = h('button', { class: 'todo-edit', attrs: { type: 'button', 'aria-label': '编辑待办' }, title: '编辑待办文本' }, '✎');
+      edit.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const value = window.prompt('编辑项目待办（首尾空格会自动去除）', todo.content);
+        if (value === null) return;
+        const content = value.trim();
+        if (!content) { chat.notify('待办文本不能为空', 'info'); return; }
+        save(sessionId, (sessionTodos.get(sessionId) ?? []).map((x) => x.id === todo.id ? { ...x, content } : x));
+      });
       const del = h('button', { class: 'todo-delete', attrs: { type: 'button' }, title: '删除待办' }, '×');
       del.addEventListener('click', () => save(sessionId, (sessionTodos.get(sessionId) ?? []).filter((x) => x.id !== todo.id)));
       const owner = store.state.sessions.find((session) => session.id === sessionId)?.title ?? '当前会话';
       const content = h('span', { class: 'todo-content', title: `${owner}：跳转到来源对话`, on: { click: async () => {
         try {
           if (store.state.current?.id !== sessionId) await hooks.selectSession(sessionId);
-          const message = store.state.current?.messages.find((item) => item.content.includes(todo.content));
-          if (message) chat.focusMessage(message.id, todo.content.trim());
+          const source = todo.content.trim();
+          const normalizedSource = source.replace(/\s+/g, ' ');
+          const message = normalizedSource
+            ? [...(store.state.current?.messages ?? [])].reverse().find((item) => item.role === 'user'
+              && item.content.replace(/\s+/g, ' ').includes(normalizedSource))
+            : undefined;
+          if (store.state.current?.id === sessionId && message) chat.focusMessage(message.id, source);
         } catch (e) {
           chat.notify(errorText(e));
         }
       } } }, `${todo.content.trim()} · ${owner}`);
-      return h('div', { class: `todo-row${todo.status === 'completed' ? ' todo-done' : ''}` }, check, content, del);
+      return h('div', { class: `todo-row${todo.status === 'completed' ? ' todo-done' : ''}` }, check, content, edit, del);
     });
     const completed = entries.filter(({ todo }) => todo.status === 'completed').length;
     const title = h('button', { class: 'todo-dock-title', attrs: { type: 'button', 'aria-expanded': String(todoDockOpen) }, title: '展开项目待办卡片' }, h('span', {}, '项目待办'), h('span', { class: 'todo-dock-count' }, `${completed}/${entries.length}`), icon('caret', 14));
     title.addEventListener('click', () => { todoDockOpen = !todoDockOpen; renderTodoDock(); });
-    const pin = h('button', { class: `todo-pin${todoDockPinned ? ' on' : ''}`, attrs: { type: 'button', 'aria-pressed': String(todoDockPinned) }, title: todoDockPinned ? '取消固定' : '固定待办卡片' }, '⌖');
-    pin.addEventListener('click', (event) => { event.stopPropagation(); todoDockPinned = !todoDockPinned; renderTodoDock(); });
-    const close = h('button', { class: 'todo-close', attrs: { type: 'button', 'aria-label': '关闭待办卡片' }, title: '关闭待办卡片' }, '×');
-    close.addEventListener('click', (event) => { event.stopPropagation(); todoDockOpen = false; renderTodoDock(); });
-    const head = h('div', { class: 'todo-dock-head' }, title, pin, todoDockOpen ? close : null);
+    const head = h('div', { class: 'todo-dock-head' }, title);
     const card = h('div', { class: 'todo-dock-card' });
     card.hidden = !todoDockOpen;
     card.append(...(rows.length ? rows : [h('div', { class: 'mute todo-empty' }, '暂无项目待办')]));
-    todoDock.classList.toggle('todo-pinned', todoDockPinned);
     todoDock.replaceChildren(head, card);
   };
 
@@ -390,8 +405,8 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const kv = (k: string, v: string | Node, mono = false) => [h('div', { class: 'k' }, k), h('div', { class: `v${mono ? ' mono' : ''}` }, v)];
   const generatedFiles: Array<{ sessionId: string; content: string; ext: string; at: string }> = [];
   const downloadedFiles = new Set<string>();
-  const conversationFiles = (s: NonNullable<typeof store.state.current>): Array<{ path: string; author: 'assistant' | 'user'; at: string }> => {
-    const found = new Map<string, { path: string; author: 'assistant' | 'user'; at: string }>();
+  const conversationFiles = (s: NonNullable<typeof store.state.current>): RelatedFile[] => {
+    const found = new Map<string, RelatedFile>();
     for (const m of s.messages) {
       if (m.role !== 'assistant' && m.role !== 'user') continue;
       for (const hit of m.content.matchAll(/\b(?:src|contracts|tests|docs|scripts)\/[A-Za-z0-9._/-]+/g)) {
@@ -481,15 +496,24 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     }
     ctxp.append(
       h('div', { class: card ? 'h mt20' : 'h' }, h('span', {}, '会话上下文'), h('span', { class: 'mute' }, s?.id ?? '')),
-      h('div', { class: 'chips' }, h('span', { class: `chip ${running ? 'acc' : 'grn'}` }, running ? '运行中' : '空闲'), h('span', { class: 'chip' }, isCli(agent, st) ? '外部 CLI' : '内置 agent'), h('span', { class: 'chip perm' }, MODE_LABELS[st?.permissionMode ?? 'ask'])),
+      h('div', { class: 'chips' }, h('span', { class: `chip ${running ? 'acc' : 'grn'}` }, running ? '运行中' : '空闲'), h('span', { class: 'chip', attrs: { title: agentName(agent, st) } }, agentName(agent, st)), h('span', { class: 'chip perm' }, MODE_LABELS[st?.permissionMode ?? 'ask'])),
       ...(orphanBlock ? [orphanBlock] : []),
-      ...kv('Agent', agentName(agent, st)),
       ...kv('工作目录', store.state.project?.root ?? '未打开项目', true),
       ...(cliId ? kv('CLI 会话（续接）', s?.cliSessions?.[cliId] ?? '首轮后建立', true) : []),
       h('hr'));
 
     const filesInConversation = s ? conversationFiles(s) : [];
     const codeDownloads = s ? generatedFiles.filter((file) => file.sessionId === s.id) : [];
+    const relatedByPath = new Map<string, RelatedFile>();
+    const addRelated = (file: RelatedFile) => {
+      const key = file.path.replace(/\\/g, '/').toLowerCase();
+      if (file.path && !relatedByPath.has(key)) relatedByPath.set(key, file);
+    };
+    filesInConversation.forEach(addRelated);
+    const latestAt = s?.messages.at(-1)?.createdAt ?? new Date(0).toISOString();
+    for (const diff of store.state.diffs) if (diff.path) addRelated({ path: diff.path, author: 'assistant', at: latestAt });
+    for (const path of files) addRelated({ path, author: 'user', at: latestAt });
+    const relatedFiles = [...relatedByPath.values()];
     const renderCodeDownloads = codeDownloads.length
       ? h('div', { class: 'v ctx-files ctx-generated-files' }, ...codeDownloads.map((file) => {
         const stamp = file.at.replace(/[-:TZ.]/g, '').slice(0, 14);
@@ -502,7 +526,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       }))
       : h('div', { class: 'v ctx-empty' }, '暂无代码块下载文件');
     if (codeDownloads.length) ctxp.append(h('div', { class: 'k' }, `代码块下载 · ${codeDownloads.length}`), renderCodeDownloads);
-    const renderFiles = (files: typeof filesInConversation, emptyText: string) => files.length
+    const renderFiles = (files: RelatedFile[], emptyText: string) => files.length
       ? h('div', { class: 'v ctx-files' }, ...files.map((file) => {
         const ext = file.path.split('.').pop()?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'txt';
         const stamp = file.at.replace(/[-:TZ.]/g, '').slice(0, 14) || String(Date.now());
@@ -523,10 +547,11 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         return row;
       }))
       : h('div', { class: 'v ctx-empty' }, emptyText);
+    ctxp.append(h('div', { class: 'k' }, `相关文件 · ${relatedFiles.length}`), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
     const currentFavorites = s ? listFavorites().filter((f) => f.sessionId === s.id) : [];
     const sessionId = s?.id ?? '';
     const favoriteLinks = h('div', { class: 'v ctx-favorites' }, ...currentFavorites.map((f) => {
-      const link = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '跳转到收藏回答' },
+      const link = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '跳转到收藏消息' },
         icon(f.text.includes('```') ? 'code' : 'text', 13), h('span', {}, f.text.replace(/\s+/g, ' ').slice(0, 100)));
       link.addEventListener('click', () => {
         chat.focusMessage(f.id.slice(sessionId.length + 1));
@@ -535,9 +560,16 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         link.classList.add('ctx-favorite-jump');
         window.setTimeout(() => link.classList.remove('ctx-favorite-jump'), 1400);
       });
+      const edit = h('button', { class: 'ctx-favorite-edit', attrs: { type: 'button', 'aria-label': '编辑收藏' }, title: '编辑收藏快照' }, '✎');
+      edit.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const value = window.prompt('编辑收藏快照（不会修改原始消息；首尾空格会自动去除）', f.text);
+        if (value === null) return;
+        if (!updateFavorite(f.id, value)) chat.notify('收藏内容不能为空', 'info');
+      });
       const remove = h('button', { class: 'ctx-favorite-remove', attrs: { type: 'button', 'aria-label': '删除收藏' }, title: '删除收藏' }, '×');
       remove.addEventListener('click', (event) => { event.stopPropagation(); removeFavorite(f.id); });
-      return h('div', { class: 'ctx-favorite-row' }, link, remove);
+      return h('div', { class: 'ctx-favorite-row' }, link, edit, remove);
     }));
     ctxp.append(h('div', { class: 'h ctx-section-title' }, h('span', {}, '收藏'), h('span', { class: 'mute' }, String(currentFavorites.length))), favoriteLinks);
 

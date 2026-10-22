@@ -252,7 +252,7 @@ async function bootstrap(): Promise<void> {
     addFavorite: async (messageId) => {
       const current = store.state.current;
       const message = current?.messages.find((m) => m.id === messageId);
-      if (!current || !message || message.role !== 'assistant') return;
+      if (!current || !message || (message.role !== 'assistant' && message.role !== 'user')) return;
       toggleFavorite({ id: favoriteId(current.id, message.id), sessionId: current.id, sessionTitle: current.title, text: message.content, at: Date.now() });
     },
   });

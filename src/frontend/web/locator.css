@@ -2,15 +2,10 @@
  * 层级：操作条 > 修改记录卡片 > 工具条 > 悬停框 > 临时标记层；原生 modal 弹窗打开时节点挂入弹窗进入 Top Layer。 */
 .loc-action-bar{z-index:2147483647}
 .loc-record-panel{z-index:2147483646}
-.loc-bar{z-index:2147483645}
 .loc-box{z-index:2147483644}
 .loc-record-layer{z-index:2147483643}
 [data-locator-ui][hidden]{display:none !important}
 
-.loc-bar{position:fixed;right:16px;bottom:44px;display:flex;align-items:center;gap:8px;background:var(--color-background-primary);border:var(--border-width-regular) solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:6px 8px;box-shadow:var(--shadow-lg);font:var(--font-caption)/1.4 var(--sans);color:var(--color-text-primary)}
-.loc-chip{color:var(--color-text-tertiary);font-size:11px}
-.loc-toggle{border:var(--border-width-regular) solid var(--color-border-secondary);background:var(--color-background-primary);border-radius:var(--border-radius-md);height:28px;padding:0 12px;cursor:pointer;font-weight:var(--font-weight-semibold);color:var(--color-text-secondary)}
-.loc-toggle.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .loc-active,.loc-active *{cursor:crosshair !important}
 .loc-active [data-locator-ui],.loc-active [data-locator-ui] *{cursor:default !important}
 .loc-active button[data-locator-ui],.loc-active [data-locator-ui] button,.loc-active [data-locator-ui] button *{cursor:pointer !important}

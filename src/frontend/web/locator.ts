@@ -101,11 +101,6 @@ export function mountLocator(): void {
   const box = mk('div', 'loc-box');
   const tip = mk('div', 'loc-tip');
   box.append(tip);
-  // ── 右下角开关 ──
-  const toggle = mk('button', 'loc-toggle', 'UI 定位');
-  toggle.title = 'Alt+Q 开关：悬停高亮元素，点击查看源文件与选择器并记录修改';
-  const bar = mk('div', 'loc-bar');
-  bar.append(mk('span', 'loc-chip', 'Web 预览 · 只读模拟'), toggle);
   // ── 固定操作条 ──
   const actionBar = mk('div', 'loc-action-bar');
   const actionRow = mk('div', 'loc-action-row');
@@ -140,7 +135,7 @@ export function mountLocator(): void {
   // ── 临时标记覆盖层 ──
   const recordLayer = mk('div', 'loc-record-layer');
 
-  const locatorElements: HTMLElement[] = [box, recordPanel, bar, actionBar, recordLayer];
+  const locatorElements: HTMLElement[] = [box, recordPanel, actionBar, recordLayer];
   for (const el of locatorElements) document.body.append(el);
 
   let on = false;
@@ -152,6 +147,16 @@ export function mountLocator(): void {
   const isUi = (t: EventTarget | null) => t instanceof Element && t.closest(`[${UI_ATTR}]`) !== null;
   const flash = (el: HTMLElement, text: string) => {
     el.textContent = text;
+  };
+  let clipboardSync: Promise<void> = Promise.resolve();
+  let clipboardRevision = 0;
+  const syncRecordsClipboard = () => {
+    const revision = ++clipboardRevision;
+    const snapshot = formatRecords(records);
+    clipboardSync = clipboardSync.then(() => navigator.clipboard.writeText(snapshot)).then(
+      () => { if (revision === clipboardRevision) flash(recStatus, '已同步到剪贴板'); },
+      () => { if (revision === clipboardRevision) flash(recStatus, '剪贴板同步失败'); },
+    );
   };
 
   const sync = () => {
@@ -166,8 +171,6 @@ export function mountLocator(): void {
 
   const setOn = (v: boolean) => {
     on = v;
-    toggle.classList.toggle('on', v);
-    toggle.textContent = v ? 'UI 定位：开（Alt+Q）' : 'UI 定位';
     document.documentElement.classList.toggle('loc-active', v);
     if (!v) box.hidden = true;
     sync();
@@ -230,6 +233,7 @@ export function mountLocator(): void {
         rec.marker?.remove();
         renderRecords();
         recStatus.textContent = '';
+        syncRecordsClipboard();
       });
       const text = mk('code', `loc-record-text ${rec.action === '修改' ? 'modify' : 'remove'}`, formatRecord(i + 1, rec.action, rec.note, rec.selector));
       row.append(del, text);
@@ -246,6 +250,7 @@ export function mountLocator(): void {
     records.push(rec);
     placeMarker(rec);
     renderRecords();
+    syncRecordsClipboard();
   };
 
   btnCopyAll.addEventListener('click', () => {
@@ -362,7 +367,6 @@ export function mountLocator(): void {
   };
 
   // ── 事件 ──
-  toggle.addEventListener('click', () => setOn(!on));
   const block = (ev: Event) => {
     if (!on || isUi(ev.target)) return;
     ev.preventDefault();

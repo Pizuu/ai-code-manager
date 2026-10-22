@@ -65,7 +65,8 @@ export function installContextMenu(hooks: ContextMenuHooks): void {
     if (target.closest('textarea, input, select, [contenteditable="true"]')) return;
     const r = resolveSource(target, hooks);
     const assistantId = target.closest('article.turn.assistant')?.querySelector<HTMLElement>('.msg[data-id]')?.dataset.id;
-    if (!r && !assistantId) {
+    const userMessageId = target.closest<HTMLElement>('article.turn.user[data-id]')?.dataset.id;
+    if (!r && !assistantId && !userMessageId) {
       close();
       return;
     }
@@ -76,6 +77,7 @@ export function installContextMenu(hooks: ContextMenuHooks): void {
     if (r?.selected) {
       if (hooks.addTodo && target.closest('#wb-session')) items.push(item('加入待办', '添加到当前任务会话', () => void hooks.addTodo?.(r.selected)));
     }
+    if (userMessageId && hooks.addFavorite) items.push(item('加入收藏', '收藏这条用户消息', () => void hooks.addFavorite?.(userMessageId)));
     if (assistantId && hooks.addFavorite) items.push(item('加入收藏', '收藏这条回答', () => void hooks.addFavorite?.(assistantId)));
     if (r?.selected) items.push(item('复制', '', () => void navigator.clipboard.writeText(r.selected).catch(() => undefined)));
     menu.replaceChildren(...items);

@@ -34,6 +34,19 @@
 
 - [ ] CHK011 Can every success criterion be evaluated objectively without relying on implementation-specific details? [Acceptance Criteria, Spec §Success Criteria]
 
+## Additional Review Topics
+
+- [ ] CHK012 Are the three related-file sources, duplicate-path behavior, and empty state clear enough to produce a consistent file list? [Completeness, Spec §US5, FR-014]
+- [ ] CHK013 Is the fixed-height tool detail area sufficiently specified for short and long content and for narrow/short windows? [Gap, Spec §US4, FR-012]
+- [ ] CHK014 Is Escape behavior clear when an editor prompt, confirmation, or other dialog is already open? [Coverage, Spec §US5, FR-015]
+- [ ] CHK015 Are the estimate basis, exclusions, update timing, and visible approximate label clear enough that users will not mistake it for actual model usage? [Clarity, Spec §US6, FR-016–FR-017]
+- [ ] CHK016 Does the “currently in use” marker clearly mean the default for new sessions rather than a session-level Agent override? [Clarity, Spec §US6, FR-013]
+- [ ] CHK017 Does removing the pin/close controls leave an unambiguous way to collapse and reopen the project todo card? [Coverage, Spec §US7, FR-018]
+- [ ] CHK018 Is the additional API/CLI entry in the CLI model menu clearly distinguished from model choices, while preserving all existing model-selection options? [Clarity, Spec §US3, FR-019]
+- [ ] CHK019 Does the requirement distinguish removing only the floating locator bar from preserving the Alt+Q shortcut, action bar, and record panel? [Completeness, Spec §US8, FR-020]
+- [ ] CHK020 Is the user-designated context item to remove identifiable and distinct from the Agent name and other required context? [Clarity, Spec §US9, FR-022–FR-023]
+- [ ] CHK021 Does moving the quick tutorial entry below Settings preserve a discoverable, usable rail order? [Coverage, Spec §US9, FR-024]
+
 ## Notes
 
 - All checklist items remain unchecked until reviewed by an independent reviewer.

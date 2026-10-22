@@ -19,7 +19,7 @@
 | 003 | 只读代码查看、全局「发送到任务会话」、Web 预览 UI 定位、agent 配置默认空白 | `specs/003-code-view-web-locator/` | 已实现，converge 追加 2 项（T213 Web 预览服务器自动化冒烟、T214 Windows 打包核对） |
 | 004 | 斜杠命令菜单键盘选择 | `specs/004-slash-keyboard-select/` | Draft（T401–T404 待执行） |
 | 005 | 审批通知提醒器 | `specs/005-approval-notifier/` | 功能任务 T501–T509 已完成（规格头状态仍为 Draft） |
-| 006 | 会话消息交互改进 | `specs/006-chat-interactions/` | Draft（实现任务待执行） |
+| 006 | 会话交互与工作区体验改进 | `specs/006-chat-interactions/` | Draft（实现任务待执行） |
 
 ## 4. 需求编号
 

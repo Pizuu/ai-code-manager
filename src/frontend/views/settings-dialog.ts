@@ -53,9 +53,9 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   // 标签排序仍按「使用中在前」：使用中 = 当前默认 agent（defaultAgent，缺省 'builtin'）所属类排到最左。
   // acc 只表示当前打开的页，与默认 agent 所属类相互独立；标签上不再渲染「使用中」标记。
   const da = s.defaultAgent ?? 'builtin';
-  const tabBtn = (id: SettingsTab, label: string) => h('button', { class: `chip${id === tab ? ' acc' : ''}`, attrs: { type: 'button' }, on: { click: () => openSettings(id) } }, label);
-  const modelTabBtn = tabBtn('model', 'API');
-  const cliTabBtn = tabBtn('cli', 'Agent CLI');
+  const tabBtn = (id: SettingsTab, label: string, inUse: boolean) => h('button', { class: `chip${id === tab ? ' acc' : ''}`, attrs: { type: 'button' }, on: { click: () => openSettings(id) } }, label, inUse ? h('span', { class: 'cfg-current' }, '使用中') : null);
+  const modelTabBtn = tabBtn('model', 'API', da === 'builtin');
+  const cliTabBtn = tabBtn('cli', 'Agent CLI', da.startsWith('cli:'));
   const tabs = h('div', { class: 'dtabs' }, ...(da === 'builtin'
     ? [modelTabBtn, cliTabBtn]
     : [cliTabBtn, modelTabBtn]));
@@ -112,11 +112,15 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   const testStatus = h('div', { class: 'api-test-result', attrs: { role: 'status' } });
   const keyHelp = h('div', { class: 'help' });
   const removeKey = h('button', { class: 'btn danger', attrs: { type: 'button' } }, '删除已保存的 Key');
+  const savedProjectPath = store.state.settings?.lastProjectPath ?? null;
+  const hasSavedProject = Boolean(savedProjectPath);
   const savedProject = h('div', { class: 'cli-item saved-project' },
-    h('div', { class: 'grow0' },
-      h('div', { class: 'fx8' }, h('b', {}, '已保存项目'), h('span', { class: 'chip grn' }, store.state.settings?.lastProjectPath ? '已保存' : '未选择')),
-      h('div', { class: 'mono' }, store.state.settings?.lastProjectPath ?? '尚未选择项目')),
-    store.state.settings?.lastProjectPath ? h('span', { class: 'mute' }, '当前项目配置将用于 API 会话') : null);
+    h('div', { class: 'grow0 saved-project-main' },
+      h('div', { class: 'fx8 saved-project-title' },
+        h('span', { class: `saved-project-dot ${hasSavedProject ? 'saved' : 'empty'}`, attrs: { title: hasSavedProject ? '项目路径已保存' : '尚未选择项目', 'aria-label': hasSavedProject ? '项目路径已保存' : '尚未选择项目' } }),
+        h('b', {}, '已保存项目')),
+      h('div', { class: 'mono saved-project-path' }, savedProjectPath ?? '尚未选择项目')),
+    h('span', { class: 'mute saved-project-hint' }, hasSavedProject ? '当前项目配置将用于 API 会话' : '打开项目后会自动保存项目路径'));
 
   const refreshKeyState = () => {
     const p = provider.value as ProviderId;

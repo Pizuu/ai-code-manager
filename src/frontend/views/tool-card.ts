@@ -76,18 +76,18 @@ export function renderToolCard(call: ToolCallRecord, approval: ApprovalRequest |
   const showInput = content && call.diff ? { ...call.input, content: `（${content.length} 字符，见 Diff）` } : call.input;
   const rows = toolParamRows(showInput);
   if (rows.length) {
-    card.append(h('details', {},
-      h('summary', {}, `参数（${rows.length} 项）`),
-      h('div', { class: 'params' }, ...rows.map((r) => h('div', { class: 'prow' },
+    card.append(h('details', { class: 'tool-payload' },
+      h('summary', { class: 'tool-payload-summary', attrs: { title: '展开工具参数', 'aria-label': `工具参数，${rows.length} 项` } }, icon('caret', 13)),
+      h('div', { class: 'tool-payload-content params' }, ...rows.map((r) => h('div', { class: 'prow' },
         h('span', { class: 'k' }, r.label),
         h('span', { class: 'v', title: r.value }, r.value))))));
   }
   if (call.output) {
     const text = formatToolOutput(call.output);
     const lines = outputLineCount(text);
-    card.append(h('details', {},
-      h('summary', {}, `结果（${lines} 行）`),
-      h('pre', {}, text)));
+    card.append(h('details', { class: 'tool-payload' },
+      h('summary', { class: 'tool-payload-summary', attrs: { title: '展开工具结果', 'aria-label': `工具结果，${lines} 行` } }, icon('caret', 13)),
+      h('pre', { class: 'tool-payload-content' }, text)));
   }
   if (call.status === 'awaiting-approval' && approval) {
     // 文案按种类区分（T128）；未知种类回退为权限名 + 模式，始终需要用户点击，不自动批准

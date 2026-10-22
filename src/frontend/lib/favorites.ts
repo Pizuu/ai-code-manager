@@ -1,16 +1,16 @@
 /**
- * 回答收藏（纯前端状态）：收藏的 assistant 回答存 localStorage，跨会话/重启保留。
+ * 消息收藏（纯前端状态）：保存消息快照存 localStorage，跨会话/重启保留。
  * chat 的收藏按钮与 shell 的收藏栏共用本模块，变更经 onFavoritesChanged 广播。
  * 存储不可用（如测试环境无 localStorage）时退化为内存态，不抛错。
  * 落盘为批量合并：变更先落内存态并立即广播，写入经微任务合并（同一拍多次变更只写一次）；
  * 页面关闭 / 隐藏前若有待写数据，同步冲刷一次兜底。
  */
 export interface Favorite {
-  /** `${sessionId}:${messageId}`，同一回答唯一。 */
+  /** `${sessionId}:${messageId}`，同一来源消息唯一。 */
   id: string;
   sessionId: string;
   sessionTitle: string;
-  /** 回答全文（收藏栏展示时截断，跳转靠 sessionId）。 */
+  /** 消息快照全文（收藏栏展示时截断，跳转靠 sessionId 与 messageId）。 */
   text: string;
   /** 收藏时间（epoch ms）。 */
   at: number;
@@ -131,6 +131,7 @@ export function toggleFavorite(fav: Favorite): boolean {
     changed();
     return false;
   }
+  if (!fav.text) return false;
   list.push(fav);
   if (list.length > MAX_FAVORITES) {
     // 超上限：按收藏时间从旧到新裁掉多余条目（刚新增的这条不裁）。
@@ -156,6 +157,18 @@ export function removeFavorite(id: string): void {
   if (i < 0) return;
   list.splice(i, 1);
   changed();
+}
+
+/** 编辑已保存的收藏快照，不修改来源会话中的原始消息；两端空白去除，空文本拒绝保存。 */
+export function updateFavorite(id: string, text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) return false;
+  const favorite = load().find((item) => item.id === id);
+  if (!favorite) return false;
+  if (favorite.text === normalized) return true;
+  favorite.text = normalized;
+  changed();
+  return true;
 }
 
 /** 订阅收藏变更，返回退订函数。 */

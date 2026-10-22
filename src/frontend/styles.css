@@ -719,6 +719,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 #settings-dialog .dtabs .chip{height:auto;padding:6px 10px;margin-bottom:-1px;border-radius:0;background:transparent;color:var(--mute);font-size:var(--font-body);box-shadow:inset 0 -2px 0 transparent;cursor:pointer}
 #settings-dialog .dtabs .chip:hover{color:var(--ink)}
 #settings-dialog .dtabs .chip.acc{background:transparent;color:var(--accent);font-weight:var(--font-weight-semibold);box-shadow:inset 0 -2px 0 var(--accent)}
+#settings-dialog .cfg-current{display:inline-flex;align-items:center;margin-left:6px;padding:2px 5px;border-radius:var(--border-radius-xs);background:var(--color-background-success);color:var(--color-text-success);font-size:10px;line-height:1.2}
 .field label{font-size:var(--font-caption);color:var(--color-text-secondary)}
 .field input,.field select{height:var(--h-ctl);font-size:var(--font-body);border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md)}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--color-border-primary)}
@@ -1108,3 +1109,39 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 
 /* 审批卡定位高亮（chat.ts focusApproval，与看板 .card.flash 同口径） */
 .appr-flash{outline:2px solid var(--accent);outline-offset:2px}
+
+
+/* T-054：待办/收藏定位后立即聚焦目标回合，并短暂突出用户气泡与命中文本。 */
+.turn.user.ctx-focus .ubub{outline:2px solid var(--color-border-info);outline-offset:3px;animation:ctx-bubble-focus 1.4s ease-out}
+
+/* T-056：模型入口左侧的 API/CLI 来源选择器，与页脚控件共享高度和焦点样式。 */
+.comp .ft .agent-pick{flex:none;max-width:148px;height:28px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 9px;border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-secondary);font:inherit;cursor:pointer}
+.comp .ft .agent-pick::after{content:' ▾';color:var(--color-text-tertiary)}
+.comp .ft .agent-pick:hover:not(:disabled){background:var(--color-background-secondary);color:var(--color-text-primary)}
+.comp .ft .agent-pick:disabled{opacity:.55;cursor:not-allowed}
+.agent-menu{min-width:236px;max-width:min(360px,calc(100vw - 16px))}
+.agent-menu .mi{min-width:220px}
+.model-menu .mi:disabled{opacity:.5;cursor:not-allowed}
+/* T-054/T-056：编辑动作不改变原始消息/待办来源，窄栏仍保留点击跳转区域。 */
+.todo-edit,.ctx-favorite-edit{flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--border-radius-sm);background:transparent;color:var(--color-text-tertiary);cursor:pointer}
+.todo-edit:hover,.ctx-favorite-edit:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+/* 工具参数和结果仍可折叠查看；只收起冗余文字标题，内容超长时在卡片内滚动。 */
+.tool-payload{min-width:0}
+.tool-payload-summary{display:flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;list-style:none;color:var(--color-text-tertiary);cursor:pointer}
+.tool-payload-summary::-webkit-details-marker{display:none}
+.tool-payload-summary:hover{color:var(--color-text-primary)}
+.tool-payload-summary svg{transition:transform .16s ease}
+.tool-payload[open]>.tool-payload-summary svg{transform:rotate(180deg)}
+.tool-payload-content{max-height:220px;overflow:auto}
+.tool-payload-content.params{min-width:0}
+.turn.user.ctx-focus .ubub{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent)}
+@media(max-width:900px){.comp .ft .agent-pick{max-width:104px;padding:0 6px}.agent-menu{min-width:210px}.agent-menu .mi{min-width:194px}}
+
+/* API 设置：保存项目作为独立信息行，与下方配置字段分隔；状态点与 CLI 检查状态保持视觉一致。 */
+#settings-dialog .saved-project{display:flex;flex-direction:column;align-items:stretch;gap:7px;width:100%;min-width:0;padding:0 0 12px;margin:0 0 4px;border:0;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary);border-radius:0;background:transparent}
+#settings-dialog .saved-project-main{min-width:0}
+#settings-dialog .saved-project-title{align-items:center;gap:8px}
+#settings-dialog .saved-project-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--color-text-tertiary)}
+#settings-dialog .saved-project-dot.saved{background:var(--color-text-success)}
+#settings-dialog .saved-project-path{overflow-wrap:anywhere;word-break:break-word}
+#settings-dialog .saved-project-hint{margin-left:16px}

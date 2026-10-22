@@ -5,7 +5,7 @@
  * v1.8：改为主流对话样式（回合制）——用户消息为右侧气泡，助手消息为「头部（头像 / 名称 / 时间 / 操作）+
  * 正文」的回合；工具调用收进可折叠的「思考」区（默认折叠，有待批准时自动展开，见 lib/chat-turn.ts）。
  */
-import type { BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
+import type { AgentRef, BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
 import { agentName, isCli } from '../lib/agent-label.ts';
@@ -17,12 +17,14 @@ import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
+import { estimateConversationTokens } from '../lib/token-estimate.ts';
 import { parseSlashCommand, suggestCommands, type SlashCommandInfo } from '../lib/slash-commands.ts';
 import { filledTextFor, isPrimedText, wrapIndex } from '../lib/slash-menu.ts';
 import { store } from '../store.ts';
 import { renderToolCard, type DiffRenderer } from './tool-card.ts';
 
 export const MODE_LABELS: Readonly<Record<PermissionMode, string>> = { ask: '每次询问', 'auto-edits': '自动批准编辑', plan: '仅规划（只读）', 'allow-all': '全部允许（免审批）' };
+const MESSAGE_FOCUS_MS = 1400;
 
 async function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
@@ -163,9 +165,13 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const modelPick = h('span', { class: 'model-pick', title: '本会话的 CLI 模型（点击切换，下一轮生效）', attrs: { role: 'button', tabindex: '0' } },
     h('span', { class: 'md-sel' }, modelLabel, h('span', { class: 'mute vmid' }, icon('caret'))));
   modelPick.hidden = true;
+  const agentPick = h('button', { class: 'agent-pick', attrs: { type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false' } }, 'API');
+  agentPick.hidden = true;
   const modelMenu = h('div', { class: 'ctxmenu model-menu', attrs: { role: 'menu' } });
   modelMenu.hidden = true;
-  document.body.append(modelMenu);
+  const agentMenu = h('div', { class: 'ctxmenu model-menu agent-menu', attrs: { role: 'menu', 'aria-label': '切换 API 或 CLI' } });
+  agentMenu.hidden = true;
+  document.body.append(modelMenu, agentMenu);
   /** 菜单当前锚定的会话与 CLI；会话切换后由 renderHeader 关闭过期菜单。 */
   let modelMenuFor: { sessionId: string; cliId: string } | null = null;
   let modelMenuMode: 'list' | 'custom' = 'list';
@@ -175,13 +181,19 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     modelMenu.hidden = true;
     modelMenuFor = null;
   };
+  let agentMenuSessionId: string | null = null;
+  const closeAgentMenu = () => {
+    agentMenu.hidden = true;
+    agentMenuSessionId = null;
+    agentPick.setAttribute('aria-expanded', 'false');
+  };
   /** 待发送附件托盘（.box 内、textarea 上方）：选好的文件先停在这里，点发送时才拼进消息文本。 */
   const attray = h('div', { class: 'attray' });
   attray.hidden = true;
   const comp = h('div', { class: 'comp' },
     slashMenu,
     h('div', { class: 'box' }, primebar, attray, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
-    h('div', { class: 'ft' }, ctxUsage, modelPick, modeSel));
+    h('div', { class: 'ft' }, ctxUsage, agentPick, modelPick, modeSel));
   container.append(thd, log, comp);
 
 
@@ -361,7 +373,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
    * 正文为空（纯附件消息）时不渲染气泡；回合按钮仍作用于整条 m（content 原文，含引用块）。 */
   const userTurn = (m: ChatMessage): HTMLElement => {
     const { text, attachments } = splitMessageAttachments(m.content);
-    return h('article', { class: `turn user${turnFolded.has(m.id) ? ' folded' : ''}` },
+    return h('article', { class: `turn user${turnFolded.has(m.id) ? ' folded' : ''}`, attrs: { 'data-id': m.id } },
       attachments.length ? h('div', { class: 'ubub-atts' }, ...attachments.map((a) => attChip(a, false))) : null,
       text ? h('div', { class: 'ubub-row' }, h('div', { class: 'ubub' }, text)) : null,
       h('div', { class: 'turn-ft' }, userTurnActions(m), h('span', { class: 'turn-tm' }, hm(m.createdAt))));
@@ -468,28 +480,65 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
 
   const focusMessage = (messageId: string, sourceText?: string): void => {
     const message = log.querySelector(`.msg[data-id="${CSS.escape(messageId)}"]`);
-    const target = message?.closest('.turn');
+    const target = log.querySelector<HTMLElement>(`.turn.user[data-id="${CSS.escape(messageId)}"]`)
+      ?? message?.closest<HTMLElement>('.turn');
     if (!(target instanceof HTMLElement)) return;
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const logRect = log.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    log.scrollTop += targetRect.top - logRect.top - (log.clientHeight - targetRect.height) / 2;
     target.classList.remove('ctx-focus');
     void target.offsetWidth;
     target.classList.add('ctx-focus');
-    window.setTimeout(() => target.classList.remove('ctx-focus'), 1400);
-    if (message && sourceText?.trim()) {
-      const walker = document.createTreeWalker(message, NodeFilter.SHOW_TEXT);
+    window.setTimeout(() => target.classList.remove('ctx-focus'), MESSAGE_FOCUS_MS);
+    const content = target.querySelector('.msg .md') ?? target.querySelector('.ubub') ?? message;
+    if (content && sourceText?.trim()) {
+      const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+      const nodes: Array<{ node: Text; start: number; end: number }> = [];
+      let rawText = '';
       let node: Text | null;
       while ((node = walker.nextNode() as Text | null)) {
-        const value = node.nodeValue ?? '';
-        const start = value.indexOf(sourceText);
-        if (start < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, start);
-        range.setEnd(node, start + sourceText.length);
-        const mark = document.createElement('mark');
-        mark.className = 'source-highlight';
-        range.surroundContents(mark);
-        window.setTimeout(() => mark.replaceWith(document.createTextNode(mark.textContent ?? '')), 1400);
-        break;
+        const start = rawText.length;
+        rawText += node.nodeValue ?? '';
+        nodes.push({ node, start, end: rawText.length });
+      }
+      // Markdown may split one source phrase across inline nodes or wrap whitespace across lines.
+      // Normalize whitespace while retaining offsets into the original text-node sequence.
+      let normalizedText = '';
+      const offsets: Array<{ start: number; end: number }> = [];
+      for (let i = 0; i < rawText.length;) {
+        if (/\s/.test(rawText[i] ?? '')) {
+          const start = i;
+          while (i < rawText.length && /\s/.test(rawText[i] ?? '')) i++;
+          normalizedText += ' ';
+          offsets.push({ start, end: i });
+        } else {
+          normalizedText += rawText[i] ?? '';
+          offsets.push({ start: i, end: i + 1 });
+          i++;
+        }
+      }
+      const needle = sourceText.trim().replace(/\s+/g, ' ');
+      const matchStart = normalizedText.indexOf(needle);
+      if (matchStart >= 0 && needle) {
+        const rawStart = offsets[matchStart]?.start;
+        const rawEnd = offsets[matchStart + needle.length - 1]?.end;
+        if (rawStart !== undefined && rawEnd !== undefined) {
+          const segments = nodes.flatMap((entry) => {
+            const start = Math.max(rawStart, entry.start);
+            const end = Math.min(rawEnd, entry.end);
+            return end > start ? [{ node: entry.node, start: start - entry.start, end: end - entry.start }] : [];
+          });
+          // Wrap from right to left so each range remains within a single text node and prior offsets stay valid.
+          for (const segment of segments.reverse()) {
+            const range = document.createRange();
+            range.setStart(segment.node, segment.start);
+            range.setEnd(segment.node, segment.end);
+            const mark = document.createElement('mark');
+            mark.className = 'source-highlight';
+            range.surroundContents(mark);
+            window.setTimeout(() => mark.replaceWith(document.createTextNode(mark.textContent ?? '')), MESSAGE_FOCUS_MS);
+          }
+        }
       }
     }
   };
@@ -530,17 +579,17 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     stopBtn.hidden = !running;
     sendBtn.disabled = running || !s;
     thTitle.textContent = s ? s.title : '';
-    // 当前会话累计 token 用量（s.usage，后端聚合的 opencode 会话用量；内置 agent 无此字段 → 隐藏）。
-    const usage = s?.usage;
-    if (usage && usage.total > 0) {
-      ctxUsage.hidden = false;
-      ctxUsage.textContent = `Tokens ${fmtTokens(usage.total)}`;
-      ctxUsage.title = `累计 token：输入 ${usage.input} · 输出 ${usage.output} · 推理 ${usage.reasoning} · 缓存读 ${usage.cacheRead} / 写 ${usage.cacheWrite}`;
-    } else {
-      ctxUsage.hidden = true;
-    }
+    const estimatedTokens = s ? estimateConversationTokens(s.messages) : 0;
+    ctxUsage.hidden = !s;
+    ctxUsage.textContent = `约 ${fmtTokens(estimatedTokens)} tokens`;
+    ctxUsage.title = '对话文本 Token 数估算值，仅供参考；不包含系统提示词及模型隐藏开销。';
     textarea.placeholder = ``;
     if (st) modeSel.value = st.permissionMode;
+    agentPick.hidden = !s;
+    agentPick.disabled = running;
+    agentPick.textContent = agentDisplayName(agent, st?.agentClis ?? []);
+    agentPick.title = running ? '会话运行中不可切换 Agent' : '切换 API / CLI（同时应用到当前会话和新会话默认值）';
+    if (agentMenuSessionId && agentMenuSessionId !== s?.id) closeAgentMenu();
     // CLI 与内置 API 会话都显示模型切换器；CLI 打开候选模型菜单，API 打开设置页。
     if (s && cli) {
       modelPick.hidden = false;
@@ -644,8 +693,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
   };
 
-  const modelMenuItem = (label: string, sub: string, checked: boolean, fn: () => void) =>
-    h('button', { class: 'mi', attrs: { type: 'button', role: 'menuitem' }, on: { click: fn } },
+  const modelMenuItem = (label: string, sub: string, checked: boolean, fn: () => void, disabled = false) =>
+    h('button', { class: 'mi', attrs: { type: 'button', role: 'menuitem', ...(disabled ? { disabled: '' } : {}) }, on: { click: fn } },
       h('span', {}, `${checked ? '✓ ' : ''}${label}`), sub ? h('span', { class: 'mute' }, sub) : null);
 
   const positionModelMenu = () => {
@@ -656,6 +705,95 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     // 底栏在窗口底部，菜单优先向上展开；放不下再向下。
     const above = r.top - rect.height - 4;
     modelMenu.style.top = `${above >= 4 ? above : Math.max(4, Math.min(r.bottom + 4, H - rect.height - 4))}px`;
+  };
+
+  const positionAgentMenu = () => {
+    const r = agentPick.getBoundingClientRect();
+    const rect = agentMenu.getBoundingClientRect();
+    agentMenu.style.left = `${Math.max(4, Math.min(r.left, window.innerWidth - rect.width - 4))}px`;
+    const above = r.top - rect.height - 4;
+    agentMenu.style.top = `${above >= 4 ? above : Math.max(4, Math.min(r.bottom + 4, window.innerHeight - rect.height - 4))}px`;
+  };
+
+  const agentDisplayName = (agent: AgentRef, clis = settings()?.agentClis ?? []): string => agent === 'builtin'
+    ? 'API'
+    : clis.find((cli) => `cli:${cli.id}` === agent)?.name ?? 'CLI 不可用';
+
+  const applyAgent = async (chosen: AgentRef): Promise<void> => {
+    const session = store.state.current;
+    const st = settings();
+    if (!session || !st) return;
+    const sessionId = session.id;
+    const previousDefault = st.defaultAgent ?? 'builtin';
+    if (store.state.running.has(sessionId)) {
+      closeAgentMenu();
+      notify('会话运行中不可切换 Agent', 'info');
+      return;
+    }
+    closeAgentMenu();
+    let defaultUpdated = false;
+    try {
+      store.state.settings = await api.invoke('settings:set', { defaultAgent: chosen });
+      defaultUpdated = true;
+      store.emit('settings');
+      if (store.state.current?.id !== sessionId) throw new Error('当前会话已切换，未应用新的 Agent。');
+      if (store.state.running.has(sessionId)) throw new Error('会话已开始运行，未应用新的 Agent。');
+      const updated = await api.invoke('sessions:setAgent', sessionId, chosen);
+      const summary = store.state.sessions.find((item) => item.id === sessionId);
+      if (summary) summary.agent = updated.agent ?? chosen;
+      if (store.state.current?.id === sessionId) {
+        store.state.current = updated;
+        store.emit('current');
+      }
+      notify(`${agentDisplayName(chosen, st.agentClis ?? [])} 已应用到当前会话和新会话默认值。`, 'info');
+    } catch (error) {
+      if (!defaultUpdated) {
+        notify(errorText(error));
+        renderHeader();
+        return;
+      }
+      try {
+        store.state.settings = await api.invoke('settings:set', { defaultAgent: previousDefault });
+        store.emit('settings');
+        notify(errorText(error));
+        renderHeader();
+      } catch (rollbackError) {
+        const [actualSettings, actualSession] = await Promise.allSettled([
+          api.invoke('settings:get'),
+          api.invoke('sessions:get', sessionId),
+        ]);
+        if (actualSettings.status === 'fulfilled') store.state.settings = actualSettings.value;
+        if (actualSession.status === 'fulfilled') {
+          const summary = store.state.sessions.find((item) => item.id === sessionId);
+          if (summary) summary.agent = actualSession.value.agent ?? 'builtin';
+          if (store.state.current?.id === sessionId) store.state.current = actualSession.value;
+        }
+        store.emit('settings', 'current');
+        notify(`${errorText(error)}；恢复默认 Agent 失败，已刷新可读取的实际状态：${errorText(rollbackError)}`);
+      }
+    }
+  };
+
+  const openAgentMenu = () => {
+    const session = store.state.current;
+    const st = settings();
+    if (!session || !st || store.state.running.has(session.id)) return;
+    closeModelMenu();
+    const current = session.agent ?? st.defaultAgent ?? 'builtin';
+    const choices: Array<{ value: AgentRef; label: string; detail: string }> = [
+      { value: 'builtin', label: 'API', detail: '内置 API 模型与共享权限设置' },
+      ...(st.agentClis ?? []).map((cli) => ({ value: `cli:${cli.id}` as AgentRef, label: cli.name, detail: cli.model ? `CLI · ${cli.model}` : 'CLI · 使用其默认模型' })),
+    ];
+    const items = choices.map(({ value, label, detail }) => h('button', {
+      class: 'mi',
+      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(value === current) },
+      on: { click: () => void applyAgent(value) },
+    }, h('span', {}, `${value === current ? '✓ ' : ''}${label}`), h('span', { class: 'mute' }, detail)));
+    agentMenu.replaceChildren(...items);
+    agentMenuSessionId = session.id;
+    agentMenu.hidden = false;
+    agentPick.setAttribute('aria-expanded', 'true');
+    positionAgentMenu();
   };
 
   /** 候选模型下拉：加载中 / 有候选 / 无候选三态；选中非空值即应用（applySessionModel 内部关菜单）。 */
@@ -695,10 +833,10 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const items: HTMLElement[] = [
       modelMenuItem('CLI 默认', cfgModel ? `解析为配置模型 ${cfgModel}` : '使用 CLI 自身默认模型', !override, () => void applySessionModel(null)),
     ];
-    if (cfgModel) items.push(modelMenuItem(cfgModel, '配置', override === cfgModel, () => void applySessionModel(cfgModel)));
     items.push(buildModelSelect(loading, cfgModel, override));
     const customCurrent = override && override !== cfgModel && !(modelCandidates ?? []).includes(override) ? `当前：${override}` : '';
     items.push(modelMenuItem('自定义…', customCurrent, false, showCustomModelForm));
+    items.push(modelMenuItem('切换 API/CLI…', '同时更新当前会话和新会话默认值', false, () => { closeModelMenu(); openAgentMenu(); }, store.state.running.has(s.id)));
     modelMenu.replaceChildren(...items);
     positionModelMenu();
   };
@@ -760,7 +898,12 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     })();
   };
 
+  agentPick.addEventListener('click', () => {
+    if (agentMenu.hidden) openAgentMenu();
+    else closeAgentMenu();
+  });
   modelPick.addEventListener('click', () => {
+    closeAgentMenu();
     const s = store.state.current;
     const st = settings();
     if (s && !isCli(s.agent ?? st?.defaultAgent ?? 'builtin', st)) {
@@ -773,6 +916,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   modelPick.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' || ev.key === ' ') {
       ev.preventDefault();
+      closeAgentMenu();
       const s = store.state.current;
       const st = settings();
       if (s && !isCli(s.agent ?? st?.defaultAgent ?? 'builtin', st)) {
@@ -785,13 +929,16 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   });
   // 与全局右键菜单同款的关闭方式：点外 / Esc / 失焦 / 缩放时关闭（点切换器本身由其 click 切换，不在此关）。
   document.addEventListener('mousedown', (ev) => {
+    if (!agentMenu.hidden && ev.target instanceof Node && !agentMenu.contains(ev.target) && !agentPick.contains(ev.target)) closeAgentMenu();
     if (!modelMenu.hidden && ev.target instanceof Node && !modelMenu.contains(ev.target) && !modelPick.contains(ev.target)) closeModelMenu();
   });
   document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && !modelMenu.hidden) closeModelMenu();
+    if (ev.key !== 'Escape') return;
+    if (!agentMenu.hidden) closeAgentMenu();
+    else if (!modelMenu.hidden) closeModelMenu();
   });
-  window.addEventListener('blur', closeModelMenu);
-  window.addEventListener('resize', closeModelMenu);
+  window.addEventListener('blur', () => { closeModelMenu(); closeAgentMenu(); });
+  window.addEventListener('resize', () => { closeModelMenu(); closeAgentMenu(); });
 
   // ── 规格 004：斜杠菜单键盘 / 鼠标选择 + 两段式预置 ──
   // 候选签名 = 候选命令名拼接；签名变化（继续输入 / 删除使集合变窄或恢复）时选中项重置到第一条（FR-004）。
