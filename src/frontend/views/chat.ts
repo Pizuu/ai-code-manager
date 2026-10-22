@@ -41,6 +41,9 @@ function enhanceCodeBlocks(root: HTMLElement, autoFold = true, favorite?: { id: 
     const code = pre.querySelector('code');
     if (!code) continue;
     pre.classList.add('code-enhanced');
+    // 语言标签（来自 ``` 标注或自动识别），显示在代码块左上角
+    const langName = code.dataset.lang;
+    if (langName) pre.append(h('span', { class: 'code-lang' }, langName));
     const actions = h('div', { class: 'code-actions' });
     const toggle = h('button', { class: 'code-action', attrs: { type: 'button' }, title: '展开 / 折叠代码', on: { click: () => {
       pre.classList.toggle('collapsed');
@@ -53,7 +56,7 @@ function enhanceCodeBlocks(root: HTMLElement, autoFold = true, favorite?: { id: 
       const blob = new Blob([code.textContent ?? ''], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob); const a = document.createElement('a');
       const lang = [...code.classList].find((name) => name.startsWith('lang-'))?.slice(5).toLowerCase() ?? '';
-      const ext: Readonly<Record<string, string>> = { ts: 'ts', typescript: 'ts', js: 'js', javascript: 'js', json: 'json', css: 'css', html: 'html', xml: 'xml', sh: 'sh', bash: 'sh', shell: 'sh', py: 'py', python: 'py', md: 'md', markdown: 'md', yaml: 'yaml', yml: 'yml', sql: 'sql', java: 'java', go: 'go', rs: 'rs', cpp: 'cpp', c: 'c' };
+      const ext: Readonly<Record<string, string>> = { ts: 'ts', typescript: 'ts', js: 'js', javascript: 'js', json: 'json', css: 'css', html: 'html', xml: 'xml', sh: 'sh', bash: 'sh', shell: 'sh', py: 'py', python: 'py', md: 'md', markdown: 'md', yaml: 'yaml', yml: 'yml', sql: 'sql', java: 'java', go: 'go', rs: 'rs', rust: 'rs', cpp: 'cpp', c: 'c' };
       window.dispatchEvent(new CustomEvent('acm-code-download', { detail: { sessionId: store.state.current?.id ?? '', content: code.textContent ?? '', ext: ext[lang] ?? 'txt', at: new Date().toISOString() } }));
       a.href = url; a.download = `code.${ext[lang] ?? 'txt'}`; a.click(); URL.revokeObjectURL(url);
     } } }, icon('download', 14));

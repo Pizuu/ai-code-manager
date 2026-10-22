@@ -21,7 +21,7 @@ test('a link url cannot break out of the href attribute', () => {
 });
 
 test('renders fenced code blocks escaped, including an unclosed block while streaming', () => {
-  assert.equal(renderMarkdown('```ts\nconst a = 1 < 2;\n```'), '<pre><code class="lang-ts">const a = 1 &lt; 2;</code></pre>');
+  assert.equal(renderMarkdown('```ts\nconst a = 1 < 2;\n```'), '<pre><code class="lang-typescript" data-lang="TypeScript"><span class="tk-kw">const</span> a = <span class="tk-num">1</span> &lt; <span class="tk-num">2</span>;</code></pre>');
   assert.match(renderMarkdown('```\npartial'), /<pre><code>partial<\/code><\/pre>/);
 });
 

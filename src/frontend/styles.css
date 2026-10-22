@@ -1166,3 +1166,21 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 .code-action.code-favorite.on svg{opacity:1;filter:none}
 /* 文件 / 下载条目与收藏条目样式统一 */
 .ctx-file-row .ctx-link,.ctx-generated-files .ctx-link{background:var(--ubub);border:1px solid var(--line);border-radius:var(--border-radius-xl);padding:6px 10px}
+/* 代码高亮（lib/highlight.ts 输出的 tk-* token） */
+.code-lang{position:absolute;top:11px;left:12px;font:10px/1 var(--mono);color:var(--color-text-tertiary);text-transform:none;pointer-events:none;user-select:none}
+.tk-kw{color:#a626a4}
+.tk-str{color:#50a14f}
+.tk-com{color:#a0a1a7;font-style:italic}
+.tk-num{color:#986801}
+.tk-fn{color:#4078f2}
+.tk-type{color:#c18401}
+.tk-key{color:#e45649}
+.tk-var{color:#0184bc}
+@media (prefers-color-scheme: dark){
+  .tk-kw{color:#c678dd}.tk-str{color:#98c379}.tk-com{color:#7f848e}.tk-num{color:#d19a66}
+  .tk-fn{color:#61afef}.tk-type{color:#e5c07b}.tk-key{color:#e06c75}.tk-var{color:#56b6c2}
+}
+:root[data-theme="dark"] .tk-kw{color:#c678dd}:root[data-theme="dark"] .tk-str{color:#98c379}:root[data-theme="dark"] .tk-com{color:#7f848e}:root[data-theme="dark"] .tk-num{color:#d19a66}
+:root[data-theme="dark"] .tk-fn{color:#61afef}:root[data-theme="dark"] .tk-type{color:#e5c07b}:root[data-theme="dark"] .tk-key{color:#e06c75}:root[data-theme="dark"] .tk-var{color:#56b6c2}
+:root[data-theme="light"] .tk-kw{color:#a626a4}:root[data-theme="light"] .tk-str{color:#50a14f}:root[data-theme="light"] .tk-com{color:#a0a1a7}:root[data-theme="light"] .tk-num{color:#986801}
+:root[data-theme="light"] .tk-fn{color:#4078f2}:root[data-theme="light"] .tk-type{color:#c18401}:root[data-theme="light"] .tk-key{color:#e45649}:root[data-theme="light"] .tk-var{color:#0184bc}
