@@ -519,7 +519,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         return button;
       }))
       : h('div', { class: 'v ctx-empty' }, '暂无代码块下载文件');
-    if (codeDownloads.length) ctxp.append(h('div', { class: 'k' }, `代码块下载 · ${codeDownloads.length}`), renderCodeDownloads);
+    if (codeDownloads.length) ctxp.append(h('div', { class: 'k' }, `下载 · ${codeDownloads.length}`), renderCodeDownloads);
     const renderFiles = (files: RelatedFile[], emptyText: string) => files.length
       ? h('div', { class: 'v ctx-files' }, ...files.map((file) => {
         const ext = file.path.split('.').pop()?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'txt';
@@ -541,7 +541,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
         return row;
       }))
       : h('div', { class: 'v ctx-empty' }, emptyText);
-    ctxp.append(h('div', { class: 'k' }, `相关文件 · ${relatedFiles.length}`), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
+    ctxp.append(h('div', { class: 'k' }, `文件 · ${relatedFiles.length}`), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
     const currentFavorites = s ? listFavorites().filter((f) => f.sessionId === s.id) : [];
     const favoriteLinks = h('div', { class: 'v ctx-favorites' }, ...currentFavorites.map((f) => {
       const link = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '跳转到收藏消息' },
@@ -576,7 +576,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       }
       dl.append(det);
     }
-    if (diffs.length) ctxp.append(dl);
+    if (diffs.length) ctxp.append(h('div', { class: 'k' }, `DIFF · ${diffs.length}`), dl);
     ctxp.append(todoDock);
 
   };
