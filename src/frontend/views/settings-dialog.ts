@@ -4,6 +4,7 @@
  */
 import type { PermissionMode, ProviderId, SettingsUpdate } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
+import { activeAgentRef } from '../lib/agent-label.ts';
 import { cliSaveState } from '../lib/cli-save-state.ts';
 import { clear, h } from '../lib/dom.ts';
 import { store } from '../store.ts';
@@ -51,11 +52,13 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   }
   clear(dialog);
   // 标签排序仍按「使用中在前」：使用中 = 当前默认 agent（defaultAgent，缺省 'builtin'）所属类排到最左。
-  // acc 只表示当前打开的页，与默认 agent 所属类相互独立；标签上不再渲染「使用中」标记。
-  const da = s.defaultAgent ?? 'builtin';
+  // acc 只表示当前打开的页，与「使用中」相互独立。
+  // 「使用中」按真实状态：当前打开会话的 agent（无会话时取默认），指向已删除 CLI 则两边都不标。
+  const active = activeAgentRef(s, store.state.current?.agent);
+  const da = active ?? s.defaultAgent ?? 'builtin';
   const tabBtn = (id: SettingsTab, label: string, inUse: boolean) => h('button', { class: `chip${id === tab ? ' acc' : ''}`, attrs: { type: 'button' }, on: { click: () => openSettings(id) } }, label, inUse ? h('span', { class: 'cfg-current' }, '使用中') : null);
-  const modelTabBtn = tabBtn('model', 'API', da === 'builtin');
-  const cliTabBtn = tabBtn('cli', 'Agent CLI', da.startsWith('cli:'));
+  const modelTabBtn = tabBtn('model', 'API', active === 'builtin');
+  const cliTabBtn = tabBtn('cli', 'Agent CLI', !!active?.startsWith('cli:'));
   const tabs = h('div', { class: 'dtabs' }, ...(da === 'builtin'
     ? [modelTabBtn, cliTabBtn]
     : [cliTabBtn, modelTabBtn]));
@@ -124,7 +127,7 @@ export function openSettings(tab: SettingsTab = 'model'): void {
       savedApi.append(h('div', { class: 'mute' }, '还没有添加 API，填写下方后点「添加」。'));
       return;
     }
-    const inUse = (cur?.defaultAgent ?? 'builtin') === 'builtin';
+    const inUse = activeAgentRef(cur ?? s, store.state.current?.agent) === 'builtin';
     // 条目形态与「Agent CLI」页的已配置条目一致：名称 + 使用中 + 状态点，下一行等宽摘要，右侧操作按钮。
     savedApi.append(h('div', {},
       h('div', { class: 'cli-item' },

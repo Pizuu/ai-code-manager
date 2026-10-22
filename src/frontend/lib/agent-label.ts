@@ -37,3 +37,13 @@ export function agentWho(ref: AgentRef | undefined, s: PublicSettings | null): s
 export function isCli(ref: AgentRef | undefined, s: PublicSettings | null): boolean {
   return (ref ?? s?.defaultAgent ?? 'builtin') !== 'builtin';
 }
+
+/**
+ * 真实「使用中」的 agent：优先当前打开会话的 agent，否则默认 agent；
+ * 指向已删除 CLI 时返回 null（没有任何条目真正在用）。
+ */
+export function activeAgentRef(s: PublicSettings | null, sessionAgent?: AgentRef): AgentRef | null {
+  const r = sessionAgent ?? s?.defaultAgent ?? 'builtin';
+  if (r === 'builtin') return r;
+  return s?.agentClis?.some((x) => `cli:${x.id}` === r) ? r : null;
+}

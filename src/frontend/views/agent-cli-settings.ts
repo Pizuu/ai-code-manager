@@ -4,6 +4,7 @@
  */
 import type { AgentCliConfig, AgentCliDetection, AgentCliOutputFormat } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
+import { activeAgentRef } from '../lib/agent-label.ts';
 import { configToForm, detectedToForm, formToInput, OPENCODE_FORM_EXAMPLE, previewCommand, type AgentCliForm, type EnvRow } from '../lib/agent-cli-form.ts';
 import { clear, h } from '../lib/dom.ts';
 import { store } from '../store.ts';
@@ -77,7 +78,7 @@ export function mountAgentCliSettings(container: HTMLElement, headerSlot?: HTMLE
           err.textContent = errorText(e);
         }
       });
-      const inUse = st?.defaultAgent === `cli:${c.id}`;
+      const inUse = activeAgentRef(st ?? null, store.state.current?.agent) === `cli:${c.id}`;
       // 非使用中条目可一键设为默认（defaultAgent）；使用中条目已有「使用中」chip，不再显示该按钮。
       const setDefault = inUse ? null : h('button', { class: 'btn', attrs: { type: 'button' } }, '设为默认');
       setDefault?.addEventListener('click', async () => {

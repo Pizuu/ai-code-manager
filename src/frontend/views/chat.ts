@@ -6,6 +6,7 @@
  * 正文」的回合；工具调用收进可折叠的「思考」区（默认折叠，有待批准时自动展开，见 lib/chat-turn.ts）。
  */
 import type { AgentRef, BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
+import { toast } from '../lib/toast.ts';
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
 import { agentName, isCli } from '../lib/agent-label.ts';
@@ -685,6 +686,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   };
 
   const notify = (text: string, kind: 'notice' | 'info' = 'notice') => {
+    // 提示类消息只弹 toast，不再写进会话日志；错误仍留在日志里便于回看。
+    if (kind === 'info') { toast(text); return; }
     const last = store.state.current?.messages.filter((m) => m.role !== 'tool').at(-1);
     store.state.notices.push({ afterMessageId: last?.id ?? null, kind, text });
     renderAll();
