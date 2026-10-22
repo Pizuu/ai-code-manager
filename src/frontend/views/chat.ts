@@ -598,9 +598,37 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const i = msgs.findIndex((x) => x.id === assistantId);
     const prev = msgs.slice(0, i).reverse().find((x) => x.role === 'user');
     if (!prev) return;
-    pendingReask = isLastUserMessage(prev);
-    textarea.value = prev.content;
-    void send();
+    if (!isLastUserMessage(prev)) {
+      // 较早的回答：沿用原逻辑，把该问题作为新消息重新发送
+      textarea.value = prev.content;
+      void send();
+      return;
+    }
+    void regenerateLatest(prev);
+  };
+
+  /**
+   * 最后一个回答的「重新回答」：删除该回答并重新生成，不经输入框、不重复追加问题。
+   * 本地先移除该问题之后的消息（回答 / 工具），主进程 reaskLatest 截断并落盘后重新追加同一问题再生成。
+   */
+  const regenerateLatest = async (prev: ChatMessage): Promise<void> => {
+    const s = store.state.current;
+    if (!s) return;
+    const setup = agentSetupHint(s.agent ?? settings()?.defaultAgent ?? 'builtin', settings());
+    if (setup) { notify(setup); return; }
+    const idx = s.messages.indexOf(prev);
+    if (idx < 0) return;
+    const removed = s.messages.splice(idx + 1);
+    suppressReanswer = true;
+    renderAll();
+    try {
+      await api.invoke('agent:send', { sessionId: s.id, text: prev.content, reaskLatest: true });
+    } catch (e) {
+      suppressReanswer = false;
+      s.messages.push(...removed);
+      renderAll();
+      notify(errorText(e));
+    }
   };
 
   const noticeEl = (text: string, kind: 'notice' | 'info') => h('div', { class: `notice${kind === 'info' ? ' info' : ''}` }, text);

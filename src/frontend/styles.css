@@ -1204,3 +1204,6 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 .ctxp .dlist .row{cursor:pointer;padding:2px 0}
 .ctxp .dlist .row .p{font-size:12.5px}
 .ctxp .dlist .row:hover .p{color:var(--color-text-primary);text-decoration:underline}
+/* 侧栏项目文件树：字号 11px → 13px */
+.tree .te{font-size:13px}
+.tree .te .tag{font-size:11px}
