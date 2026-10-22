@@ -1146,3 +1146,9 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 #settings-dialog .saved-project-path{overflow-wrap:anywhere;word-break:break-word}
 #settings-dialog .saved-project-hint{margin-left:16px}
 #settings-dialog .saved-api{display:flex;flex-direction:column;gap:8px}
+.toast-host{position:fixed;right:16px;bottom:16px;z-index:9999;display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none}
+.toast{max-width:360px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);box-shadow:0 4px 16px rgba(0,0,0,.12);font-size:13px;line-height:1.4;animation:toastIn .18s ease-out;transition:opacity .2s,transform .2s}
+.toast.toast-error{border-color:var(--color-border-danger,var(--line));color:var(--color-text-danger,var(--color-text-primary))}
+.toast.toast-out{opacity:0;transform:translateY(4px)}
+@keyframes toastIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.ctx-favorite-row .ctx-link{background:var(--ubub);border:1px solid var(--line);border-radius:var(--border-radius-xl);padding:6px 10px}
