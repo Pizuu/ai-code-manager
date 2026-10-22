@@ -339,6 +339,16 @@ export interface AcpAcquireOptions {
   baseEnv?: NodeJS.ProcessEnv;
 }
 
+/**
+ * ACP 进程的 opencode 权限规则：编辑 / 命令 / 联网一律「ask」，越界目录拒绝。
+ * opencode 不配规则时默认全部放行，不会发 session/request_permission，审批形同虚设；
+ * 统一设为 ask 后，具体放行与否交给每轮的 acpAutoDecision(当前权限模式) 裁决，
+ * 所以切换权限模式在下一条消息就生效，无需重建进程或新建会话。
+ */
+export const ACP_PERMISSION_ENV: Readonly<Record<string, string>> = Object.freeze({
+  OPENCODE_PERMISSION: JSON.stringify({ edit: 'ask', bash: 'ask', webfetch: 'ask', doom_loop: 'ask', external_directory: 'deny' }),
+});
+
 /** ACP 进程池：一应用会话一进程（= 一 ACP 会话），跨轮复用；配置指纹变化或进程退出后重建。 */
 export class AcpProcessManager {
   private readonly pool = new Map<string, { fingerprint: string; handle: Promise<AcpHandle> }>();
@@ -392,7 +402,7 @@ export class AcpProcessManager {
       {
         executable: opts.executable, cwd: opts.projectRoot,
         // opencodeLaunchEnv：禁用 question 工具（本客户端无承接界面）+ win32 shell 适配，见 platform-env.ts。
-        env: { ...env, OPENCODE_CLIENT: 'acp', ...opencodeLaunchEnv(this.deps.platform ?? process.platform, env) },
+        env: { ...env, OPENCODE_CLIENT: 'acp', ...opencodeLaunchEnv(this.deps.platform ?? process.platform, env), ...ACP_PERMISSION_ENV },
         ...(this.deps.platform ? { platform: this.deps.platform } : {}),
       },
       {

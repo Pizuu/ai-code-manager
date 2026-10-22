@@ -1217,6 +1217,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     try {
       store.state.settings = await api.invoke('settings:set', { permissionMode: modeSel.value as PermissionMode });
       store.emit('settings');
+      notify(`权限已切换为「${MODE_LABELS[modeSel.value as PermissionMode]}」，当前会话下一条消息即生效。`, 'info');
     } catch (e) {
       notify(errorText(e));
     }
