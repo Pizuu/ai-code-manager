@@ -40,16 +40,15 @@ button{font:inherit;color:inherit}
 .brand-tx{min-width:0}.brand-tx b{display:block;font-weight:600;font-size:15px;white-space:nowrap}.brand-tx span{display:block;color:var(--mute);font-size:11px;margin-top:2px;white-space:nowrap}
 .psel{height:80px;display:flex;align-items:center;gap:10px;padding:0 18px;margin-top:auto;border-top:1px solid var(--line)}
 .pid{flex:1;min-width:0}.pid b{display:block;font-weight:600;font-size:12px}.pid span{display:block;color:var(--mute);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* psel 右侧 caret：文件树折叠入口，字形恒定旋转 180° 朝上（不随折叠状态翻转） */
-.psel-caret{flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:6px;cursor:pointer}
+/* psel 右侧按钮：项目文件树折叠 / 展开入口（caret 朝上）；点击不冒泡到 psel 的打开文件夹 */
+.psel-caret{flex:none;width:24px;height:24px;display:grid;place-items:center;border:0;background:none;border-radius:6px;cursor:pointer;color:var(--mute)}
 .psel-caret svg{transform:rotate(180deg)}
 .psel-caret:hover{background:var(--chip);color:var(--ink)}
 .navloc{padding:0 18px;color:var(--accent);font-size:11px;height:23px}
 .nav a{display:flex;align-items:center;gap:14px;height:44px;padding:0 24px;font-size:15px;color:var(--ink2);position:relative}
 .nav a:hover{background:var(--chip)}
 .nav a.on{background:var(--asoft);color:var(--accent)}
-.exh{display:flex;justify-content:space-between;padding:28px 18px 10px;color:var(--mute);font-size:11px}
-.tree{flex:1;overflow:auto;padding:0 18px}
+.tree{flex:1;overflow:auto;padding:8px 18px 0}
 .te{display:flex;align-items:center;gap:8px;height:28px;font:11px/1 var(--mono);color:var(--ink2);white-space:nowrap}
 .te svg{flex:none;color:var(--ink2)}
 .te.kid{padding-left:15px}
@@ -486,15 +485,14 @@ b,strong,.b600{font-weight:var(--font-weight-semibold)}
 .nav a:hover{background:var(--color-background-secondary)}
 .nav a.on{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:var(--font-weight-semibold)}
 .nav a.on svg{color:var(--accent)}
-.exh{padding:16px 18px 6px;font-size:var(--font-body)}
-.tree{padding:0 8px}
+.tree{padding:8px 8px 0}
 .te{height:26px;padding:0 6px;border-radius:var(--border-radius-sm);gap:6px;font-size:var(--font-caption)}
 .te.kid{padding-left:20px}
 .te svg{color:var(--color-text-tertiary)}
 .policy{margin:6px 14px 12px;border-top:var(--border-width-regular) solid var(--color-border-tertiary);font-size:var(--font-caption);line-height:1.4}
 .policy .files{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* ── 工作区：primary 内容面，浮于画布之上 ── */
-.ws{background:var(--color-background-primary);border-left:var(--border-width-regular) solid var(--color-border-tertiary);margin:8px 8px 8px 0;border-radius:var(--border-radius-xl);box-shadow:var(--shadow-hairline);overflow:hidden;border:var(--border-width-regular) solid var(--color-border-tertiary)}
+.ws{background:var(--color-background-primary);border-left:var(--border-width-regular) solid var(--color-border-tertiary);box-shadow:var(--shadow-hairline);overflow:hidden;border:var(--border-width-regular) solid var(--color-border-tertiary)}
 .app{height:100vh}
 .wh{height:52px;padding:0 20px;gap:16px;border-bottom:var(--border-width-regular) solid var(--color-border-tertiary)}
 .wh>div:first-child{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
@@ -683,33 +681,11 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .verify.tool .appr.danger{margin:10px -12px -10px;padding:10px 12px;background:var(--color-background-danger);border-top-color:var(--color-border-danger);border-radius:0 0 var(--border-radius-lg) var(--border-radius-lg)}
 .verify.tool .appr.danger .q{color:var(--color-text-danger)}
 /* ── T-037：UI 定位记录批量调整（只用 ADR 0009 token） ── */
-/* 项目栏：标题可折叠、引用分支提亮、⋯ 菜单 */
-.exh{align-items:center;gap:6px;padding-right:10px}
-.exh .mono{margin-left:auto;color:var(--color-text-secondary)}
-.exh-t{display:flex;align-items:center;gap:4px;border:0;background:none;padding:0;color:inherit;font:inherit;font-size:var(--font-body);cursor:pointer}
-.exh-t:hover{color:var(--color-text-primary)}
-.exh-t svg{transform:rotate(-90deg);transition:transform .12s}
-.exh-t.open svg{transform:none}
-.exh-more{width:24px;height:24px;display:grid;place-items:center;border:0;background:none;border-radius:var(--border-radius-sm);color:var(--color-text-tertiary);cursor:pointer}
-.exh-more:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
-/* 收藏栏（侧栏项目结构之后，默认折叠；.tree flex:1 使其贴侧栏底部） */
-.favlist{flex:none;max-height:260px;overflow-y:auto;padding:0 8px 8px}
-.fav-item{display:flex;align-items:flex-start;gap:6px;padding:8px 8px 8px 14px;margin-bottom:4px;background:var(--color-background-tertiary);border-radius:var(--border-radius-md);cursor:pointer}
-.fav-item:hover{background:var(--color-background-secondary)}
-.fav-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-.fav-tx{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:var(--font-caption);color:var(--color-text-primary)}
-.fav-ss{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--color-text-tertiary)}
-.fav-rm{flex:none;width:20px;height:20px;display:grid;place-items:center;border:0;background:none;border-radius:var(--border-radius-sm);color:var(--color-text-tertiary);cursor:pointer;font-size:14px;line-height:1;padding:0}
-.fav-rm:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
-.fav-empty{padding:2px 6px 6px;font-size:var(--font-caption);color:var(--color-text-tertiary);line-height:1.5}
-.exmenu{min-width:180px}
-.exmenu .mi{font-size:var(--font-caption)}
-/* 当前分支下拉切换：分支名可点 + caret 指示 + 分支菜单 */
-.exh .mono.br-on{cursor:pointer}
-.exh .mono.br-on:hover{color:var(--color-text-primary)}
-.br-caret{display:inline-flex;align-items:center;color:var(--color-text-tertiary);cursor:pointer;margin-left:-2px}
-.br-caret[hidden]{display:none}
-.br-caret:hover{color:var(--color-text-primary)}
+/* 当前分支下拉切换（页头面包屑 chip）：分支名可点 + caret 指示 + 分支菜单 */
+.chip.br-on{cursor:pointer;color:var(--color-text-primary)}
+.chip.br-on:hover{background:var(--color-background-tertiary);color:var(--color-text-primary)}
+.br-chip-caret{display:inline-flex;align-items:center;color:var(--color-text-tertiary)}
+.br-chip-caret[hidden]{display:none}
 .brmenu{min-width:180px;max-height:320px;overflow-y:auto}
 .brmenu .mi.on{color:var(--accent);font-weight:600}
 .brmenu .mi[disabled]{cursor:default}

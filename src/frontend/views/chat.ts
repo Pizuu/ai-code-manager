@@ -12,7 +12,7 @@ import { agentName, agentWho, isCli } from '../lib/agent-label.ts';
 import { insertBlock } from '../lib/context-send.ts';
 import { composeMessageWithAttachments, splitMessageAttachments, type MessageAttachment } from '../lib/message-attachments.ts';
 import { hm } from '../lib/board-format.ts';
-import { avatarText, hasPendingApproval, thinkCountText, thinkStatusText } from '../lib/chat-turn.ts';
+import { avatarText, hasPendingApproval, thinkCountText, thinkShouldOpen, thinkStatusText } from '../lib/chat-turn.ts';
 import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
@@ -97,7 +97,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     h('span', { class: 'prime-hint' }, '再按 Enter 执行；修改命令或清空将取消'),
     primeCancel);
   primebar.hidden = true;
-  const textarea = h('textarea', { attrs: { placeholder: '回复…（Enter 发送，Shift+Enter 换行，/ 查看命令）' } });
+  const textarea = h('textarea', { attrs: { placeholder: '' } });
   // 输入框不限高：高度全量跟随内容生长（scrollHeight），下限由 CSS min-height 兜住；内部不滚动、无滚动条。
   const autoGrow = () => {
     textarea.style.height = 'auto';
@@ -458,6 +458,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
    * - 默认折叠（对话读起来干净）；有调用待批准时强制展开，否则批准按钮点不到。
    * - 因待批准展开过的，在批准完成前保持展开（sticky），避免卡片突然消失。
    * - 用户的显式开合优先（重渲染与切换会话后保持）。
+   * - v1.8+：正在思考（流式输出中）且用户未显式收起过时自动展开，思考过程可见。
    */
   const thinkBlock = (m: ChatMessage, calls: ToolCallRecord[]): HTMLElement => {
     const det = h('details', { class: 'think' });
@@ -476,18 +477,16 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
 
     // 展开判定（优先级从高到低）：
     // 1. 有待批准的调用 → 强制展开：批准按钮被折叠就点不到了；
-    // 2. 用户显式选择过 → 用用户的选择；
-    // 3. 曾因待批准自动展开过（sticky）→ 保持展开，避免批准后卡片突然消失；
-    // 4. 其余 → 折叠（对话读起来干净）。
+    // 2. 正在思考（流式输出中）且用户未显式收起过 → 自动展开：思考过程可见；
+    // 3. 用户显式选择过 → 用用户的选择；
+    // 4. 曾因待批准自动展开过（sticky）→ 保持展开，避免批准后卡片突然消失；
+    // 5. 其余 → 折叠（对话读起来干净）。
     const pending = hasPendingApproval(calls) || calls.some((c) => [...store.state.approvals.values()].some((a) => a.toolCallId === c.id));
-    let open: boolean;
+    const explicit = thinkOpen.get(m.id);
+    const open = thinkShouldOpen({ pending, streaming: streamingMessage()?.id === m.id, explicit, sticky: thinkSticky.has(m.id) });
     if (pending) {
-      open = true;
       thinkOpen.delete(m.id); // 强制展开覆盖用户此前的收起选择
       thinkSticky.add(m.id);
-    } else {
-      const explicit = thinkOpen.get(m.id);
-      open = explicit !== undefined ? explicit : thinkSticky.has(m.id);
     }
     det.open = open;
     // 自行接管开合（阻止 summary 的默认行为），保证重渲染后状态可还原。
@@ -595,7 +594,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     } else {
       ctxUsage.hidden = true;
     }
-    textarea.placeholder = `回复 ${agentName(agent, st)}…（Enter 发送，Shift+Enter 换行，/ 查看命令）`;
+    textarea.placeholder = ``;
     if (st) modeSel.value = st.permissionMode;
     // CLI 会话：底栏显示模型切换器；内置 agent 会话不显示。
     if (cli && s) {

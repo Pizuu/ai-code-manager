@@ -67,6 +67,28 @@ export function thinkStatusText(calls: readonly ToolCallRecord[]): string {
   return parts.join(' · ');
 }
 
+/** 思考区展开判定的输入（由渲染层从 store / thinkOpen / thinkSticky 拼出）。 */
+export interface ThinkOpenInput {
+  /** 有待批准的调用 → 必须展开（批准按钮不能被折叠藏起来）。 */
+  pending: boolean;
+  /** 正在思考（流式输出中）且用户未显式收起过 → 自动展开。 */
+  streaming: boolean;
+  /** 用户显式选择过（undefined = 没选过）。 */
+  explicit?: boolean;
+  /** 曾因待批准自动展开过（sticky），保持展开直到用户手动收起。 */
+  sticky: boolean;
+}
+
+/**
+ * 思考区展开判定（单一口径，渲染层与单测共用）：优先级从高到低 —— 待批准强制展开 → 正在思考自动展开 → 用户显式选择 → sticky → 折叠。
+ */
+export function thinkShouldOpen(input: ThinkOpenInput): boolean {
+  if (input.pending) return true;
+  if (input.streaming && input.explicit === undefined) return true;
+  if (input.explicit !== undefined) return input.explicit;
+  return input.sticky;
+}
+
 /** 思考区摘要：最近一次操作，如「读取文件 src/frontend/styles.css」。取不到目标时只给工具名。 */
 export function thinkLastAction(calls: readonly ToolCallRecord[]): string {
   const last = calls.at(-1);

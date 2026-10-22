@@ -221,12 +221,6 @@ async function bootstrap(): Promise<void> {
       sessionView.openFile(rel);
     },
     onError: (t) => chat.notify(t),
-    // P0-3：点击活动徽标 / 状态栏计数 → 跳到该会话
-    onJumpToSession: (id) => {
-      shell.setView('session');
-      sessionView.showChat();
-      void selectSession(id).catch((e: unknown) => chat.notify(errorText(e)));
-    },
   });
   sessionView = mountSessionView(shell.views.session, {
     selectSession,

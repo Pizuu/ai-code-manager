@@ -8,25 +8,20 @@ import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
 import { icon, svgEl, type IconName } from '../lib/icons.ts';
 import { sessionStateCounts } from '../lib/session-activity.ts';
-import { listFavorites, onFavoritesChanged, removeFavorite, type Favorite } from '../lib/favorites.ts';
 import { mountTourButton } from '../lib/tour.ts';
 import { store, type ViewId } from '../store.ts';
 
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
 /** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
 const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git', 'git'], ['agents', 'Agents', 'wt']];
-/** 文件树默认全部折叠（用户要求）：只显示第一层，目录由用户点击逐个展开 / 折叠。 */
-/** 整棵目录树折叠状态（仅本机界面偏好）。 */
+/** 文件树整棵目录树折叠状态（仅本机界面偏好）。 */
 const TREE_COLLAPSED_KEY = 'acm.explorer.treeCollapsed';
-
 export interface ShellHooks {
   onNewSession(): void;
   onOpenSettings(): void;
   /** 单击文件：在任务会话中列打开只读代码标签（003）。 */
   onFileClick(relPath: string): void;
   onError(text: string): void;
-  /** P0-3：点击活动徽标 / 状态栏计数时跳转到指定会话。 */
-  onJumpToSession(sessionId: string): void;
 }
 
 export interface ShellView {
@@ -121,12 +116,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     h('div', { class: 'brand-tx' }, h('b', {}, 'AI Code Manager'), h('span', {}, '桌面 AI 编程助手')));
   const pname = h('b');
   const pdesc = h('span');
-  // psel 右侧 caret：项目文件树的折叠入口（恒朝上，样式在 styles.css .psel-caret）；点击不冒泡到 psel 的打开文件夹。
-  // 折叠状态同步接线在 exToggle 定义之后（与「项目结构」行共用 setTreeCollapsed）。
-  const pselCaret = h('span', { class: 'mute psel-caret', title: '折叠 / 展开项目文件', attrs: { role: 'button', tabindex: '0' } }, icon('caret'));
-  // 点击打开文件夹作为工程根目录（pickProject 在后段定义，闭包引用）
-  const psel = h('div', { class: 'psel', title: '点击打开文件夹作为工程根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
-    h('div', { class: 'pid' }, pname, pdesc), pselCaret);
   const navloc = h('div', { class: 'navloc' });
   const navItems = {} as Record<ViewId, HTMLAnchorElement>;
   const nav = h('div', { class: 'nav' });
@@ -134,88 +123,34 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     navItems[id] = h('a', { class: parent ? 'sub' : '', title: parent ? `${VIEW_TITLES[parent]} › ${label}` : label, on: { click: () => setView(id) } }, icon(ic), h('span', {}, label));
     nav.append(navItems[id]);
   }
-  const readRef = h('span', { class: 'mono' });
-  /** 当前分支名旁的切换指示（caret）；无 Git 快照 / 无分支时隐藏，菜单逻辑在下方分支下拉一节。 */
-  const brCaret = h('span', { class: 'br-caret', title: '切换分支' }, icon('caret', 12));
-  brCaret.hidden = true;
+  // 项目文件树：目录默认全部折叠（用户要求）：只显示第一层，目录由用户点击逐个展开 / 折叠。
   const tree = h('div', { class: 'tree' });
   tree.hidden = localStorage.getItem(TREE_COLLAPSED_KEY) === '1';
-  const exToggle = h('button', { class: `exh-t${tree.hidden ? '' : ' open'}`, title: '折叠 / 展开项目结构', attrs: { type: 'button', 'aria-expanded': String(!tree.hidden) } }, icon('caret', 12), h('span', {}, '项目结构'));
-  /** 文件树折叠状态同步（「项目结构」行 exToggle 与底部 psel caret 两个入口共用）。 */
+  const pselCaret = h('button', { class: 'psel-caret', title: '折叠 / 展开项目文件', attrs: { type: 'button', 'aria-expanded': String(!tree.hidden) } }, icon('caret'));
   const setTreeCollapsed = (collapsed: boolean) => {
     tree.hidden = collapsed;
-    exToggle.classList.toggle('open', !collapsed);
-    exToggle.setAttribute('aria-expanded', String(!collapsed));
     pselCaret.setAttribute('aria-expanded', String(!collapsed));
     localStorage.setItem(TREE_COLLAPSED_KEY, collapsed ? '1' : '0');
   };
-  exToggle.addEventListener('click', () => setTreeCollapsed(!tree.hidden));
-  pselCaret.setAttribute('aria-expanded', String(!tree.hidden));
   pselCaret.addEventListener('click', (ev) => { ev.stopPropagation(); setTreeCollapsed(!tree.hidden); });
   pselCaret.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); setTreeCollapsed(!tree.hidden); }
   });
-  const moreBtn = h('button', { class: 'exh-more', title: '更多操作', attrs: { type: 'button', 'aria-haspopup': 'menu' } }, icon('more', 14));
-  // ── 收藏栏（项目结构之后）：默认折叠且不记偏好——每次启动都折叠（用户口径），展开 / 折叠复用 .exh-t 模式。
-  // 数据来自 lib/favorites（与 chat 的收藏按钮共用），变更经 onFavoritesChanged 即时重渲染。
-  const favList = h('div', { class: 'favlist' });
-  favList.hidden = true;
-  const favToggle = h('button', { class: 'exh-t', title: '折叠 / 展开收藏', attrs: { type: 'button', 'aria-expanded': 'false' } }, icon('caret', 12), h('span', {}, '收藏'));
-  favToggle.addEventListener('click', () => {
-    favList.hidden = !favList.hidden;
-    favToggle.classList.toggle('open', !favList.hidden);
-    favToggle.setAttribute('aria-expanded', String(!favList.hidden));
-  });
-  const favItemEl = (f: Favorite) => {
-    const rm = h('button', { class: 'fav-rm', title: '取消收藏', attrs: { type: 'button' } }, '×');
-    rm.addEventListener('click', (ev) => { ev.stopPropagation(); removeFavorite(f.id); });
-    const el = h('div', { class: 'fav-item', title: f.text },
-      h('div', { class: 'fav-main' },
-        h('span', { class: 'fav-tx' }, f.text.replace(/\s+/g, ' ').trim()),
-        h('span', { class: 'fav-ss' }, f.sessionTitle || '未命名会话')),
-      rm);
-    el.addEventListener('click', () => {
-      // 目标会话已不在会话列表（已删除）：不跳转，走 shell 既有提示通道（hooks.onError → chat 通知）
-      if (!store.state.sessions.some((s) => s.id === f.sessionId)) { hooks.onError('该收藏所属的会话已不存在。'); return; }
-      hooks.onJumpToSession(f.sessionId);
-    });
-    return el;
-  };
-  const renderFavorites = () => {
-    const favs = listFavorites();
-    favList.replaceChildren(...(favs.length
-      ? favs.map(favItemEl)
-      : [h('div', { class: 'fav-empty' }, '暂无收藏。在消息上点 ☆ 可收藏到这里。')]));
-  };
-  renderFavorites();
-  onFavoritesChanged(renderFavorites); // shell 常驻，无需退订
-  const explorer = h('aside', { class: 'explorer' }, brand, navloc, nav, h('div', { class: 'exh' }, exToggle, readRef, brCaret, moreBtn), tree, h('div', { class: 'exh' }, favToggle), favList, psel);
+  // 点击打开文件夹作为工程根目录（pickProject 在后段定义，闭包引用）
+  const psel = h('div', { class: 'psel', title: '点击打开文件夹作为工程根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
+    h('div', { class: 'pid' }, pname, pdesc), pselCaret);
+  const explorer = h('aside', { class: 'explorer' }, brand, navloc, nav, tree, psel);
 
-  // 「⋯」菜单：当前只支持单项目根（无多文件夹工作区），「打开文件夹」= 切换项目（project:pick）
-  const exMenu = h('div', { class: 'ctxmenu exmenu', attrs: { role: 'menu' } });
-  exMenu.hidden = true;
-  document.body.append(exMenu);
-  const menuItem = (label: string, run: () => void) => h('button', { class: 'mi', attrs: { type: 'button', role: 'menuitem' }, on: { click: () => { exMenu.hidden = true; run(); } } }, h('span', {}, label));
-  moreBtn.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    if (!exMenu.hidden) { exMenu.hidden = true; return; }
-    exMenu.replaceChildren(
-      menuItem('打开文件夹…（切换项目）', () => void pickProject()),
-      menuItem('刷新目录', () => { kidsCache.clear(); void renderTree(); }),
-      menuItem('全部折叠', () => { expanded.clear(); void renderTree(); }));
-    const r = moreBtn.getBoundingClientRect();
-    exMenu.hidden = false;
-    exMenu.style.left = `${Math.max(8, r.right - exMenu.offsetWidth)}px`;
-    exMenu.style.top = `${r.bottom + 4}px`;
-  });
-  document.addEventListener('click', (ev) => { if (!exMenu.hidden && !exMenu.contains(ev.target as Node)) exMenu.hidden = true; });
-  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') exMenu.hidden = true; });
-
-  // ── 分支下拉：点击当前分支名（readRef / caret）展开本地分支列表，选中走 git:checkout 切换并全量同步 ──
+  // ── 分支下拉：点击页头面包屑的分支 chip 展开本地分支列表，选中走 git:checkout 切换并全量同步 ──
   const brMenu = h('div', { class: 'ctxmenu brmenu', attrs: { role: 'menu' } });
   brMenu.hidden = true;
   document.body.append(brMenu);
   const closeBrMenu = () => { brMenu.hidden = true; };
+  /** 分支是否可切换：Git 快照可用且至少有 1 个本地分支（页头 chip 的可点态与 caret 显隐同口径）。 */
+  const canSwitchBranch = (): boolean => {
+    const g = store.state.git;
+    return Boolean(g?.available && g.branches.length > 0);
+  };
   const checkoutBranch = async (branch: string) => {
     try {
       store.state.git = await api.invoke('git:checkout', branch);
@@ -228,26 +163,23 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
       hooks.onError(errorText(e));
     }
   };
-  const toggleBrMenu = (ev: Event) => {
+  /** 菜单锚点由调用方给出（页头分支 chip），菜单落在锚点正下方。 */
+  const toggleBrMenu = (ev: Event, anchor: HTMLElement) => {
     ev.stopPropagation();
     const g = store.state.git;
     if (!g?.available || g.branches.length === 0) return;
     if (!brMenu.hidden) { closeBrMenu(); return; }
-    exMenu.hidden = true;
     closeFeatMenu();
     brMenu.replaceChildren(...g.branches.map((b) => h('button', {
       class: `mi${b.current ? ' on' : ''}`,
       attrs: { type: 'button', role: 'menuitem', ...(b.current ? { disabled: '' } : {}) },
       on: { click: () => { closeBrMenu(); void checkoutBranch(b.name); } },
     }, h('span', {}, b.current ? `✓ ${b.name}` : b.name))));
-    const r = readRef.getBoundingClientRect();
+    const r = anchor.getBoundingClientRect();
     brMenu.hidden = false;
     brMenu.style.left = `${Math.max(8, r.right - brMenu.offsetWidth)}px`;
     brMenu.style.top = `${r.bottom + 4}px`;
   };
-  readRef.title = '切换分支';
-  readRef.addEventListener('click', toggleBrMenu);
-  brCaret.addEventListener('click', toggleBrMenu);
   document.addEventListener('click', (ev) => { if (!brMenu.hidden && !brMenu.contains(ev.target as Node)) closeBrMenu(); });
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeBrMenu(); });
 
@@ -257,7 +189,15 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   /** 规格名旁的切换指示（caret）；可选规格不足 2 个时隐藏，菜单逻辑在下方功能下拉一节。 */
   const featCaret = h('span', { class: 'feat-caret', title: '切换功能规格' }, icon('caret', 12));
   featCaret.hidden = true;
-  const crumbChip = h('span', { class: 'chip' });
+  /** 面包屑当前分支 chip：文案 + 切换指示（caret）；可切换时整块可点，展开本地分支列表（菜单落在 chip 下方）。 */
+  const crumbChipLabel = h('span');
+  const crumbChipCaret = h('span', { class: 'br-chip-caret' }, icon('caret', 12));
+  crumbChipCaret.hidden = true;
+  const crumbChip = h('span', { class: 'chip br-chip', title: '切换分支' }, crumbChipLabel, crumbChipCaret);
+  crumbChip.addEventListener('click', (ev) => { if (canSwitchBranch()) toggleBrMenu(ev, crumbChip); });
+  crumbChip.addEventListener('keydown', (ev) => {
+    if ((ev.key === 'Enter' || ev.key === ' ') && canSwitchBranch()) { ev.preventDefault(); toggleBrMenu(ev, crumbChip); }
+  });
   const header = h('header', { class: 'wh' },
     h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, h('span', { class: 'crumb-sep', attrs: { 'aria-hidden': 'true' } }, '/'), crumbFeature, featCaret, crumbChip)),
     h('div', { class: 'wact' }));
@@ -284,7 +224,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     const features = b?.features ?? [];
     if (!b || features.length <= 1) return;
     if (!featMenu.hidden) { closeFeatMenu(); return; }
-    exMenu.hidden = true;
     closeBrMenu();
     const curId = b.feature?.id ?? null;
     const latest = features.at(-1);
@@ -343,12 +282,14 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     featCaret.hidden = !canSwitchFeature;
     crumbFeature.classList.toggle('feat-on', canSwitchFeature);
     const crumbBranch = g?.currentBranch ?? b?.integrationBranch ?? g?.integrationBranch ?? '';
-    crumbChip.textContent = crumbBranch;
+    crumbChipLabel.textContent = crumbBranch;
     crumbChip.hidden = crumbBranch === '';
-    readRef.textContent = g?.currentBranch ?? '';
-    const canSwitchBranch = Boolean(g?.available && g.branches.length > 0);
-    brCaret.hidden = !canSwitchBranch;
-    readRef.classList.toggle('br-on', canSwitchBranch);
+    // 分支 chip 的可切换态：Git 可用且有本地分支时可点（显示 caret + role/tabindex），否则纯展示
+    const canSwitch = canSwitchBranch();
+    crumbChipCaret.hidden = !canSwitch;
+    crumbChip.classList.toggle('br-on', canSwitch);
+    if (canSwitch) { crumbChip.setAttribute('role', 'button'); crumbChip.setAttribute('tabindex', '0'); }
+    else { crumbChip.removeAttribute('role'); crumbChip.removeAttribute('tabindex'); }
     if (g?.available) {
       statusL.replaceChildren(h('span', { class: 'dot grn' }), `本地工作区 ${g.currentBranch ?? ''}（${g.worktrees.length} 个 worktree · ${g.dirtyCount} 个未提交文件）`);
     } else {
@@ -359,13 +300,12 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     renderProject();
   };
 
-  // 当前会话错误日志层（errPop）与三色计数圆点（红出错 / 黄回答中 / 绿回答完成）已整体迁入
-  // 对话区 .ctx 条（chat.ts），此处不再持有；三态计数改由 lib/session-activity.ts 的
-  // sessionStateCounts 提供，徽标与三点共用同一口径。
+  // 当前会话错误日志层（errPop）已整体迁入对话区，此处不再持有；会话关注徽标改由
+  // lib/session-activity.ts 的 sessionStateCounts 提供。
 
   /**
    * P0-3：活动指示——图标栏徽标（需要关注的会话数 = 出错 + 回答中）。数字出自
-   * sessionStateCounts，与对话区 .ctx 条三点同一口径；三点的渲染与点击跳转已迁入 chat.ts。
+   * sessionStateCounts；对话区 .ctx 条的三态计数圆点组随其一并移除，徽标口径不变。
    */
   const renderActivity = () => {
     const approvals = [...store.state.approvals.values()];
@@ -519,8 +459,8 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   store.on('workspace', renderChrome);
   // P1-3：活动徽标 / 状态栏计数随运行态、审批与消息实时更新；三色圆与错误层另随会话增删与错误条目变化刷新
   for (const t of ['running', 'approvals', 'current', 'messages', 'sessions', 'errors'] as const) store.on(t, renderActivity);
-  // P1-8：窗口获得焦点时刷新工作区快照（看板 / Git 可能已被外部改动）
-  window.addEventListener('focus', () => void refreshWorkspace());
+  // P1-8：窗口获得焦点时刷新工作区快照（看板 / Git 可能已被外部改动）；侧栏文件树同步重读（缓存失效 + 重渲）
+  window.addEventListener('focus', () => { kidsCache.clear(); void renderTree(); void refreshWorkspace(); });
   store.on('project', () => {
     kidsCache.clear();
     // 打开 / 切换项目回到默认：全部折叠（展开状态不跨项目保留）

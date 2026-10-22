@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ToolCallRecord, ToolCallStatus } from '../../../../contracts/ipc.ts';
 import {
-  avatarText, countThink, hasPendingApproval, thinkCountText, thinkLastAction, thinkStatusText,
+  avatarText, countThink, hasPendingApproval, thinkCountText, thinkLastAction, thinkShouldOpen, thinkStatusText,
 } from '../../../../src/frontend/lib/chat-turn.ts';
 
 function call(status: ToolCallStatus, name = 'read_file', input: Record<string, unknown> = { path: 'a.ts' }): ToolCallRecord {
@@ -38,6 +38,19 @@ test('thinkStatusText: 只列非零状态，按重要度排序', () => {
   assert.equal(thinkStatusText([call('done')]), '1 完成');
   assert.equal(thinkStatusText([call('done'), call('awaiting-approval'), call('error')]), '1 待批准 · 1 失败 · 1 完成');
   assert.equal(thinkStatusText([call('running'), call('pending')]), '1 进行中 · 1 等待中');
+});
+
+test('thinkShouldOpen: 展开判定优先级（待批准 / 正在思考 / 用户显式选择 / sticky / 折叠）', () => {
+  // 有待批准的调用 → 强制展开（批准按钮不能被折叠藏起来）
+  assert.equal(thinkShouldOpen({ pending: true, streaming: false, sticky: false }), true);
+  // 正在思考（流式输出中）且用户未显式收起过 → 自动展开，思考过程可见
+  assert.equal(thinkShouldOpen({ pending: false, streaming: true, sticky: false }), true);
+  // 正在思考但用户曾显式收起过 → 尊重用户选择
+  assert.equal(thinkShouldOpen({ pending: false, streaming: true, sticky: false, explicit: false }), false);
+  // 空闲、未选 / 未 sticky → 折叠（默认干净）
+  assert.equal(thinkShouldOpen({ pending: false, streaming: false, sticky: false }), false);
+  // 曾因待批准自动展开过（sticky）→ 保持展开，避免批准后卡片突然消失
+  assert.equal(thinkShouldOpen({ pending: false, streaming: false, sticky: true }), true);
 });
 
 test('thinkLastAction: 最近一次操作的目标；取不到目标时只给工具名', () => {

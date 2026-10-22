@@ -67,7 +67,7 @@
 | 终端模式 IPC（`terminal:open` / `input` / `close`：工作目录恒为项目根、会话不存在 E_NOT_FOUND、无项目 E_NO_PROJECT、CLI 模式 E_CLI） | — | ✅ 7 条 | — | backend |
 | 终端运行态 `src/frontend/store.ts`（按会话记录输出、重启时旧 terminalId 残事件忽略、清屏） | ✅ 3 条 | — | — | frontend |
 | 「全部允许（免审批）」权限模式（`decide` / `acpAutoDecision` / `serveRules` / `opencodePermission` 四条通道一致生效） | ✅ 4 条 | — | — | backend |
-| 对话回合与思考区摘要 `src/frontend/lib/chat-turn.ts`（工具调用状态计数、摘要文案、待批准判定、头像文字） | ✅ 6 条 | ✅ E2E 1 条（`core-path`：思考区默认折叠 → 点击展开 → 重启恢复后仍可展开） | — | frontend |
+| 对话回合与思考区摘要 `src/frontend/lib/chat-turn.ts`（工具调用状态计数、摘要文案、待批准判定、正在思考展开判定、头像文字） | ✅ 7 条 | ✅ E2E 1 条（`core-path`：思考区默认折叠 → 点击展开 → 重启恢复后仍可展开） | — | frontend |
 | 主进程通知服务 `src/backend/notify/notify-service.ts`（功能 005：审批 P0 / 会话出错 P1 系统通知、approvalId 去重、3 分钟升级恰一次、偏好门控、聚焦不发但升级计时兜底、点击只聚焦 + 回传 `notify-activate`；通知器与时钟可注入替身） | ✅ 15 条（`tests/unit/backend/notify/notify-service.test.ts`，假通知器 + 假时钟） | — | ❌（Windows 真机系统通知待验） | backend |
 | 提醒偏好清洗与落盘 `src/backend/settings/settings-store.ts`（`sanitizeNotifySettings` 缺省回落 DEFAULT、snooze 夹取 1–120）与 `ipc/validate.ts` 的 notify 校验透传、`getPublic` 投影（偏好 + `notifyNativeAvailable`） | ✅ 5 条（`tests/unit/backend/settings/notify-settings.test.ts`） | — | — | backend |
 | 审批提醒纯逻辑 `src/frontend/lib/notify.ts`（功能 005：P0 事项构建 / 按 approvalId 去重 / 排队、弹窗选择 ≤3 + overflow 折叠与抑制、已决历史合并封顶 100 与 localStorage 落盘校验） | ✅ 9 条（`tests/unit/frontend/lib/notify.test.ts`） | — | — | frontend |
