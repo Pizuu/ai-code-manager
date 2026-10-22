@@ -688,9 +688,23 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       if (setup) logIn.append(h('div', { class: 'notice setup' }, setup));
     }
     for (const n of store.state.notices.filter((x) => x.afterMessageId === null && visible.length === 0)) logIn.append(noticeEl(n.text, n.kind));
+    // 连续的助手消息合并成一个回合：沿用第一条的头部，后续消息的正文与过程区接在同一个 article 里；
+    // 头部操作（复制 / 折叠 / 重新回答 / 收藏）改指向最后一条。中间夹着提示时不合并。
+    let merged: HTMLElement | null = null;
     for (const m of visible) {
-      logIn.append(...msgEls(m));
-      for (const n of store.state.notices.filter((x) => x.afterMessageId === m.id)) logIn.append(noticeEl(n.text, n.kind));
+      const notes = store.state.notices.filter((x) => x.afterMessageId === m.id);
+      if (m.role === 'assistant' && merged) {
+        const part = assistantTurn(m);
+        for (const el of [...part.children]) if (!el.matches('header.turn-hd')) merged.append(el);
+        merged.querySelector('header.turn-hd .acts')?.replaceWith(turnActions(m));
+        merged.classList.toggle('folded', turnFolded.has(m.id));
+      } else {
+        const els = msgEls(m);
+        logIn.append(...els);
+        merged = m.role === 'assistant' ? els[0] ?? null : null;
+      }
+      for (const n of notes) logIn.append(noticeEl(n.text, n.kind));
+      if (notes.length) merged = null;
     }
     const lastId = visible[visible.length - 1]?.id;
     for (const n of store.state.notices.filter((x) => x.afterMessageId === null && visible.length > 0)) {
