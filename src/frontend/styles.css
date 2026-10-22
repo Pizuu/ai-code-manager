@@ -1161,3 +1161,8 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 .think-body{max-height:240px;overflow-y:auto;overscroll-behavior:contain;padding:8px 6px 0 0;scrollbar-width:thin}
 .think-approvals{padding:8px 0 0}
 .think-approvals .verify.tool{margin:0 0 8px;padding:8px 10px;box-shadow:none;background:var(--color-background-tertiary);outline:1px solid var(--color-border-warning)}
+/* 代码块收藏：未收藏为灰色淡化，与回合头部收藏一致 */
+.code-action.code-favorite svg{width:15px;height:15px;opacity:.4;filter:grayscale(1)}
+.code-action.code-favorite.on svg{opacity:1;filter:none}
+/* 文件 / 下载条目与收藏条目样式统一 */
+.ctx-file-row .ctx-link,.ctx-generated-files .ctx-link{background:var(--ubub);border:1px solid var(--line);border-radius:var(--border-radius-xl);padding:6px 10px}
