@@ -1189,3 +1189,14 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 /* 代码块右上角按钮的提示：pre 有 overflow 会裁掉上方提示，改为显示在按钮下方、右对齐 */
 .code-action[data-tip]:hover::after{bottom:auto;top:calc(100% + 6px);left:auto;right:0;transform:none}
 .code-action[data-tip]:hover::before{bottom:auto;top:calc(100% - 4px);border-top-color:transparent;border-bottom-color:var(--ink)}
+/* 工具卡片单行：命令 ---- 结果 ---- 状态；连续工具卡片合并成一个框 */
+.verify.tool .tool-line{display:flex;align-items:center;gap:8px;margin:0;font-size:12px;justify-content:flex-start}
+.verify.tool .tool-line[role=button]{cursor:pointer}
+.verify.tool .tl-cmd{flex:0 1 auto;max-width:45%;min-width:0;font-family:var(--mono);font-size:11.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.verify.tool .tl-res{flex:1 1 0;min-width:0;font-family:var(--mono);font-size:11.5px;color:var(--color-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.verify.tool .tl-sep{flex:0 0 18px;border-top:1px dashed var(--color-border-secondary)}
+.verify.tool .chip{flex:none}
+.verify.tool .tool-out{display:none;margin:8px 0 0}
+.verify.tool.expanded .tool-out{display:block}
+.think-body .verify.tool:has(+ .verify.tool){margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-style:dashed}
+.think-body .verify.tool + .verify.tool{margin-top:0;border-top:0;border-top-left-radius:0;border-top-right-radius:0}

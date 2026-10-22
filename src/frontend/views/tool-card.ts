@@ -6,8 +6,7 @@
 import type { ApprovalRequest, ToolCallRecord, ToolCallStatus } from '../../../contracts/ipc.ts';
 import { approvalPrompt, approvalText } from '../lib/approval-prompt.ts';
 import { h } from '../lib/dom.ts';
-import { icon } from '../lib/icons.ts';
-import { formatToolOutput, outputLineCount, toolParamRows, toolTarget } from '../lib/tool-card-text.ts';
+import { formatToolOutput, toolTarget } from '../lib/tool-card-text.ts';
 
 export const STATUS_LABELS: Readonly<Record<ToolCallStatus, string>> = {
   pending: '等待中',
@@ -56,37 +55,32 @@ const plainDiff: DiffRenderer = (diff) => h('pre', {}, diff);
 
 export function renderToolCard(call: ToolCallRecord, approval: ApprovalRequest | undefined, onDecide: DecideFn, renderDiff: DiffRenderer = plainDiff): HTMLElement {
   const summary = toolSummary(call);
-  const target = toolTarget(call.name, call.input);
-  const card = h('div', { class: 'verify tool', attrs: { 'data-call': call.id, 'data-tool-call-id': call.id } },
-    h('div', { class: 'h' },
-      h('span', { class: 'fx8' }, icon(call.name === 'agent_cli' ? 'route' : 'check'),
-        // 中文描述标签已按需求删除，只保留工具原名
-        h('span', { class: 'rn' }, call.name)),
-      h('span', { class: 'sm', title: summary }, h('span', { class: 'sml' }, target)),
-      h('span', { class: `chip ${STATUS_CHIP[call.status]}` }, STATUS_LABELS[call.status])));
+  // 单行格式：命令 ---- 结果 ---- 状态（已删除图标+工具名、参数区与折叠按钮；点击该行展开完整结果）
+  const command = toolTarget(call.name, call.input) || call.name;
+  const text = call.output ? formatToolOutput(call.output) : '';
+  const preview = text.split(/\r?\n/).find((l) => l.trim())?.trim() ?? '';
+  const full = text ? h('pre', { class: 'tool-out' }, text) : null;
+  const head = h('div', { class: 'h tool-line', attrs: full ? { role: 'button', tabindex: '0', 'aria-expanded': 'false' } : {} },
+    h('span', { class: 'tl-cmd', title: `${call.name} · ${summary}` }, command),
+    h('span', { class: 'tl-sep', attrs: { 'aria-hidden': 'true' } }),
+    h('span', { class: 'tl-res', title: preview }, preview || '—'),
+    h('span', { class: 'tl-sep', attrs: { 'aria-hidden': 'true' } }),
+    h('span', { class: `chip ${STATUS_CHIP[call.status]}` }, STATUS_LABELS[call.status]));
+  const card = h('div', { class: 'verify tool', attrs: { 'data-call': call.id, 'data-tool-call-id': call.id, 'data-tool': call.name } }, head);
+  if (full) {
+    const toggle = (): void => {
+      const open = card.classList.toggle('expanded');
+      head.setAttribute('aria-expanded', String(open));
+    };
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); } });
+  }
   if (call.diff) {
     const d = h('details', {}, h('summary', {}, 'Diff'), renderDiff(call.diff));
     d.open = call.status === 'awaiting-approval' || call.name === 'edit' || call.name === 'write';
     card.append(d);
   }
-  // write 类的完整内容已体现在 diff 中，参数区只显示路径与长度
-  const content = str(call.input.content);
-  const showInput = content && call.diff ? { ...call.input, content: `（${content.length} 字符，见 Diff）` } : call.input;
-  const rows = toolParamRows(showInput);
-  if (rows.length) {
-    card.append(h('details', { class: 'tool-payload' },
-      h('summary', { class: 'tool-payload-summary', attrs: { title: '展开工具参数', 'aria-label': `工具参数，${rows.length} 项` } }, icon('caret', 13)),
-      h('div', { class: 'tool-payload-content params' }, ...rows.map((r) => h('div', { class: 'prow' },
-        h('span', { class: 'k' }, r.label),
-        h('span', { class: 'v', title: r.value }, r.value))))));
-  }
-  if (call.output) {
-    const text = formatToolOutput(call.output);
-    const lines = outputLineCount(text);
-    card.append(h('details', { class: 'tool-payload' },
-      h('summary', { class: 'tool-payload-summary', attrs: { title: '展开工具结果', 'aria-label': `工具结果，${lines} 行` } }, icon('caret', 13)),
-      h('pre', { class: 'tool-payload-content' }, text)));
-  }
+  if (full) card.append(full);
   if (call.status === 'awaiting-approval' && approval) {
     // 文案按种类区分（T128）；未知种类回退为权限名 + 模式，始终需要用户点击，不自动批准
     const p = approvalPrompt(approval, call.name);
