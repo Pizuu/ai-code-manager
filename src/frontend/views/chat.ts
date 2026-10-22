@@ -18,6 +18,7 @@ import { clear, h, setTrustedHtml } from '../lib/dom.ts';
 import { favoriteId, isFavorite, onFavoritesChanged, toggleFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
+import { locateText } from '../lib/text-locate.ts';
 import { estimateConversationTokens } from '../lib/token-estimate.ts';
 import { parseSlashCommand, suggestCommands, type SlashCommandInfo } from '../lib/slash-commands.ts';
 import { filledTextFor, isPrimedText, wrapIndex } from '../lib/slash-menu.ts';
@@ -517,54 +518,86 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   let focusHold: { messageId: string; text?: string } | null = null;
   let focusTimer = 0;
 
-  const markSource = (content: Element, sourceText: string): void => {
-    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
-    const nodes: Array<{ node: Text; start: number; end: number }> = [];
-    let rawText = '';
+  /** 不参与文字匹配的节点：操作按钮、语言标签、工具行的结果预览（与完整输出重复）等。 */
+  const SKIP_TEXT = 'button, .code-lang, .code-actions, .tl-res, .tl-sep, .turn-ft, .caret-blink';
+
+  const textNodesOf = (root: Element): Array<{ node: Text; start: number; end: number }> & { text?: string } => {
+    const nodes: Array<{ node: Text; start: number; end: number }> & { text?: string } = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (n.parentElement?.closest(SKIP_TEXT) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    });
+    let raw = '';
     let node: Text | null;
     while ((node = walker.nextNode() as Text | null)) {
-      const start = rawText.length;
-      rawText += node.nodeValue ?? '';
-      nodes.push({ node, start, end: rawText.length });
+      const start = raw.length;
+      raw += node.nodeValue ?? '';
+      nodes.push({ node, start, end: raw.length });
     }
-    // Markdown may split one source phrase across inline nodes or wrap whitespace across lines.
-    // Normalize whitespace while retaining offsets into the original text-node sequence.
-    let normalizedText = '';
-    const offsets: Array<{ start: number; end: number }> = [];
-    for (let i = 0; i < rawText.length;) {
-      if (/\s/.test(rawText[i] ?? '')) {
-        const start = i;
-        while (i < rawText.length && /\s/.test(rawText[i] ?? '')) i++;
-        normalizedText += ' ';
-        offsets.push({ start, end: i });
-      } else {
-        normalizedText += rawText[i] ?? '';
-        offsets.push({ start: i, end: i + 1 });
-        i++;
+    nodes.text = raw;
+    return nodes;
+  };
+
+  /** 在 root 内高亮来源文字（忽略空白差异、Markdown 标记；跨行内节点拆段包裹）。返回首个 mark。 */
+  const markSource = (root: Element, sourceText: string): HTMLElement | null => {
+    const nodes = textNodesOf(root);
+    const hit = locateText(nodes.text ?? '', sourceText);
+    if (!hit) return null;
+    const segments = nodes.flatMap((entry) => {
+      const start = Math.max(hit.start, entry.start);
+      const end = Math.min(hit.end, entry.end);
+      return end > start ? [{ node: entry.node, start: start - entry.start, end: end - entry.start }] : [];
+    });
+    let first: HTMLElement | null = null;
+    // 从右往左包裹，保证每段仍落在单个文本节点内、前面的偏移不失效。
+    for (const segment of segments.reverse()) {
+      if (!segment.node.nodeValue?.slice(segment.start, segment.end).trim()) continue;
+      const range = document.createRange();
+      range.setStart(segment.node, segment.start);
+      range.setEnd(segment.node, segment.end);
+      const mark = document.createElement('mark');
+      mark.className = 'source-highlight';
+      range.surroundContents(mark);
+      first = mark;
+    }
+    return first;
+  };
+
+  /** 把 el 所在的一切折叠层打开：回合折叠、工具结果、代码块折叠、<details>、输入式折叠。 */
+  const revealAncestors = (el: Element): void => {
+    const turn = el.closest<HTMLElement>('article.turn');
+    if (turn?.classList.contains('folded')) {
+      // 折叠状态可能记在用户消息 id 或回合内任一助手消息 id 上，全部清掉，重绘后也保持展开。
+      if (turn.dataset.id) turnFolded.delete(turn.dataset.id);
+      for (const msg of turn.querySelectorAll<HTMLElement>('.msg[data-id]')) if (msg.dataset.id) turnFolded.delete(msg.dataset.id);
+      turn.classList.remove('folded');
+      turn.querySelector('.act-fold')?.setAttribute('data-tip', '折叠');
+    }
+    for (let p: Element | null = el; p && p !== log; p = p.parentElement) {
+      if (p instanceof HTMLDetailsElement) p.open = true;
+      if (p.matches('.verify.tool') && !p.classList.contains('expanded') && p.querySelector('.tool-out')) {
+        p.classList.add('expanded');
+        p.querySelector('.tool-line')?.setAttribute('aria-expanded', 'true');
+      }
+      if (p.matches('pre.code-enhanced.collapsed')) p.classList.remove('collapsed');
+    }
+  };
+
+  /** 把 el 滚进每一层可滚动祖先的可视区中央（过程区、代码块横向滚动），最后滚动对话日志。 */
+  const scrollIntoCenter = (el: Element): void => {
+    for (let p = el.parentElement; p && p !== log; p = p.parentElement) {
+      const style = getComputedStyle(p);
+      const r = el.getBoundingClientRect();
+      const pr = p.getBoundingClientRect();
+      if (/(auto|scroll)/.test(style.overflowY) && p.scrollHeight > p.clientHeight + 1) {
+        p.scrollTop += r.top - pr.top - (p.clientHeight - r.height) / 2;
+      }
+      if (/(auto|scroll)/.test(style.overflowX) && p.scrollWidth > p.clientWidth + 1) {
+        p.scrollLeft += r.left - pr.left - Math.max(0, (p.clientWidth - r.width) / 2);
       }
     }
-    const needle = sourceText.trim().replace(/\s+/g, ' ');
-    const matchStart = normalizedText.indexOf(needle);
-    if (matchStart >= 0 && needle) {
-      const rawStart = offsets[matchStart]?.start;
-      const rawEnd = offsets[matchStart + needle.length - 1]?.end;
-      if (rawStart !== undefined && rawEnd !== undefined) {
-        const segments = nodes.flatMap((entry) => {
-          const start = Math.max(rawStart, entry.start);
-          const end = Math.min(rawEnd, entry.end);
-          return end > start ? [{ node: entry.node, start: start - entry.start, end: end - entry.start }] : [];
-        });
-        // Wrap from right to left so each range remains within a single text node and prior offsets stay valid.
-        for (const segment of segments.reverse()) {
-          const range = document.createRange();
-          range.setStart(segment.node, segment.start);
-          range.setEnd(segment.node, segment.end);
-          const mark = document.createElement('mark');
-          mark.className = 'source-highlight';
-          range.surroundContents(mark);
-        }
-      }
-    }
+    const r = el.getBoundingClientRect();
+    const lr = log.getBoundingClientRect();
+    log.scrollTop += r.top - lr.top - (log.clientHeight - Math.min(r.height, log.clientHeight)) / 2;
   };
 
   const clearFocus = (): void => {
@@ -573,40 +606,73 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     logIn.normalize();
   };
 
-  /** 套用（或重新套用）高亮；返回目标回合元素。 */
+  /** 回合内参与匹配的区域，按优先级：用户气泡 / 助手正文（各条合并消息）→ 过程区（工具命令、结果、Diff）→ 整个回合。 */
+  const searchAreas = (turn: HTMLElement, messageId?: string): Element[] => {
+    const own = messageId ? turn.querySelector(`.msg[data-id="${CSS.escape(messageId)}"]`) : null;
+    const areas = [
+      own,
+      ...turn.querySelectorAll('.ubub'),
+      ...turn.querySelectorAll('.msg'),
+      ...turn.querySelectorAll('.think'),
+      turn,
+    ].filter((x): x is Element => x instanceof Element);
+    return [...new Set(areas)];
+  };
+
+  const turnOf = (messageId: string): HTMLElement | null =>
+    log.querySelector<HTMLElement>(`.turn.user[data-id="${CSS.escape(messageId)}"]`)
+      ?? log.querySelector(`.msg[data-id="${CSS.escape(messageId)}"]`)?.closest<HTMLElement>('.turn')
+      ?? log.querySelector(`.think-body[data-mid="${CSS.escape(messageId)}"]`)?.closest<HTMLElement>('.turn')
+      ?? null;
+
+  /** 套用（或重新套用）高亮；返回滚动目标（命中的文字，否则回合）。 */
   const applyFocus = (): HTMLElement | null => {
     if (!focusHold) return null;
     const { messageId, text } = focusHold;
-    const message = log.querySelector(`.msg[data-id="${CSS.escape(messageId)}"]`);
-    const target = log.querySelector<HTMLElement>(`.turn.user[data-id="${CSS.escape(messageId)}"]`)
-      ?? message?.closest<HTMLElement>('.turn');
-    if (!(target instanceof HTMLElement)) return null;
+    const target = turnOf(messageId);
+    if (!target) return null;
     target.classList.add('ctx-hit');
-    const content = target.querySelector('.msg .md') ?? target.querySelector('.ubub') ?? message;
-    if (content && text?.trim() && !content.querySelector('mark.source-highlight')) markSource(content, text);
+    revealAncestors(target);
+    let mark = target.querySelector<HTMLElement>('mark.source-highlight');
+    if (!mark && text?.trim()) {
+      for (const area of searchAreas(target, messageId)) {
+        mark = markSource(area, text);
+        if (mark) break;
+      }
+    }
+    if (mark) {
+      for (const m of target.querySelectorAll('mark.source-highlight')) revealAncestors(m);
+      return mark;
+    }
     return target;
   };
 
   const focusMessage = (messageId: string, sourceText?: string): void => {
     clearFocus();
     window.clearTimeout(focusTimer);
-    focusHold = { messageId, ...(sourceText ? { text: sourceText } : {}) };
+    focusHold = { messageId, ...(sourceText?.trim() ? { text: sourceText } : {}) };
     const target = applyFocus();
     if (!target) { focusHold = null; return; }
-    const logRect = log.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    log.scrollTop += targetRect.top - logRect.top - (log.clientHeight - targetRect.height) / 2;
+    // 展开折叠层后布局才稳定，下一帧再定位，保证落在可视区中央。
+    requestAnimationFrame(() => {
+      if (!target.isConnected) { const again = applyFocus(); if (again) scrollIntoCenter(again); }
+      else scrollIntoCenter(target);
+    });
     focusTimer = window.setTimeout(() => { focusHold = null; clearFocus(); }, MESSAGE_FOCUS_MS);
   };
 
+  /** 按文字找来源：从新到旧遍历回合，回合内任何文字（正文、气泡、工具命令与结果、Diff、折叠内容）都可命中。 */
   const focusText = (text: string): boolean => {
-    const needle = text.trim().replace(/\s+/g, ' ');
-    if (!needle) return false;
+    if (!text.trim()) return false;
     const turns = [...log.querySelectorAll<HTMLElement>('article.turn')].reverse();
     for (const t of turns) {
-      const id = t.classList.contains('user') ? t.dataset.id : t.querySelector<HTMLElement>('.msg[data-id]')?.dataset.id;
-      const body = t.querySelector('.ubub, .msg .md') ?? t;
-      if (id && (body.textContent ?? '').replace(/\s+/g, ' ').includes(needle)) {
+      for (const area of searchAreas(t)) {
+        if (!locateText(textNodesOf(area).text ?? '', text)) continue;
+        const id = t.classList.contains('user')
+          ? t.dataset.id
+          : (area.closest<HTMLElement>('.msg[data-id]') ?? t.querySelector<HTMLElement>('.msg[data-id]'))?.dataset.id
+            ?? t.querySelector<HTMLElement>('.think-body[data-mid]')?.dataset.mid;
+        if (!id) continue;
         focusMessage(id, text);
         return true;
       }
