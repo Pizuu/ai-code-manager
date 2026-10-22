@@ -25,7 +25,7 @@ import { store } from '../store.ts';
 import { renderToolCard, type DiffRenderer } from './tool-card.ts';
 
 export const MODE_LABELS: Readonly<Record<PermissionMode, string>> = { ask: '每次询问', 'auto-edits': '自动批准编辑', plan: '仅规划（只读）', 'allow-all': '全部允许（免审批）' };
-const MESSAGE_FOCUS_MS = 1400;
+const MESSAGE_FOCUS_MS = 3000;
 
 async function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
@@ -481,69 +481,90 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
   };
 
-  const focusMessage = (messageId: string, sourceText?: string): void => {
-    const message = log.querySelector(`.msg[data-id="${CSS.escape(messageId)}"]`);
-    const target = log.querySelector<HTMLElement>(`.turn.user[data-id="${CSS.escape(messageId)}"]`)
-      ?? message?.closest<HTMLElement>('.turn');
-    if (!(target instanceof HTMLElement)) return;
-    const logRect = log.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    log.scrollTop += targetRect.top - logRect.top - (log.clientHeight - targetRect.height) / 2;
-    target.classList.remove('ctx-focus');
-    void target.offsetWidth;
-    target.classList.add('ctx-focus');
-    window.setTimeout(() => target.classList.remove('ctx-focus'), MESSAGE_FOCUS_MS);
-    const content = target.querySelector('.msg .md') ?? target.querySelector('.ubub') ?? message;
-    if (content && sourceText?.trim()) {
-      const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
-      const nodes: Array<{ node: Text; start: number; end: number }> = [];
-      let rawText = '';
-      let node: Text | null;
-      while ((node = walker.nextNode() as Text | null)) {
-        const start = rawText.length;
-        rawText += node.nodeValue ?? '';
-        nodes.push({ node, start, end: rawText.length });
+  /** 跳转高亮状态：渲染重建日志后会重新套用，直到超时（避免被随后的重绘冲掉）。 */
+  let focusHold: { messageId: string; text?: string } | null = null;
+  let focusTimer = 0;
+
+  const markSource = (content: Element, sourceText: string): void => {
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    const nodes: Array<{ node: Text; start: number; end: number }> = [];
+    let rawText = '';
+    let node: Text | null;
+    while ((node = walker.nextNode() as Text | null)) {
+      const start = rawText.length;
+      rawText += node.nodeValue ?? '';
+      nodes.push({ node, start, end: rawText.length });
+    }
+    // Markdown may split one source phrase across inline nodes or wrap whitespace across lines.
+    // Normalize whitespace while retaining offsets into the original text-node sequence.
+    let normalizedText = '';
+    const offsets: Array<{ start: number; end: number }> = [];
+    for (let i = 0; i < rawText.length;) {
+      if (/\s/.test(rawText[i] ?? '')) {
+        const start = i;
+        while (i < rawText.length && /\s/.test(rawText[i] ?? '')) i++;
+        normalizedText += ' ';
+        offsets.push({ start, end: i });
+      } else {
+        normalizedText += rawText[i] ?? '';
+        offsets.push({ start: i, end: i + 1 });
+        i++;
       }
-      // Markdown may split one source phrase across inline nodes or wrap whitespace across lines.
-      // Normalize whitespace while retaining offsets into the original text-node sequence.
-      let normalizedText = '';
-      const offsets: Array<{ start: number; end: number }> = [];
-      for (let i = 0; i < rawText.length;) {
-        if (/\s/.test(rawText[i] ?? '')) {
-          const start = i;
-          while (i < rawText.length && /\s/.test(rawText[i] ?? '')) i++;
-          normalizedText += ' ';
-          offsets.push({ start, end: i });
-        } else {
-          normalizedText += rawText[i] ?? '';
-          offsets.push({ start: i, end: i + 1 });
-          i++;
-        }
-      }
-      const needle = sourceText.trim().replace(/\s+/g, ' ');
-      const matchStart = normalizedText.indexOf(needle);
-      if (matchStart >= 0 && needle) {
-        const rawStart = offsets[matchStart]?.start;
-        const rawEnd = offsets[matchStart + needle.length - 1]?.end;
-        if (rawStart !== undefined && rawEnd !== undefined) {
-          const segments = nodes.flatMap((entry) => {
-            const start = Math.max(rawStart, entry.start);
-            const end = Math.min(rawEnd, entry.end);
-            return end > start ? [{ node: entry.node, start: start - entry.start, end: end - entry.start }] : [];
-          });
-          // Wrap from right to left so each range remains within a single text node and prior offsets stay valid.
-          for (const segment of segments.reverse()) {
-            const range = document.createRange();
-            range.setStart(segment.node, segment.start);
-            range.setEnd(segment.node, segment.end);
-            const mark = document.createElement('mark');
-            mark.className = 'source-highlight';
-            range.surroundContents(mark);
-            window.setTimeout(() => mark.replaceWith(document.createTextNode(mark.textContent ?? '')), MESSAGE_FOCUS_MS);
-          }
+    }
+    const needle = sourceText.trim().replace(/\s+/g, ' ');
+    const matchStart = normalizedText.indexOf(needle);
+    if (matchStart >= 0 && needle) {
+      const rawStart = offsets[matchStart]?.start;
+      const rawEnd = offsets[matchStart + needle.length - 1]?.end;
+      if (rawStart !== undefined && rawEnd !== undefined) {
+        const segments = nodes.flatMap((entry) => {
+          const start = Math.max(rawStart, entry.start);
+          const end = Math.min(rawEnd, entry.end);
+          return end > start ? [{ node: entry.node, start: start - entry.start, end: end - entry.start }] : [];
+        });
+        // Wrap from right to left so each range remains within a single text node and prior offsets stay valid.
+        for (const segment of segments.reverse()) {
+          const range = document.createRange();
+          range.setStart(segment.node, segment.start);
+          range.setEnd(segment.node, segment.end);
+          const mark = document.createElement('mark');
+          mark.className = 'source-highlight';
+          range.surroundContents(mark);
         }
       }
     }
+  };
+
+  const clearFocus = (): void => {
+    for (const el of log.querySelectorAll('.ctx-hit')) el.classList.remove('ctx-hit');
+    for (const mark of log.querySelectorAll('mark.source-highlight')) mark.replaceWith(document.createTextNode(mark.textContent ?? ''));
+    logIn.normalize();
+  };
+
+  /** 套用（或重新套用）高亮；返回目标回合元素。 */
+  const applyFocus = (): HTMLElement | null => {
+    if (!focusHold) return null;
+    const { messageId, text } = focusHold;
+    const message = log.querySelector(`.msg[data-id="${CSS.escape(messageId)}"]`);
+    const target = log.querySelector<HTMLElement>(`.turn.user[data-id="${CSS.escape(messageId)}"]`)
+      ?? message?.closest<HTMLElement>('.turn');
+    if (!(target instanceof HTMLElement)) return null;
+    target.classList.add('ctx-hit');
+    const content = target.querySelector('.msg .md') ?? target.querySelector('.ubub') ?? message;
+    if (content && text?.trim() && !content.querySelector('mark.source-highlight')) markSource(content, text);
+    return target;
+  };
+
+  const focusMessage = (messageId: string, sourceText?: string): void => {
+    clearFocus();
+    window.clearTimeout(focusTimer);
+    focusHold = { messageId, ...(sourceText ? { text: sourceText } : {}) };
+    const target = applyFocus();
+    if (!target) { focusHold = null; return; }
+    const logRect = log.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    log.scrollTop += targetRect.top - logRect.top - (log.clientHeight - targetRect.height) / 2;
+    focusTimer = window.setTimeout(() => { focusHold = null; clearFocus(); }, MESSAGE_FOCUS_MS);
   };
 
   const focusText = (text: string): boolean => {
@@ -665,7 +686,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     updateLive();
     setCaret();
     renderHeader();
-    if (nearBottom) log.scrollTop = log.scrollHeight;
+    // 跳转高亮期间日志被重建时重新套用，避免高亮被冲掉。
+    if (focusHold) applyFocus();
+    else if (nearBottom) log.scrollTop = log.scrollHeight;
   };
 
   /** 流式增量按帧合并渲染（SC-006）。 */
