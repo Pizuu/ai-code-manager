@@ -2,9 +2,12 @@
 
 > 由 coordinator 维护。前置任务全部合入的卡即为 **ready**；来自不同泳道的 ready 卡可以同时派发。
 > 集成分支：以 `.agents/config.sh` 的 `INTEGRATION_BRANCH` 为准，当前为 `manus`（历史名依次为 `dev` → `hark-dev`）。下方「003 / 002 记录」是当时的历史事实，保留原样。
-> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-031）、`specs/005-approval-notifier/`（T-046…T-051）。当前 ready：（无——在册卡全部 done）下一步候选：contracts v1.4 暴露 opencodeMode 设置；真实 opencode serve 联调。T-012 同时承担 003 的 T214（打包核对）。
-> 005 记录：审批通知提醒器由负责人提出、确认交互原型后立项（2026-10-21）：specs/005-approval-notifier/ 的 spec + checklists + tasks 随立项提交合入，FR 与规格内任务号统一 5xx 对齐规格号（历史偏移约定不再沿用，理由见 spec.md FR 节首注）；拆卡 T-046（contracts，ready）→ T-047（backend 通知服务）/ T-048（frontend 弹窗栈与收件箱）→ T-049（frontend P1–P3 事项，依赖 T-048）、T-050（frontend 设置分区）→ T-051（docs）。`.specify/feature.json` 已切到 005。T-046 已合入（`17d13f1`，契约 v1.13；协调者在 frontend main.ts 加 notify-activate 占位 case 一行保 tsc 绿，正式处理在 T-048）。flow-back（2026-10-21 负责人定位）：收件箱入口定版为 rail 底部组、主题按钮上方的收件箱按钮，弹层分「待处理 / 历史」两页签管理审批状态与历史（FR-511 修订 + FR-515 新增，T-048 承接）。
+> 功能：`specs/001-agent-desktop/`（T-001…T-012）、`specs/002-workspace-boards/`（T-013…T-022）、`specs/003-code-view-web-locator/`（T-023…T-031）、`specs/004-slash-keyboard-select/`、`specs/005-approval-notifier/`、`specs/006-chat-interactions/`。当前 ready：（无——T-054 等待独立 reviewer 审核 UX 清单并将规格制品合入 manus；T-055…T-057 按序阻塞）下一步候选：contracts v1.4 暴露 opencodeMode 设置；真实 opencode serve 联调。T-012 同时承担 003 的 T214（打包核对）。
+> 005 记录：审批通知提醒器由负责人提出、确认交互原型后立项（2026-10-21）：specs/005-approval-notifier/ 的 spec + checklists + tasks 随立项提交合入，FR 与规格内任务号统一 5xx 对齐规格号（历史偏移约定不再沿用，理由见 spec.md FR 节首注）；拆卡 T-046（contracts，ready）→ T-047（backend 通知服务）/ T-048（frontend 弹窗栈与收件箱）→ T-049（frontend P1–P3 事项，依赖 T-048）、T-050（frontend 设置分区）→ T-051（docs）。T-046 已合入（`17d13f1`，契约 v1.13；协调者在 frontend main.ts 加 notify-activate 占位 case 一行保 tsc 绿，正式处理在 T-048）。flow-back（2026-10-21 负责人定位）：收件箱入口定版为 rail 底部组、主题按钮上方的收件箱按钮，弹层分「待处理 / 历史」两页签管理审批状态与历史（FR-511 修订 + FR-515 新增，T-048 承接）。
 > 004 记录：T-037…T-045 一批（ADR 0010 终端模式 / 自动授权 + 看板自省 P0-1·P1-7·P1-8）此前在工作区未提交，卡片却已写「done」；本轮由 coordinator 按泳道拆分后逐支合入 `manus`：契约 v1.6（`b3c247c`）→ 契约 v1.7（`ebd00a9`）→ 后端 T-038（`2f189c8`）→ 后端 T-041（`7b332bc`）→ 前端 T-039/T-042（`dc17495`）→ infra T-044（`ba56b5a`）→ contracts T-043（`abe1fd8`）→ docs T-045（`7232917`）→ 看板与协作文档同步（`413a765`）→ 提交号修正（`ed77d77`）。约定：契约先行期间干净树 typecheck 预期为红（preload / handler 穷举检查），T-039 合入后转绿。
+| T-051 | 005 用户与测试文档 | docs | T-047, T-048 | done | worker | `feat/docs/T-051-docs-005`（协调者直合 manus 本地提交；含 T-021 矩阵行转交补登，推送待令牌 workflow 权限解阻） |
+| T-052 | 设置对话框「保存」按钮状态不随 CLI 列表刷新（缺陷） | frontend | — | done | worker | `feat/frontend/T-052-settings-save-refresh`（协调者直合 manus 本地提交 `638f313`） |
+| T-053 | 系统通知激活在应用未加载完时丢失（缺陷） | backend+frontend | T-047, T-048 | done | worker | 协调者直合 manus 本地提交 `369654c` |
 > 003 记录：T-023（契约 v1.2）合入提交 `cc62487` 到 T-025 合入提交 `7f900e1` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（同 002，plan.md Complexity Tracking）；三者连续合入，其余每次合入后 lint / typecheck / 测试为绿。
 > 002 记录：T-013（契约 v1.1）合入提交 `1ec10b8` 到 T-015 合入提交 `ce20063` 之间，`hark-dev` 因 preload / handler 编译期穷举检查而 typecheck 不通过（有意的防漏机制，plan.md Complexity Tracking）；二者已连续合入，其余每次合入后 `scripts/verify.sh` 为绿。集成分支已更名 `hark-dev`；任务分支合入后删除，状态以合并提交追溯。
 > 说明：T015（应用入口/preload/handlers）因依赖后续模块，从 T-004 移到 T-006 执行（flow-back 已同步卡片）。无 Git 远端，「PR」列为本地合入 `dev` 的分支名（见 plan.md Complexity Tracking）。
@@ -64,6 +67,10 @@
 | T-051 | 005 用户与测试文档 | docs | T-047, T-048 | done | worker | `feat/docs/T-051-docs-005`（协调者直合 manus 本地提交；含 T-021 矩阵行转交补登，推送待令牌 workflow 权限解阻） |
 | T-052 | 设置对话框「保存」按钮状态不随 CLI 列表刷新（缺陷） | frontend | — | done | worker | `feat/frontend/T-052-settings-save-refresh`（协调者直合 manus 本地提交 `638f313`） |
 | T-053 | 系统通知激活在应用未加载完时丢失（缺陷） | backend+frontend | T-047, T-048 | done | worker | 协调者直合 manus 本地提交 `369654c` |
+| T-054 | 待办跳转定位与高亮 | frontend | reviewer 审核 + 规格合入 | blocked | 待派发 | `feat/frontend/T-054-todo-message-focus` |
+| T-055 | 右键收藏用户消息 | frontend | T-054 | blocked | 待派发 | `feat/frontend/T-055-user-message-favorites` |
+| T-056 | 输入区 API/CLI Agent 切换 | frontend | T-055 | blocked | 待派发 | `feat/frontend/T-056-agent-source-selector` |
+| T-057 | 会话交互测试矩阵同步 | docs | T-056 | blocked | 待派发 | `feat/docs/T-057-chat-interactions-matrix` |
 
 ## 依赖图
 
@@ -115,6 +122,7 @@ graph LR
   T037 --> T043[T-043 contracts ADR 0010 + 宪法 1.3.0]
   T044[T-044 infra 泳道守卫触发修复]
   T042 --> T045[T-045 docs 用户与测试文档]
+  T054[T-054 frontend 待办定位] --> T055[T-055 frontend 用户收藏] --> T056[T-056 frontend Agent 切换] --> T057[T-057 docs 测试矩阵]
   T046[T-046 contracts 契约 v1.13] --> T047[T-047 backend 通知服务]
   T046 --> T048[T-048 frontend 弹窗栈/收件箱]
   T048 --> T049[T-049 frontend P1-P3 事项生成]
