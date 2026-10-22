@@ -4,6 +4,8 @@
  * 纯函数、不依赖 DOM，可在 Node 中测试。
  */
 
+import { detectLang, highlightCode, langLabel, normalizeLang } from './code-highlight.ts';
+
 const ESCAPES: Readonly<Record<string, string>> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 export function escapeHtml(text: string): string {
@@ -57,8 +59,12 @@ export function renderMarkdown(src: string): string {
       const body: string[] = [];
       i++;
       while (i < lines.length && !FENCE_RE.test(lines[i] as string)) body.push(lines[i++] as string);
-      const lang = fence[1] ? ` class="lang-${escapeHtml(fence[1])}"` : '';
-      out.push(`<pre><code${lang}>${escapeHtml(body.join('\n'))}</code></pre>`);
+      // 语言：优先 ``` 标注（规范化别名），其次按内容猜；着色输出只含固定 span 且源码全部转义。
+      const code = body.join('\n');
+      const lang = (fence[1] ? normalizeLang(fence[1]) : null) ?? detectLang(code);
+      const rawTag = fence[1] && !lang ? fence[1] : '';
+      const cls = lang ? ` class="lang-${lang}" data-lang="${escapeHtml(langLabel(lang))}"` : rawTag ? ` class="lang-${escapeHtml(rawTag)}" data-lang="${escapeHtml(rawTag)}"` : '';
+      out.push(`<pre><code${cls}>${highlightCode(code, lang)}</code></pre>`);
       continue; // 未闭合的代码块（流式中）渲染到末尾
     }
     if (line.trim() === '') { flushPara(); continue; }
