@@ -381,9 +381,9 @@ test('Electron 核心路径：选目录 → 提问 → 批准/拒绝编辑 → �
     await page.waitForFunction((name) => document.querySelector('.explorer .psel .pid')?.textContent?.includes(name), 'demo-project', { timeout: 10_000 });
     await showSession(page);
     await page.locator('.chat .ubub').filter({ hasText: '把 hello.txt 改成大写' }).waitFor({ state: 'visible', timeout: 10_000 });
-    // v1.8：思考区默认折叠（重启后没有待批准，也没有用户的展开选择）→ 断言前先展开
-    const thinkEdit1 = page.locator('.chat .verify.tool[data-call="call_edit1"]').locator('xpath=ancestor::details[1]');
-    assert.equal(await thinkEdit1.evaluate((el) => (el as HTMLDetailsElement).open, null), false, '思考区默认应折叠');
+    // 过程区已无标题行、不再折叠：工具卡片直接可见，且同一回合只有一个过程区
+    await page.locator('.chat .verify.tool[data-call="call_edit1"]').waitFor({ state: 'visible', timeout: 5_000 });
+    assert.equal(await page.locator('.chat .think-sum').count(), 0, '不应再有过程区标题行');
     await openThinkOf(page, 'call_edit1');
     await toolCard(page, 'call_edit1').locator('.chip').filter({ hasText: '完成' }).waitFor({ timeout: 10_000 });
     await openThinkOf(page, 'call_edit2');
