@@ -834,47 +834,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       modelMenuItem('CLI 默认', cfgModel ? `解析为配置模型 ${cfgModel}` : '使用 CLI 自身默认模型', !override, () => void applySessionModel(null)),
     ];
     items.push(buildModelSelect(loading, cfgModel, override));
-    const customCurrent = override && override !== cfgModel && !(modelCandidates ?? []).includes(override) ? `当前：${override}` : '';
-    items.push(modelMenuItem('自定义…', customCurrent, false, showCustomModelForm));
     items.push(modelMenuItem('切换 API/CLI…', '同时更新当前会话和新会话默认值', false, () => { closeModelMenu(); openAgentMenu(); }, store.state.running.has(s.id)));
     modelMenu.replaceChildren(...items);
     positionModelMenu();
-  };
-
-  /** 「自定义…」：在菜单内输入任意 model 字符串（Enter 提交、Esc 回列表）。 */
-  const showCustomModelForm = () => {
-    const s = store.state.current;
-    if (!s || !modelMenuFor) return;
-    modelMenuMode = 'custom';
-    const input = h('input', { class: 'mi-input', attrs: { type: 'text', placeholder: '如 opencode/gpt-5', value: s.cliModel ?? '' } });
-    const back = () => buildModelMenu(false);
-    const submit = () => {
-      const v = input.value.trim();
-      if (!v) {
-        back();
-        return;
-      }
-      void applySessionModel(v);
-    };
-    input.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        submit();
-      } else if (ev.key === 'Escape') {
-        ev.stopPropagation();
-        back();
-      }
-    });
-    modelMenu.replaceChildren(
-      h('div', { class: 'mi-form' },
-        h('span', { class: 'mute' }, '自定义模型（仅本会话）'),
-        input,
-        h('div', { class: 'mi-btns' },
-          h('button', { attrs: { type: 'button' }, on: { click: back } }, '取消'),
-          h('button', { class: 'pri', attrs: { type: 'button' }, on: { click: submit } }, '确定'))));
-    positionModelMenu();
-    input.focus();
-    input.select();
   };
 
   const openModelMenu = () => {

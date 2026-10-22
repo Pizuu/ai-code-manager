@@ -111,7 +111,7 @@ export function openSettings(tab: SettingsTab = 'model'): void {
   const err = h('div', { class: 'error-text' });
   const testStatus = h('div', { class: 'api-test-result', attrs: { role: 'status' } });
   const keyHelp = h('div', { class: 'help' });
-  const removeKey = h('button', { class: 'btn danger', attrs: { type: 'button' } }, '删除已保存的 Key');
+  const removeKey = h('button', { class: 'btn danger', attrs: { type: 'button' } }, '删除 Key');
   const savedProjectPath = store.state.settings?.lastProjectPath ?? null;
   const hasSavedProject = Boolean(savedProjectPath);
   const savedProject = h('div', { class: 'cli-item saved-project' },
@@ -121,21 +121,28 @@ export function openSettings(tab: SettingsTab = 'model'): void {
       h('div', { class: 'mono saved-project-path' }, savedProjectPath ?? '尚未选择项目')),
     h('span', { class: 'mute saved-project-hint' }, hasSavedProject ? '当前项目配置将用于 API 会话' : '打开项目后会自动保存项目路径'));
 
-  // 「已保存」一行：项目路径 + 当前已保存的 API 配置（只读展示，Key 只显示是否已保存）。
+  // 「已保存」：不是固定字段表，而是由「添加」生成的条目；未添加时只给一句提示。
+  const SHORT_PROVIDER: Readonly<Record<ProviderId, string>> = { openai: 'OpenAI 兼容', anthropic: 'Anthropic' };
   const savedApi = h('div', { class: 'saved-api' });
   const renderSavedApi = () => {
     const cur = store.state.settings;
     const p = cur?.provider ?? s.provider;
-    const row = (k: string, v: string) => h('div', { class: 'kv-row' }, h('span', { class: 'mute' }, k), h('span', { class: 'mono' }, v));
+    const hasKey = cur?.hasApiKey[p] ?? false;
     clear(savedApi);
-    savedApi.append(
-      row('提供方', PROVIDER_LABELS[p]),
-      row('Base URL', cur?.baseUrl || '未填写'),
-      row('模型', cur?.model || '未填写'),
-      row('API Key', cur?.hasApiKey[p] ? '已加密保存' : '未保存'));
+    if (!cur?.baseUrl && !cur?.model && !hasKey) {
+      savedApi.append(h('div', { class: 'mute' }, '还没有添加 API。在下方填写后点「添加」。'));
+      return;
+    }
+    savedApi.append(h('div', { class: 'cli-item api-entry' },
+      h('div', { class: 'grow0' },
+        h('div', { class: 'fx8' },
+          h('b', {}, cur?.model || '未填写模型'),
+          h('span', { class: 'chip' }, SHORT_PROVIDER[p]),
+          h('span', { class: `chip ${hasKey ? 'grn' : ''}` }, hasKey ? 'Key 已加密' : '无 Key')),
+        h('div', { class: 'mono' }, cur?.baseUrl || '未填写 Base URL')),
+      testBtn,
+      removeKey));
   };
-  renderSavedApi();
-
   const refreshKeyState = () => {
     const p = provider.value as ProviderId;
     const saved = store.state.settings?.hasApiKey[p] ?? false;
@@ -170,6 +177,8 @@ export function openSettings(tab: SettingsTab = 'model'): void {
     }
   });
 
+  renderSavedApi();
+
   removeKey.addEventListener('click', async () => {
     try {
       store.state.settings = await api.invoke('settings:set', { apiKey: { provider: provider.value as ProviderId, value: '' } });
@@ -192,14 +201,13 @@ export function openSettings(tab: SettingsTab = 'model'): void {
       h('div', { class: 'cfg-sec-title' }, '已保存'),
       savedProject,
       savedApi,
-      h('div', { class: 'fx8' }, testBtn),
       testStatus),
     h('div', { class: 'cfg-panel cfg-add' },
       h('div', { class: 'cfg-sec-title' }, '添加'),
       field('模型提供方', provider),
       field('Base URL', baseUrl, '必填，默认空白：填写你所用服务的接口地址（OpenAI 兼容端点或 Anthropic Messages API）。'),
       field('模型', model, '必填，默认空白：按服务商文档填写模型 ID。也可用 /model <模型名> 切换。'),
-      h('div', { class: 'field' }, h('label', {}, 'API Key'), key, keyHelp, h('div', {}, removeKey)),
+      h('div', { class: 'field' }, h('label', {}, 'API Key'), key, keyHelp),
       field('权限模式', mode, '内置 agent：命令执行在任何模式下都需要逐条批准；「仅规划」禁止修改与执行。外部 CLI 的映射见「Agent CLI」分区。')),
     err,
     h('div', { class: 'actions' },
