@@ -441,3 +441,22 @@ test('toAcpApprovalRequest / parseAcpPermissionRequest：形状映射', () => {
   // AcpPeer 导出仅为类型完整性（peer 级测试在上方）
   assert.equal(typeof AcpPeer, 'function');
 });
+
+test('ACP 进程启动时下发 OPENCODE_PERMISSION：编辑/命令为 ask、越界目录 deny（否则 opencode 默认放行、审批失效）', async () => {
+  let captured: NodeJS.ProcessEnv | undefined;
+  const manager = new AcpProcessManager({
+    platform: 'linux',
+    probeVersion: async () => '1.18.31',
+    startPeer: ((opts: { env: NodeJS.ProcessEnv }) => {
+      captured = opts.env;
+      throw new Error('stop-after-capture');
+    }) as never,
+  });
+  await assert.rejects(manager.acquire({
+    appSessionId: 'perm-env', config: config({}), executable: '/bin/true', projectRoot: ROOT, baseEnv: {},
+  }));
+  const perm = JSON.parse(captured?.OPENCODE_PERMISSION ?? '{}') as Record<string, string>;
+  assert.equal(perm.edit, 'ask');
+  assert.equal(perm.bash, 'ask');
+  assert.equal(perm.external_directory, 'deny');
+});
