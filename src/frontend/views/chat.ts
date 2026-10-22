@@ -150,12 +150,41 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   primebar.hidden = true;
   const textarea = h('textarea', { attrs: { placeholder: '' } });
   // 输入框不限高：高度全量跟随内容生长（scrollHeight），下限由 CSS min-height 兜住；内部不滚动、无滚动条。
+  /** 输入框折叠预览：文本高度超过输入框 2 倍时，失焦后折叠，只显示首尾各约 1.5 行，点击展开继续编辑。 */
+  const foldHead = h('div', { class: 'cfold-head' });
+  const foldTail = h('div', { class: 'cfold-tail' }, h('div', {}));
+  const foldPreview = h('div', { class: 'cfold', attrs: { role: 'button', tabindex: '0', title: '点击展开继续编辑' } },
+    foldHead, h('div', { class: 'cfold-gap', attrs: { 'aria-hidden': 'true' } }, '⋯'), foldTail);
+  foldPreview.hidden = true;
+  const unfoldInput = (focus: boolean) => {
+    if (foldPreview.hidden) return;
+    foldPreview.hidden = true;
+    textarea.hidden = false;
+    autoGrow();
+    if (focus) { textarea.focus(); textarea.setSelectionRange(textarea.value.length, textarea.value.length); }
+  };
+  const foldInputIfLong = () => {
+    const base = parseFloat(getComputedStyle(textarea).minHeight) || 44;
+    if (!textarea.value.trim() || textarea.scrollHeight <= base * 2) return;
+    foldHead.textContent = textarea.value;
+    (foldTail.firstElementChild as HTMLElement).textContent = textarea.value;
+    textarea.hidden = true;
+    foldPreview.hidden = false;
+  };
+  foldPreview.addEventListener('click', () => unfoldInput(true));
+  foldPreview.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); unfoldInput(true); } });
+  textarea.addEventListener('blur', () => {
+    // 点击发送等按钮时 blur 先于 click：延后一帧，若文本已被清空（已发送）就不折叠
+    requestAnimationFrame(() => { if (document.activeElement !== textarea) foldInputIfLong(); });
+  });
   const autoGrow = () => {
+    if (!foldPreview.hidden && !textarea.value) unfoldInput(false);
     textarea.style.height = 'auto';
     textarea.style.height = `${textarea.scrollHeight}px`;
   };
   /** 在光标处插入文本并触发 autoGrow、回焦（ChatView.insertText 的实现体，系统文件选择共用）。 */
   const insertAtCursor = (text: string) => {
+    unfoldInput(false);
     textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, 'end');
     autoGrow();
     textarea.focus();
@@ -198,7 +227,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   attray.hidden = true;
   const comp = h('div', { class: 'comp' },
     slashMenu,
-    h('div', { class: 'box' }, primebar, attray, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
+    h('div', { class: 'box' }, primebar, attray, foldPreview, textarea, h('div', { class: 'bar' }, attachBtn, h('span', { class: 'right' }, stopBtn, sendBtn))),
     h('div', { class: 'ft' }, ctxUsage, agentPick, modelPick, modeSel));
   container.append(thd, log, comp);
 
@@ -285,7 +314,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     }
     if (added) {
       renderAttTray();
-      textarea.focus();
+      unfoldInput(false); textarea.focus();
     }
   };
   attachBtn.addEventListener('click', () => void pickSystemFiles());
@@ -1057,7 +1086,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     renderPrimebar();
     renderSlashMenu();
     autoGrow();
-    textarea.focus();
+    unfoldInput(false); textarea.focus();
     textarea.setSelectionRange(filled.length, filled.length);
   }
 
@@ -1090,7 +1119,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
 
   primeCancel.addEventListener('click', () => {
     clearPrime();
-    textarea.focus();
+    unfoldInput(false); textarea.focus();
   });
 
   /** 斜杠命令（FR-013）：本地动作在此执行；返回要发送给 Agent 的文本，或 null 表示已处理。 */
@@ -1277,7 +1306,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       const r = insertBlock(textarea.value, textarea.selectionStart, textarea.selectionEnd, text);
       textarea.value = r.text;
       autoGrow();
-      textarea.focus();
+      unfoldInput(false); textarea.focus();
       textarea.setSelectionRange(r.caret, r.caret);
       textarea.scrollTop = textarea.scrollHeight;
       renderSlashMenu();
