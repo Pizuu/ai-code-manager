@@ -7,7 +7,7 @@ import type { ApprovalRequest, ToolCallRecord, ToolCallStatus } from '../../../c
 import { approvalPrompt, approvalText } from '../lib/approval-prompt.ts';
 import { h } from '../lib/dom.ts';
 import { icon } from '../lib/icons.ts';
-import { formatToolOutput, outputLineCount, toolLabel, toolParamRows, toolTarget } from '../lib/tool-card-text.ts';
+import { formatToolOutput, outputLineCount, toolParamRows, toolTarget } from '../lib/tool-card-text.ts';
 
 export const STATUS_LABELS: Readonly<Record<ToolCallStatus, string>> = {
   pending: '等待中',
@@ -57,13 +57,11 @@ const plainDiff: DiffRenderer = (diff) => h('pre', {}, diff);
 export function renderToolCard(call: ToolCallRecord, approval: ApprovalRequest | undefined, onDecide: DecideFn, renderDiff: DiffRenderer = plainDiff): HTMLElement {
   const summary = toolSummary(call);
   const target = toolTarget(call.name, call.input);
-  const label = toolLabel(call.name);
   const card = h('div', { class: 'verify tool', attrs: { 'data-call': call.id, 'data-tool-call-id': call.id } },
     h('div', { class: 'h' },
       h('span', { class: 'fx8' }, icon(call.name === 'agent_cli' ? 'route' : 'check'),
-        h('span', { class: 'nm' }, label),
-        // 未知工具的中文标签就是原名，此时不再重复显示
-        label === call.name ? null : h('span', { class: 'rn' }, call.name)),
+        // 中文描述标签已按需求删除，只保留工具原名
+        h('span', { class: 'rn' }, call.name)),
       h('span', { class: 'sm', title: summary }, h('span', { class: 'sml' }, target)),
       h('span', { class: `chip ${STATUS_CHIP[call.status]}` }, STATUS_LABELS[call.status])));
   if (call.diff) {
