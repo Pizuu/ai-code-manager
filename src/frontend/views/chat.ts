@@ -45,14 +45,14 @@ function enhanceCodeBlocks(root: HTMLElement, autoFold = true, favorite?: { id: 
     const langName = code.dataset.lang;
     if (langName) pre.append(h('span', { class: 'code-lang' }, langName));
     const actions = h('div', { class: 'code-actions' });
-    const toggle = h('button', { class: 'code-action', attrs: { type: 'button' }, title: '展开 / 折叠代码', on: { click: () => {
+    const toggle = h('button', { class: 'code-action', attrs: { type: 'button', 'data-tip': '展开 / 折叠代码' }, on: { click: () => {
       pre.classList.toggle('collapsed');
       toggle.setAttribute('aria-label', pre.classList.contains('collapsed') ? '展开代码' : '折叠代码');
     } } }, icon('caret', 14));
-    const copy = h('button', { class: 'code-action', attrs: { type: 'button' }, title: '复制代码', on: { click: () => {
-      void copyText(code.textContent ?? '').then(() => { copy.title = '已复制'; window.setTimeout(() => { copy.title = '复制代码'; }, 1200); });
+    const copy = h('button', { class: 'code-action', attrs: { type: 'button', 'data-tip': '复制代码' }, on: { click: () => {
+      void copyText(code.textContent ?? '').then(() => { copy.dataset.tip = '已复制'; window.setTimeout(() => { copy.dataset.tip = '复制代码'; }, 1200); });
     } } }, icon('copy', 14));
-    const download = h('button', { class: 'code-action', attrs: { type: 'button' }, title: '下载代码', on: { click: () => {
+    const download = h('button', { class: 'code-action', attrs: { type: 'button', 'data-tip': '下载代码' }, on: { click: () => {
       const blob = new Blob([code.textContent ?? ''], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob); const a = document.createElement('a');
       const lang = [...code.classList].find((name) => name.startsWith('lang-'))?.slice(5).toLowerCase() ?? '';
@@ -62,7 +62,7 @@ function enhanceCodeBlocks(root: HTMLElement, autoFold = true, favorite?: { id: 
     } } }, icon('download', 14));
     let fav: HTMLButtonElement | null = null;
     if (favorite) {
-      fav = h('button', { class: `code-action code-favorite${isFavorite(favorite.id) ? ' on' : ''}`, attrs: { type: 'button' }, title: '收藏回答', on: { click: () => {
+      fav = h('button', { class: `code-action code-favorite${isFavorite(favorite.id) ? ' on' : ''}`, attrs: { type: 'button', 'data-tip': '收藏回答' }, on: { click: () => {
         const s = store.state.current;
         if (!s || !fav) return;
         const active = toggleFavorite({ id: favorite.id, sessionId: s.id, sessionTitle: s.title, text: favorite.text, at: Date.now() });

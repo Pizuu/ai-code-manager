@@ -1011,8 +1011,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .turn.user .act{border:0;background:transparent;width:24px;height:24px;border-radius:var(--border-radius-sm);display:grid;place-items:center;color:var(--mute)}
 .turn.user .act:hover{background:var(--chip);color:var(--ink2)}
 .turn.user .act-fold svg{transition:transform .15s ease}
-.turn.user .act-fav svg{width:16px;height:16px;opacity:.4;filter:grayscale(1)}
-.turn.user .act-fav.on svg{opacity:1;filter:none}
+.turn.user .act-fav svg{width:16px;height:16px}
 /* 助手回合：头部（头像 / 名称 / 时间 / 操作） */
 .turn-hd{display:flex;align-items:center;gap:8px;margin-bottom:6px;min-width:0}
 .turn-hd .avatar{width:22px;height:22px;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--color-background-inverse);color:var(--color-text-inverse);font-size:12px;line-height:1;font-weight:var(--font-weight-semibold);text-transform:uppercase}
@@ -1028,8 +1027,7 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .turn-hd .act-fold svg{transition:transform .15s ease}
 .turn.folded .act-fold svg{transform:rotate(-90deg)}
 /* 收藏按钮：未收藏时星形降透明 + 灰度，已收藏（.on）全色 */
-.turn-hd .act-fav svg{width:16px;height:16px;opacity:.4;filter:grayscale(1)}
-.turn-hd .act-fav.on svg{opacity:1;filter:none}
+.turn-hd .act-fav svg{width:16px;height:16px}
 /* 助手正文 */
 .turn .msg{padding-left:0;font-size:var(--font-body);line-height:1.7;color:var(--ink)}
 .turn .msg .md{white-space:normal}
@@ -1162,8 +1160,6 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 .think-approvals{padding:8px 0 0}
 .think-approvals .verify.tool{margin:0 0 8px;padding:8px 10px;box-shadow:none;background:var(--color-background-tertiary);outline:1px solid var(--color-border-warning)}
 /* 代码块收藏：未收藏为灰色淡化，与回合头部收藏一致 */
-.code-action.code-favorite svg{width:15px;height:15px;opacity:.4;filter:grayscale(1)}
-.code-action.code-favorite.on svg{opacity:1;filter:none}
 /* 文件 / 下载条目与收藏条目样式统一 */
 .ctx-file-row .ctx-link,.ctx-generated-files .ctx-link{background:var(--ubub);border:1px solid var(--line);border-radius:var(--border-radius-xl);padding:6px 10px}
 /* 代码高亮（lib/highlight.ts 输出的 tk-* token） */
@@ -1184,3 +1180,12 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 :root[data-theme="dark"] .tk-fn{color:#61afef}:root[data-theme="dark"] .tk-type{color:#e5c07b}:root[data-theme="dark"] .tk-key{color:#e06c75}:root[data-theme="dark"] .tk-var{color:#56b6c2}
 :root[data-theme="light"] .tk-kw{color:#a626a4}:root[data-theme="light"] .tk-str{color:#50a14f}:root[data-theme="light"] .tk-com{color:#a0a1a7}:root[data-theme="light"] .tk-num{color:#986801}
 :root[data-theme="light"] .tk-fn{color:#4078f2}:root[data-theme="light"] .tk-type{color:#c18401}:root[data-theme="light"] .tk-key{color:#e45649}:root[data-theme="light"] .tk-var{color:#0184bc}
+/* 收藏星标：未收藏时跟随按钮文字色（与左侧复制/折叠等图标同色），收藏后为品牌橙 */
+.act-fav:not(.on) svg,.code-action.code-favorite:not(.on) svg{fill:currentColor}
+.code-action.code-favorite svg{width:15px;height:15px}
+/* 代码字号：原 pre 12px × code .9em ≈ 10.8px 偏小，统一为 13px */
+.turn .md pre{font-size:13px}
+.turn .md pre code{font-size:13px}
+/* 代码块右上角按钮的提示：pre 有 overflow 会裁掉上方提示，改为显示在按钮下方、右对齐 */
+.code-action[data-tip]:hover::after{bottom:auto;top:calc(100% + 6px);left:auto;right:0;transform:none}
+.code-action[data-tip]:hover::before{bottom:auto;top:calc(100% - 4px);border-top-color:transparent;border-bottom-color:var(--ink)}
