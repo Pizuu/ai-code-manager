@@ -161,6 +161,7 @@ async function bootstrap(): Promise<void> {
     openPath: async (p) => {
       await shell.openPath(p);
     },
+    revealPath: (p) => shell.showItemInFolder(p),
   });
   for (const channel of Object.keys(handlers) as IpcInvokeChannel[]) {
     const handler = handlers[channel] as (...args: unknown[]) => Promise<unknown>;

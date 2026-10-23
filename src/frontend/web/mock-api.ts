@@ -40,6 +40,7 @@ async function remote(channel: string, args: unknown[]): Promise<unknown> {
 const api: RendererApi = {
   invoke: (async (channel: IpcInvokeChannel, ...args: unknown[]) => {
     if (channel === 'files:pick') return [];
+    if (channel === 'fs:reveal') throw new Error('Web 预览不能打开系统资源管理器；请在桌面端使用。');
     if (channel === 'files:import') throw new Error('Web 预览无本地文件系统，不支持导入文件；请在桌面端使用。');
     return remote(channel, args);
   }) as RendererApi['invoke'],

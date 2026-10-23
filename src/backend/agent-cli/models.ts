@@ -5,6 +5,9 @@
  * 一律返回空数组，绝不抛错——调用方（设置 / 会话 UI）据此回退到手填模型。
  */
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { resolveExecutable, type ResolveDeps } from './resolve.ts';
 
 /** 首次运行 opencode 会刷新模型目录，Windows 上常超过 10 秒，放宽到 30 秒。 */
@@ -87,4 +90,73 @@ export async function listOpencodeModels(opts: {
   })();
   inflight.set(key, p);
   return p;
+}
+
+// ───────── opencode 默认模型（契约 v1.15 defaultModel） ─────────
+
+/** 去掉 JSONC 的注释与尾随逗号（跳过字符串内容），再 JSON.parse；失败返回 null。 */
+export function parseJsonc(text: string): unknown {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i]!;
+    if (c === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      out += text.slice(i, j + 1);
+      i = j + 1;
+    } else if (c === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end < 0 ? text.length : end + 2;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  try {
+    return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
+  } catch {
+    return null;
+  }
+}
+
+const modelOf = (v: unknown): string | undefined => {
+  const m = (v as { model?: unknown } | null)?.model;
+  return typeof m === 'string' && m.trim() ? m.trim() : undefined;
+};
+
+/**
+ * 推断 opencode 不带 -m 运行时使用的模型，按 opencode 配置优先级（后者覆盖前者）：
+ * 全局 ~/.config/opencode/{config.json,opencode.json,opencode.jsonc} → OPENCODE_CONFIG 指向的文件
+ * → 项目根 opencode.json / opencode.jsonc → OPENCODE_CONFIG_CONTENT；
+ * 都没有 model 时取 ~/.local/state/opencode/model.json 的最近使用模型（TUI 上次选的）。推断不到返回 undefined。
+ * 只读文件、不起子进程；任何读取 / 解析失败都跳过该来源。
+ */
+export async function readOpencodeDefaultModel(opts: {
+  env: NodeJS.ProcessEnv;
+  cwd?: string;
+  home?: string;
+  read?: (file: string) => Promise<string>;
+}): Promise<string | undefined> {
+  const read = opts.read ?? ((f: string) => readFile(f, 'utf8'));
+  const home = opts.home ?? os.homedir();
+  const cfgHome = opts.env.XDG_CONFIG_HOME || path.join(home, '.config');
+  const stateHome = opts.env.XDG_STATE_HOME || path.join(home, '.local', 'state');
+  const tryRead = async (f: string): Promise<unknown> => {
+    try { return parseJsonc(await read(f)); } catch { return null; }
+  };
+  const files = [
+    ...['config.json', 'opencode.json', 'opencode.jsonc'].map((n) => path.join(cfgHome, 'opencode', n)),
+    ...(opts.env.OPENCODE_CONFIG ? [opts.env.OPENCODE_CONFIG] : []),
+    ...(opts.cwd ? ['opencode.json', 'opencode.jsonc'].map((n) => path.join(opts.cwd!, n)) : []),
+  ];
+  let model: string | undefined;
+  for (const f of files) model = modelOf(await tryRead(f)) ?? model;
+  if (opts.env.OPENCODE_CONFIG_CONTENT) model = modelOf(parseJsonc(opts.env.OPENCODE_CONFIG_CONTENT)) ?? model;
+  if (model) return model;
+  const state = await tryRead(path.join(stateHome, 'opencode', 'model.json')) as { recent?: { providerID?: unknown; modelID?: unknown }[] } | null;
+  const r = state?.recent?.[0];
+  return typeof r?.providerID === 'string' && typeof r.modelID === 'string' ? `${r.providerID}/${r.modelID}` : undefined;
 }

@@ -272,6 +272,13 @@ async function bootstrap(): Promise<void> {
       const added = addFavorite({ id, sessionId: current.id, sessionTitle: current.title, text, at: Date.now(), ...(message ? { messageId: message.id } : {}), ...(quote ? { quote: true } : {}) });
       chat.notify(added ? '已加入收藏' : '已在收藏中', 'info');
     },
+    reveal: async (relPath) => {
+      try {
+        await api.invoke('fs:reveal', relPath);
+      } catch (e) {
+        chat.notify(errorText(e));
+      }
+    },
   });
   mountBoard(shell.views.board, { openGit: () => shell.setView('git'), openProject: () => void pickProject(), openCard: (c) => void openCard(c) });
   mountGit(shell.views.git, { openBoard: () => shell.setView('board'), openAgents: () => shell.setView('agents'), openProject: () => void pickProject(), notify: (t) => chat.notify(t, 'info') });

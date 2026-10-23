@@ -17,6 +17,8 @@ export interface ContextMenuHooks {
   addTodo?(text: string, messageId?: string): Promise<void>;
   /** 加入收藏：quote 为选中文字（缺省 = 收藏整条消息）。 */
   addFavorite?(messageId: string | undefined, quote?: string): Promise<void>;
+  /** 在系统资源管理器中显示项目内文件 / 目录（契约 v1.15 fs:reveal）。 */
+  reveal?(relPath: string): Promise<void>;
 }
 
 const lineOf = (n: Node | null): number => {
@@ -89,6 +91,10 @@ export function installContextMenu(hooks: ContextMenuHooks): void {
       const what = r?.selected ? '选中的文字' : '这条消息';
       if (hooks.addTodo) items.push(item('加入待办', `添加${what}`, () => void hooks.addTodo?.(pickText, messageId)));
       if (hooks.addFavorite) items.push(item('加入收藏', `收藏${what}`, () => void hooks.addFavorite?.(messageId, r?.selected ? pickText : undefined)));
+    }
+    if (r && !r.selected && r.source.kind === 'file' && hooks.reveal) {
+      const relPath = r.source.path;
+      items.push(item('在资源管理器中显示', '', () => void hooks.reveal?.(relPath)));
     }
     if (r?.selected) items.push(item('复制', '', () => void navigator.clipboard.writeText(r.selected).catch(() => undefined)));
     menu.replaceChildren(...items);

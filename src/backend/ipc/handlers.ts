@@ -10,7 +10,8 @@ import { AcpProcessManager, prepareAcpTurn, runAcpCliTurn, type PreparedAcpTurn 
 import { runCliTurn, type CliRuntimeConfig } from '../agent-cli/cli-runner.ts';
 import { detectInstalledClis, probeCliVersion } from '../agent-cli/detect.ts';
 import { expandTemplate } from '../agent-cli/invocation.ts';
-import { listOpencodeModels } from '../agent-cli/models.ts';
+import { listOpencodeModels, readOpencodeDefaultModel } from '../agent-cli/models.ts';
+import { resolveSafe } from '../tools/sandbox.ts';
 import { opencodeLaunchEnv } from '../agent-cli/platform-env.ts';
 import { installHint } from '../agent-cli/presets.ts';
 import { OpencodeServeManager, prepareServeTurn, runServeCliTurn, type PreparedServeTurn } from '../agent-cli/serve-runner.ts';
@@ -70,6 +71,8 @@ export interface HandlerDeps {
   pickFiles?: () => Promise<string[]>;
   /** 在系统文件管理器中打开目录（main.ts 注入 Electron shell.openPath）；缺省为 no-op。 */
   openPath?: (path: string) => Promise<void>;
+  /** v1.15：在系统文件管理器中显示并选中文件（main.ts 注入 Electron shell.showItemInFolder）；缺省为 no-op。 */
+  revealPath?: (absPath: string) => void;
   platform: NodeJS.Platform;
   providerFactory?: (id: 'openai' | 'anthropic', config: ProviderConfig) => Provider;
   /** v1.1：可注入的可执行文件解析依赖、git 可执行文件与 CLI 子进程基础环境（测试用）。 */
@@ -415,6 +418,10 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       const input = validateFileWriteRequest(request);
       return writeTextFile(requireProject(state).root, input.relPath, input.content);
     },
+    'fs:reveal': async (relPath) => {
+      const abs = await resolveSafe(requireProject(state).root, asRelPath(relPath));
+      deps.revealPath?.(abs);
+    },
     'files:pick': async () => (deps.pickFiles ? deps.pickFiles() : []),
     'files:import': async (absPaths) => importFiles(requireProject(state).root, asStringArray(absPaths, 'absPaths')),
     'sessions:list': async () => sessions.list(),
@@ -475,20 +482,21 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
       resolveDeps: resolveDeps(),
       probeVersion: (file, cwd) => probeCliVersion(file, cwd, deps.cliBaseEnv ?? process.env),
     }),
-    'agentCli:models': async (id): Promise<{ models: string[] }> => {
+    'agentCli:models': async (id): Promise<{ models: string[]; defaultModel?: string }> => {
       const cid = asCliId(id);
       // 仅 opencode 条目（经 getAgentCliRuntime 归一化后 outputFormat 为 opencode-json）才枚举；
       // 非 opencode、条目不存在、枚举失败一律空数组不抛错（契约 v1.5）。
       const runtime = settings.getAgentCliRuntime(cid);
       const meta = settings.getAgentCliCommand(cid);
       if (!runtime || !meta || runtime.outputFormat !== 'opencode-json') return { models: [] };
-      const models = await listOpencodeModels({
-        command: meta.command,
-        resolveDeps: resolveDeps(),
-        env: { ...(deps.cliBaseEnv ?? process.env), ...runtime.env },
-        cwd: state.project?.root ?? undefined,
-      });
-      return { models };
+      const env = { ...(deps.cliBaseEnv ?? process.env), ...runtime.env };
+      const cwd = state.project?.root ?? undefined;
+      const [models, defaultModel] = await Promise.all([
+        listOpencodeModels({ command: meta.command, resolveDeps: resolveDeps(), env, cwd }),
+        // v1.15：CLI 未指定模型时实际使用的默认模型（读 opencode 配置，推断不到则省略）
+        readOpencodeDefaultModel({ env, cwd }).catch(() => undefined),
+      ]);
+      return defaultModel ? { models, defaultModel } : { models };
     },
     'sessions:setAgent': async (id, agent) => {
       const sid = asSessionId(id);

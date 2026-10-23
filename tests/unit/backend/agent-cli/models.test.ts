@@ -71,3 +71,31 @@ test('listOpencodeModels falls back to the stale cache when a refresh fails', as
   ok = false; t = MODELS_CACHE_MS + 1;
   assert.deepEqual(await listOpencodeModels(opts), ['a/b']);
 });
+
+import path from 'node:path';
+import { parseJsonc, readOpencodeDefaultModel } from '../../../../src/backend/agent-cli/models.ts';
+
+test('parseJsonc strips comments and trailing commas but keeps strings intact', () => {
+  assert.deepEqual(parseJsonc('{\n // c\n "model": "a/b", /* x */ "u": "http://x//y",\n}'), { model: 'a/b', u: 'http://x//y' });
+  assert.equal(parseJsonc('{bad'), null);
+});
+
+test('readOpencodeDefaultModel follows opencode config precedence', async () => {
+  const home = '/h';
+  const files: Record<string, string> = {
+    [path.join(home, '.config', 'opencode', 'opencode.json')]: '{"model":"global/g"}',
+    [path.join('/proj', 'opencode.jsonc')]: '{ // project\n "model": "proj/p", }',
+  };
+  const read = async (f: string) => { if (f in files) return files[f]!; throw new Error('ENOENT'); };
+  assert.equal(await readOpencodeDefaultModel({ env: {}, cwd: '/proj', home, read }), 'proj/p');
+  assert.equal(await readOpencodeDefaultModel({ env: {}, home, read }), 'global/g');
+  assert.equal(await readOpencodeDefaultModel({ env: { OPENCODE_CONFIG_CONTENT: '{"model":"env/e"}' }, cwd: '/proj', home, read }), 'env/e');
+});
+
+test('readOpencodeDefaultModel falls back to the most recent TUI model, else undefined', async () => {
+  const home = '/h';
+  const state = path.join(home, '.local', 'state', 'opencode', 'model.json');
+  const read = async (f: string) => { if (f === state) return '{"recent":[{"providerID":"anthropic","modelID":"claude-sonnet-4-5"}]}'; throw new Error('ENOENT'); };
+  assert.equal(await readOpencodeDefaultModel({ env: {}, home, read }), 'anthropic/claude-sonnet-4-5');
+  assert.equal(await readOpencodeDefaultModel({ env: {}, home, read: async () => { throw new Error('ENOENT'); } }), undefined);
+});

@@ -41,6 +41,7 @@ const INVOKE_CHANNELS = [
   'fs:write',
   'files:pick',
   'files:import',
+  'fs:reveal',
   'terminal:open',
   'terminal:input',
   'terminal:close',

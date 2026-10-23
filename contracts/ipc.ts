@@ -45,6 +45,11 @@ export const IPC_CONTRACT_REVISION = 'v1.14' as const;
 // v1.14 = 「上传真实文件」的纯增量：新增 `files:import` 通道（把 `files:pick` 选中的绝对路径
 // 文件复制进当前项目根的 `uploads/` 目录，返回与入参同序的项目相对路径数组，前端据此以
 // @ 引用插入，未打开项目时返回 E_NO_PROJECT）；未修改或删除任何既有字段。
+// v1.15 = CLI 默认模型与「在资源管理器中显示」的纯增量（2026-10-23 负责人确认）：
+//   - `agentCli:models` 结果新增可选字段 `defaultModel`（CLI 未指定模型时实际使用的模型，
+//     由 opencode 配置推断，推断不到省略）；
+//   - 新增 `fs:reveal` 通道（在系统文件管理器中显示项目内文件，路径经项目根沙箱）；
+//   - 未修改或删除任何既有字段。
 
 // ───────────────────────── 基础模型 ─────────────────────────
 
@@ -319,7 +324,7 @@ export interface IpcInvokeMap {
   /** 扫描 PATH，检测本机已安装的热门 Agent CLI（设置页「自动检测」）。 */
   'agentCli:detect':  { args: [];                         result: AgentCliDetection[] };
   /** v1.5：列出某 CLI 条目可用的模型 id（opencode 条目运行 `<exe> models` 解析）；非 opencode、条目不存在或任何失败返回空数组，不抛错。args 沿 agentCli:check / delete 的裸 id 风格。 */
-  'agentCli:models':  { args: [cliId: string];            result: { models: string[] } };
+  'agentCli:models':  { args: [cliId: string];            result: { models: string[]; defaultModel?: string } };
   /** 切换会话使用的 agent（运行中不可切换）。 */
   'sessions:setAgent': { args: [id: string, agent: AgentRef]; result: Session };
   /** v1.5：设置会话级 CLI 模型覆盖（model 为 null 或空串 = 清除，回到 CLI 配置的模型）；返回更新后的会话，下一轮起生效。 */
@@ -344,6 +349,9 @@ export interface IpcInvokeMap {
   // ── v1.14（上传真实文件）──
   /** 把给定绝对路径的文件复制进当前项目根的 `uploads/` 目录（重名自动加 -1/-2 后缀）；返回与入参同序的项目相对路径（正斜杠）。未打开项目时返回 E_NO_PROJECT。 */
   'files:import':     { args: [absPaths: string[]];       result: string[] };
+  // ── v1.15（在资源管理器中显示）──
+  /** 在系统文件管理器（Windows 资源管理器 / Finder）中显示并选中项目内文件；路径经项目根沙箱（宪法 十一），越界抛 E_PATH_ESCAPE，未打开项目抛 E_NO_PROJECT。 */
+  'fs:reveal':        { args: [relPath: string];          result: void };
   // ── v1.6（终端模式）──
   /**
    * 打开（或复用）某会话的终端。工作目录恒为当前项目根（宪法 十一）；命令由主进程按 kind 决定，

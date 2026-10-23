@@ -216,6 +216,24 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   let modelCandidates: string[] | null = null;
   /** 各 CLI 最近一次拉到的非空候选列表：再次打开菜单先用缓存即时显示，后台再刷新。 */
   const modelCache = new Map<string, string[]>();
+  /** 各 CLI 未指定模型时实际使用的默认模型（契约 v1.15 defaultModel）；null = 已查过但推断不到。 */
+  const defaultModelCache = new Map<string, string | null>();
+  const defaultModelPending = new Set<string>();
+  /** 查询 CLI 的默认模型名并回填底栏标签（每个 CLI 只查一次；失败按推断不到处理）。 */
+  const ensureDefaultModel = (cliId: string) => {
+    if (defaultModelCache.has(cliId) || defaultModelPending.has(cliId)) return;
+    defaultModelPending.add(cliId);
+    void api.invoke('agentCli:models', cliId).then(
+      (r) => {
+        defaultModelCache.set(cliId, r.defaultModel ?? null);
+        if (r.models.length) modelCache.set(cliId, r.models);
+      },
+      () => defaultModelCache.set(cliId, null),
+    ).finally(() => {
+      defaultModelPending.delete(cliId);
+      renderHeader();
+    });
+  };
   const closeModelMenu = () => {
     modelMenu.hidden = true;
     modelMenuFor = null;
@@ -762,8 +780,14 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (s && cli) {
       modelPick.hidden = false;
       const override = s.cliModel?.trim() ? s.cliModel : undefined;
-      const cfgModel = st?.agentClis?.find((x) => x.id === agent.slice(4))?.model;
-      modelLabel.textContent = `模型：${override ?? (cfgModel ? cfgModel : 'CLI 默认')}`;
+      const cliId = agent.slice(4);
+      const cfgModel = st?.agentClis?.find((x) => x.id === cliId)?.model?.trim() || undefined;
+      if (!override && !cfgModel) ensureDefaultModel(cliId);
+      const defaultModel = defaultModelCache.get(cliId) ?? undefined;
+      modelLabel.textContent = `模型：${override ?? cfgModel ?? defaultModel ?? 'CLI 默认'}`;
+      modelPick.title = override || cfgModel
+        ? '本会话的 CLI 模型（点击切换，下一轮生效）'
+        : defaultModel ? `CLI 默认模型 ${defaultModel}（读自 opencode 配置；点击切换，下一轮生效）` : '本会话的 CLI 模型（点击切换，下一轮生效）';
     } else if (s) {
       modelPick.hidden = false;
       modelLabel.textContent = `模型：${st?.model || '未配置'}`;
@@ -1045,7 +1069,10 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     buildModelMenu(modelCandidates === null || !modelCandidates.length);
     void (async () => {
       const list = await api.invoke('agentCli:models', target.cliId).then(
-        (r) => r.models,
+        (r) => {
+          if (r.defaultModel) defaultModelCache.set(target.cliId, r.defaultModel);
+          return r.models;
+        },
         () => [] as string[]);
       if (list.length) modelCache.set(target.cliId, list);
       if (modelMenuFor !== target) return;
