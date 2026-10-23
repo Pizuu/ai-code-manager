@@ -6,6 +6,7 @@ import type { FileNode } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { clear, h } from '../lib/dom.ts';
+import { fileIcon } from '../lib/file-icons.ts';
 import { icon, svgEl, type IconName } from '../lib/icons.ts';
 import { sessionStateCounts } from '../lib/session-activity.ts';
 import { mountTourButton } from '../lib/tour.ts';
@@ -392,7 +393,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     const open = dir && expanded.has(n.relPath);
     const el = h('div', { class: `te click${auth ? ' auth' : ''}${dir ? ' dir' : ''}${open ? ' open' : ''}`, title: n.relPath, attrs: { ...nodeAttrs(n), ...(dir ? { 'aria-expanded': String(open) } : {}) } },
       dir ? h('span', { class: 'tw' }, icon('caret', 12)) : h('span', { class: 'tw' }),
-      icon(dir ? 'dir' : 'file', 14), h('span', { class: 'nm' }, `${n.name}${dir ? '/' : ''}`),
+      fileIcon(n.name, { dir, open, size: 14 }), h('span', { class: 'nm' }, `${n.name}${dir ? '/' : ''}`),
       !dir && fileStates.has(n.relPath) ? h('span', { class: `file-state-dot ${fileStates.get(n.relPath)?.mode ?? 'readonly'}${fileStates.get(n.relPath)?.dirty ? ' dirty' : ''}`, title: fileStates.get(n.relPath)?.dirty ? '已修改未保存' : fileStates.get(n.relPath)?.mode === 'editing' ? '编辑中' : '只读' }) : null,
       tag);
     if (!dir) {

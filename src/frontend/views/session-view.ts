@@ -14,6 +14,7 @@ import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
 import { sendAttrs } from '../lib/context-send.ts';
 import { countChanges } from '../lib/diff-lines.ts';
 import { clear, h } from '../lib/dom.ts';
+import { fileIcon } from '../lib/file-icons.ts';
 import { favoriteMessageId, listFavorites, onFavoritesChanged, removeFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
 import { store } from '../store.ts';
@@ -22,6 +23,12 @@ import { mountCodeView } from './code-view.ts';
 import { renderDiff } from './diff-view.ts';
 import { mountTerminal } from './terminal-view.ts';
 import { refreshTasks } from './tasks-view.ts';
+
+/** 上下文面板「文件」「DIFF」超过此条数时高度折叠。 */
+const CTX_FOLD_LIMIT = 6;
+/** 已手动展开的栏目（files / diff），跨重渲染保留。 */
+const ctxUnfolded = new Set<string>();
+const baseName = (p: string): string => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 
 /** 最后一个回答耗时格式：<1s 显示 '<1s'；<60s 如 '42s'；<60min 如 '3m 05s'（秒补零）；>=60min 如 '1h 12m'。 */
 function fmtDuration(ms: number): string {
@@ -517,7 +524,26 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     for (const path of files) addRelated({ path, author: 'user', at: latestAt });
     const relatedFiles = [...relatedByPath.values()];
     // 栏目标题：只显示名称（数量已按需求删除）
-    const ctxHead = (name: string): HTMLElement => h('div', { class: 'k ctx-k' }, h('span', {}, name));
+    const ctxHead = (name: string, fold?: { key: string; list: HTMLElement; count: number }): HTMLElement => {
+      const head = h('div', { class: 'k ctx-k' }, h('span', {}, name));
+      // 超过 CTX_FOLD_LIMIT 条时高度折叠：只露前几条，标题右侧「展开 / 收起」切换；展开状态按栏目记忆，重渲染不复位
+      if (fold && fold.count > CTX_FOLD_LIMIT) {
+        const apply = () => {
+          const open = ctxUnfolded.has(fold.key);
+          fold.list.classList.toggle('ctx-folded', !open);
+          btn.textContent = open ? '收起' : '展开';
+          btn.setAttribute('aria-expanded', String(open));
+        };
+        const btn = h('button', { class: 'ctx-fold-btn', attrs: { type: 'button' }, on: { click: () => {
+          if (ctxUnfolded.has(fold.key)) ctxUnfolded.delete(fold.key); else ctxUnfolded.add(fold.key);
+          apply();
+        } } });
+        fold.list.classList.add('ctx-foldable');
+        apply();
+        head.append(btn);
+      }
+      return head;
+    };
     const renderCodeDownloads = codeDownloads.length
       ? h('div', { class: 'v ctx-files ctx-generated-files' }, ...codeDownloads.map((file) => {
         const stamp = file.at.replace(/[-:TZ.]/g, '').slice(0, 14);
@@ -532,11 +558,13 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     if (codeDownloads.length) ctxp.append(ctxHead('下载'), renderCodeDownloads);
     const renderFiles = (files: RelatedFile[], emptyText: string) => files.length
       ? h('div', { class: 'v ctx-files' }, ...files.map((file) => {
-        const row = h('div', { class: 'ctx-file-row' }, h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: `打开 ${file.path}`, on: { click: () => openFile(file.path) } }, icon('file', 13), h('span', {}, file.path)));
+        // 只显示文件名，完整路径放在悬停提示里
+        const row = h('div', { class: 'ctx-file-row' }, h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: `打开 ${file.path}`, on: { click: () => openFile(file.path) } }, fileIcon(file.path, { size: 13 }), h('span', {}, baseName(file.path))));
         return row;
       }))
       : h('div', { class: 'v ctx-empty' }, emptyText);
-    ctxp.append(ctxHead('文件'), renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件'));
+    const fileList = renderFiles(relatedFiles, '暂无消息提及、修改记录或已打开文件');
+    ctxp.append(ctxHead('文件', { key: 'files', list: fileList, count: relatedFiles.length }), fileList);
     // DIFF（当前会话实时）：放在「文件」下方；同一文件多次修改只留最新一条（Map 覆盖值不改键序）。
     // 只显示路径与增删行数，点击打开文件；已删除状态标签与下方展开预览。待批准时保留批准 / 拒绝按钮。
     const byPath = new Map<string, (typeof sessionDiffs)[number]>();
@@ -549,13 +577,13 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       // 与「文件」条目同款：卡片式按钮，点击以 Diff 查看模式打开该文件
       const item = h('div', { class: 'ditem' }, h('div', { class: 'ctx-file-row' },
         h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: d.path ? `查看 ${d.path} 的 Diff` : '', on: { click: () => { if (d.path) openFile(d.path, d.diff); } } },
-          icon('file', 13), h('span', { class: 'ctx-diff-p' }, d.path || '(未知文件)'), h('span', { class: 'ctx-diff-n' }, `+${added} −${removed}`))));
+          fileIcon(d.path, { size: 13 }), h('span', { class: 'ctx-diff-p' }, d.path ? baseName(d.path) : '(未知文件)'), h('span', { class: 'ctx-diff-n' }, `+${added} −${removed}`))));
       if (approval && d.status === 'awaiting-approval') {
         item.append(h('div', { class: 'fx8 mt6' }, h('button', { class: 'btn danger', on: { click: () => void decideApproval(approval.id, false) } }, '拒绝'), h('button', { class: 'btn pri', on: { click: () => void decideApproval(approval.id, true) } }, '批准')));
       }
       dl.append(item);
     }
-    if (diffs.length) ctxp.append(ctxHead('DIFF'), dl);
+    if (diffs.length) ctxp.append(ctxHead('DIFF', { key: 'diff', list: dl, count: Math.min(diffs.length, 12) }), dl);
     const currentFavorites = s ? listFavorites().filter((f) => f.sessionId === s.id) : [];
     const favoriteLinks = h('div', { class: 'v ctx-favorites' }, ...currentFavorites.map((f) => {
       const link = h('button', { class: 'ctx-link', attrs: { type: 'button' }, title: '跳转到收藏消息' },

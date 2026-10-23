@@ -1219,3 +1219,8 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 .box .cfold-gap{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--mute);font-size:14px;line-height:1;letter-spacing:2px}
 .box .cfold-gap::before,.box .cfold-gap::after{content:'';flex:1;border-top:1px dashed var(--line)}
 .box textarea[hidden]{display:none}
+
+/* 上下文面板「文件」「DIFF」超过 6 条时高度折叠 */
+.ctxp .ctx-foldable.ctx-folded>:nth-child(n+7){display:none}
+.ctxp .ctx-fold-btn{margin-left:auto;border:0;background:transparent;color:var(--color-text-tertiary);font:inherit;font-size:var(--font-caption);cursor:pointer;padding:0 2px}
+.ctxp .ctx-fold-btn:hover{color:var(--color-text-primary)}
