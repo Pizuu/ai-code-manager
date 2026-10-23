@@ -7,6 +7,7 @@
  */
 import type { AgentRef, BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
 import { toast } from '../lib/toast.ts';
+import { apiVendor } from '../lib/api-vendor.ts';
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
 import { agentName, isCli } from '../lib/agent-label.ts';
@@ -995,7 +996,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     closeModelMenu();
     const current = session.agent ?? st.defaultAgent ?? 'builtin';
     const choices: Array<{ value: AgentRef; label: string; detail: string }> = [
-      { value: 'builtin', label: 'API', detail: '内置 API 模型与共享权限设置' },
+      { value: 'builtin', label: 'API', detail: apiVendor(st.provider, st.baseUrl) },
       ...(st.agentClis ?? []).map((cli) => ({ value: `cli:${cli.id}` as AgentRef, label: cli.name, detail: cli.model ? `CLI · ${cli.model}` : 'CLI · 使用其默认模型' })),
     ];
     const items = choices.map(({ value, label, detail }) => h('button', {
@@ -1047,7 +1048,6 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const items: HTMLElement[] = [buildModelSelect(loading, cfgModel, override)];
     // 列表为空（拉取失败 / 超时）时给一个重试入口，不必关掉菜单重开
     if (!loading && !(modelCandidates ?? []).length) items.push(modelMenuItem('重新加载模型列表', '', false, () => fetchModels(target)));
-    items.push(modelMenuItem('切换 API/CLI…', '同时更新当前会话和新会话默认值', false, () => { closeModelMenu(); openAgentMenu(); }, store.state.running.has(s.id)));
     modelMenu.replaceChildren(...items);
     positionModelMenu();
   };
