@@ -114,3 +114,8 @@ scripts/speckit-init.sh   # uv tool install specify-cli && specify init --here -
 - 开发：`docs/development/`
 - 测试：`docs/testing/`
 - 安全：`docs/security/`
+
+## 特别感谢
+
+- [Hark](https://hark.com)
+- [Muse](https://muse.ai)
