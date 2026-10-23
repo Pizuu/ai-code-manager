@@ -32,12 +32,13 @@ const VENDORS: Array<[RegExp, string]> = [
 export function apiVendor(provider: ProviderId, baseUrl: string): string {
   const raw = baseUrl.trim();
   if (raw) {
-    let host = '';
-    try {
-      host = new URL(/^[a-z]+:\/\//i.test(raw) ? raw : `https://${raw}`).hostname.toLowerCase();
-    } catch {
-      host = '';
-    }
+    const host = (() => {
+      try {
+        return new URL(/^[a-z]+:\/\//i.test(raw) ? raw : `https://${raw}`).hostname.toLowerCase();
+      } catch {
+        return '';
+      }
+    })();
     if (host) {
       if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/.test(host) || host === '[::1]') return '本机服务';
       for (const [re, name] of VENDORS) if (re.test(host)) return name;
