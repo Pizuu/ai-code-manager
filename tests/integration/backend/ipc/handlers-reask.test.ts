@@ -11,6 +11,14 @@ import { SessionStore } from '../../../../src/backend/sessions/session-store.ts'
 import { SettingsStore, type KeyCipher } from '../../../../src/backend/settings/settings-store.ts';
 import { tempProject } from '../helpers/temp-project.ts';
 
+/** 会话最近一条 status 为 idle 才算回合结束：agent:send 返回前已发 running:true，上一回合残留的 idle 事件不会让本回合提前判定结束。 */
+function turnIdle(events: readonly AgentEvent[], sessionId: string): boolean {
+  let last: AgentEvent | undefined;
+  for (const e of events) if (e.type === 'status' && e.sessionId === sessionId) last = e;
+  return last?.type === 'status' && !last.running;
+}
+
+
 const cipher: KeyCipher = {
   isAvailable: () => true,
   encrypt: (p) => Buffer.from(p).toString('base64'),
@@ -39,7 +47,7 @@ async function setup(t: { after: (fn: () => Promise<void>) => void }, steps: Arr
   });
   const idle = (sessionId: string) => new Promise<void>((resolve) => {
     const check = setInterval(() => {
-      if (events.some((e) => e.type === 'status' && e.sessionId === sessionId && !e.running)) { clearInterval(check); resolve(); }
+      if (turnIdle(events, sessionId)) { clearInterval(check); resolve(); }
     }, 5);
   });
   await handlers['project:pick']();

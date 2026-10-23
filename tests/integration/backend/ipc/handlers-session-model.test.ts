@@ -20,6 +20,14 @@ import { SettingsStore, type KeyCipher } from '../../../../src/backend/settings/
 import { writeFakeAcpAgent } from '../../../unit/backend/agent-cli/fake-acp-agent.ts';
 import { tempProject } from '../helpers/temp-project.ts';
 
+/** 会话最近一条 status 为 idle 才算回合结束：agent:send 返回前已发 running:true，上一回合残留的 idle 事件不会让本回合提前判定结束。 */
+function turnIdle(events: readonly AgentEvent[], sessionId: string): boolean {
+  let last: AgentEvent | undefined;
+  for (const e of events) if (e.type === 'status' && e.sessionId === sessionId) last = e;
+  return last?.type === 'status' && !last.running;
+}
+
+
 const posixOnly = process.platform === 'win32' ? 'shebang 假可执行文件仅在 POSIX 上运行' : false;
 
 const cipher: KeyCipher = {
@@ -153,7 +161,7 @@ async function sendAndWait(ctx: Ctx, cliId: string, override?: string): Promise<
   if (override !== undefined) await handlers['agent:setSessionModel']({ sessionId: s.id, model: override });
   await handlers['agent:send']({ sessionId: s.id, text: 'hi' });
   const started = Date.now();
-  while (!events.some((e) => e.type === 'status' && e.sessionId === s.id && !e.running)) {
+  while (!turnIdle(events, s.id)) {
     if (Date.now() - started > 10_000) throw new Error('timeout: turn idle');
     await new Promise((r) => setTimeout(r, 5));
   }
