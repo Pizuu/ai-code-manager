@@ -35,6 +35,6 @@
 
 - `scripts/web-dev.ts` 在进程内实例化与桌面端相同的 `createHandlers` + `SettingsStore` + `SessionStore` + `AppState`：全部 invoke 通道经 `POST /__api/<通道>` 走真实逻辑、真实落盘；`agent:event` 经 `GET /__events`（SSE）推送。数据目录与桌面端 `userData` 等价，可用环境变量 `AICM_DATA_DIR` 覆盖。静态文件仍仅 GET / HEAD；服务器仍只监听 127.0.0.1 并校验 Host，写 / 事件端点另校验 Origin。
 - 例外仅 Agent CLI：`agentCli:check` 恒返回模拟结果；`agent:send` 到外部 CLI 会话在分发层被拒绝（E_CLI + error 事件），绝不启动真实 CLI 进程；`agentCli:save` / `delete` 随 settings 真实落盘。
-- `project:pick` 恒返回 null（项目由 `--project` 在启动时确定），`project:openRoot` 为 no-op。
+- 默认无项目（不回退到应用根）；`project:pick` 恒返回 null（项目只能由 `--project` 在启动时手动指定），`project:openRoot` 为 no-op。
 - Web 预览无 Electron safeStorage：API Key 与 CLI 敏感 env 不能在 Web 侧保存或解密使用（真实存储以 E_ENCRYPTION 拒绝），其余设置与会话数据真实落盘、与桌面端互通。
 - 原「Web 版不得写盘」的约束自此解除；Web 预览仍仅供开发、不进打包（第 5 条不变）。

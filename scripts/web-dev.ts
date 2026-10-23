@@ -10,7 +10,8 @@
  *   SessionStore + AppState，除 Agent CLI 外全部通道走真实逻辑、真实落盘（见契约例外清单）：
  *   `/__api/<通道>`（POST）执行 invoke；`/__events`（SSE）推送全部 agent:event。
  * - 数据目录与桌面端 userData 等价（见 defaultDataDir），可用环境变量 AICM_DATA_DIR 覆盖。
- * - 项目目录由 --project 指定（默认应用根），启动时写入 AppState；project:pick 无系统对话框恒返回 null。
+ * - 不再默认打开任何工作空间（曾默认为应用根，会把本仓库工程文件暴露成项目）：启动时项目为空，
+ *   只有显式传 --project <目录> 才写入 AppState；project:pick 无系统对话框恒返回 null。
  */
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -46,7 +47,9 @@ function argValue(name: string): string | undefined {
 }
 
 const port = Number(argValue('--port') ?? process.env.PORT ?? WEB_DEV_DEFAULT_PORT);
-const projectRoot = path.resolve(argValue('--project') ?? APP_ROOT);
+const projectArg = argValue('--project');
+/** 仅当显式指定 --project 时才有项目；未指定时为空，由用户手动打开文件夹。 */
+const projectRoot = projectArg ? path.resolve(projectArg) : null;
 
 /**
  * 与桌面端 Electron `app.getPath('userData')` 等价的数据目录：
@@ -100,7 +103,14 @@ try {
 }
 const sessions = new SessionStore(path.join(dataDir, 'sessions'));
 const state = new AppState();
-state.setProject(projectRoot);
+if (projectRoot) {
+  const st = await fs.stat(projectRoot).catch(() => null);
+  if (!st?.isDirectory()) {
+    console.error(`--project 不是可用的目录：${projectRoot}`);
+    process.exit(1);
+  }
+  state.setProject(projectRoot);
+}
 
 const handlers = createHandlers({
   settings,
@@ -108,7 +118,7 @@ const handlers = createHandlers({
   state,
   emit,
   platform: process.platform,
-  // Web 无系统目录对话框：保持返回 null（项目已在启动时由 --project 确定）
+  // Web 无系统目录对话框：保持返回 null（项目只能由启动参数 --project 手动指定）
   pickDirectory: async () => null,
   // Web 无系统文件管理器：no-op
   openPath: async () => {},
@@ -304,7 +314,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, HOST, () => {
   console.log(`AI Code Manager · Web 预览（仅开发，真实数据）：http://${HOST}:${port}/`);
-  console.log(`项目：${projectRoot}`);
+  console.log(`项目：${projectRoot ?? '（未打开，启动时加 --project <目录> 手动指定）'}`);
   console.log(`数据目录：${dataDir}（与桌面端 userData 等价，AICM_DATA_DIR 可覆盖）`);
   console.log('除 Agent CLI 外全部走真实后端：settings / sessions 真实落盘、内置 agent 真实执行；Agent CLI 不检查、不启动。');
   console.log('注意：Web 预览无 safeStorage，API Key 不能在此保存或使用（E_ENCRYPTION），请在桌面端配置。');
