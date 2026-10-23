@@ -235,9 +235,15 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       renderHeader();
     });
   };
+  /** API 模式下模型菜单是否打开（与 CLI 模式共用 modelMenu 元素）。 */
+  let apiMenuOpen = false;
+  /** API 模型列表缓存：按 provider|baseUrl 区分；error 为最近一次失败说明。 */
+  let apiModels: { key: string; models: string[]; at: number } | null = null;
+  let apiModelsError = '';
   const closeModelMenu = () => {
     modelMenu.hidden = true;
     modelMenuFor = null;
+    apiMenuOpen = false;
   };
   let agentMenuSessionId: string | null = null;
   const closeAgentMenu = () => {
@@ -777,7 +783,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     agentPick.textContent = agentDisplayName(agent, st?.agentClis ?? []);
     agentPick.title = running ? '会话运行中不可切换 Agent' : '切换 API / CLI（同时应用到当前会话和新会话默认值）';
     if (agentMenuSessionId && agentMenuSessionId !== s?.id) closeAgentMenu();
-    // CLI 与内置 API 会话都显示模型切换器；CLI 打开候选模型菜单，API 打开设置页。
+    // CLI 与内置 API 会话都显示模型切换器；CLI 打开候选模型菜单，API 打开服务商模型列表。
     if (s && cli) {
       modelPick.hidden = false;
       const override = s.cliModel?.trim() ? s.cliModel : undefined;
@@ -792,12 +798,13 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     } else if (s) {
       modelPick.hidden = false;
       modelLabel.textContent = `模型：${st?.model || '未配置'}`;
-      modelPick.title = '打开 API 模型设置';
+      modelPick.title = '切换 API 模型（所有 API 会话共用，下一轮生效）';
     } else {
       modelPick.hidden = true;
     }
     // 菜单锚定的会话已切换（或不再是 CLI 会话）时关掉，避免对旧会话写模型。
     if (modelMenuFor && (modelMenuFor.sessionId !== s?.id || !cli)) closeModelMenu();
+    if (apiMenuOpen && (cli || !s)) closeModelMenu();
   };
 
   const renderAll = () => {
@@ -1081,33 +1088,94 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     })();
   };
 
+  // ── API 模式模型切换（v1.16 settings:models 拉列表，settings:set 写全局 model） ──
+  const apiKeyOf = (st: NonNullable<ReturnType<typeof settings>>) => `${st.provider}|${st.baseUrl.trim()}`;
+
+  const applyApiModel = async (model: string) => {
+    closeModelMenu();
+    if (!model || model === settings()?.model) return;
+    try {
+      store.state.settings = await api.invoke('settings:set', { model });
+      store.emit('settings');
+      notify(`已切换 API 模型为 ${model}，下一条消息生效（所有 API 会话共用）。`, 'info');
+    } catch (e) {
+      notify(errorText(e));
+    }
+  };
+
+  const buildApiMenu = (loading: boolean) => {
+    const st = settings();
+    if (!apiMenuOpen || !st) return;
+    const sel = h('select', { class: 'mi-select', attrs: { 'aria-label': '选择 API 模型' } });
+    sel.addEventListener('click', (ev) => ev.stopPropagation());
+    sel.addEventListener('keydown', (ev) => ev.stopPropagation());
+    sel.addEventListener('change', () => {
+      if (sel.value) void applyApiModel(sel.value);
+    });
+    const list = apiModels && apiModels.key === apiKeyOf(st) ? apiModels.models : [];
+    const items: HTMLElement[] = [sel];
+    if (loading && !list.length) {
+      sel.append(h('option', { attrs: { value: '' } }, '加载模型…'));
+      sel.disabled = true;
+    } else if (!list.length) {
+      sel.append(h('option', { attrs: { value: '' } }, apiModelsError || '无可用模型列表'));
+      sel.disabled = true;
+      items.push(modelMenuItem('重新加载模型列表', '', false, () => fetchApiModels(true)));
+    } else {
+      const all = st.model && !list.includes(st.model) ? [st.model, ...list] : list;
+      for (const m of all) sel.append(h('option', { attrs: { value: m } }, m));
+      sel.value = st.model;
+    }
+    modelMenu.replaceChildren(...items);
+    positionModelMenu();
+  };
+
+  /** 有 10 分钟内的缓存直接用（force 时仍刷新）；否则显示加载中并拉取。 */
+  const fetchApiModels = (force = false) => {
+    const st = settings();
+    if (!st) return;
+    const key = apiKeyOf(st);
+    const fresh = apiModels && apiModels.key === key && Date.now() - apiModels.at < 10 * 60_000;
+    buildApiMenu(true);
+    if (fresh && !force) return;
+    void api.invoke('settings:models').then(
+      (r) => {
+        if (r.models.length) apiModels = { key, models: r.models, at: Date.now() };
+        apiModelsError = r.error ?? '';
+      },
+      (e) => { apiModelsError = errorText(e); },
+    ).finally(() => buildApiMenu(false));
+  };
+
+  const openApiModelMenu = () => {
+    modelMenuFor = null;
+    apiMenuOpen = true;
+    modelMenu.hidden = false;
+    fetchApiModels();
+  };
+
+  const toggleModelMenu = () => {
+    closeAgentMenu();
+    const s = store.state.current;
+    const st = settings();
+    if (!s) return;
+    if (!modelMenu.hidden) {
+      closeModelMenu();
+      return;
+    }
+    if (isCli(s.agent ?? st?.defaultAgent ?? 'builtin', st)) openModelMenu();
+    else openApiModelMenu();
+  };
+
   agentPick.addEventListener('click', () => {
     if (agentMenu.hidden) openAgentMenu();
     else closeAgentMenu();
   });
-  modelPick.addEventListener('click', () => {
-    closeAgentMenu();
-    const s = store.state.current;
-    const st = settings();
-    if (s && !isCli(s.agent ?? st?.defaultAgent ?? 'builtin', st)) {
-      hooks.onOpenSettings?.();
-      return;
-    }
-    if (modelMenu.hidden) openModelMenu();
-    else closeModelMenu();
-  });
+  modelPick.addEventListener('click', toggleModelMenu);
   modelPick.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' || ev.key === ' ') {
       ev.preventDefault();
-      closeAgentMenu();
-      const s = store.state.current;
-      const st = settings();
-      if (s && !isCli(s.agent ?? st?.defaultAgent ?? 'builtin', st)) {
-        hooks.onOpenSettings?.();
-        return;
-      }
-      if (modelMenu.hidden) openModelMenu();
-      else closeModelMenu();
+      toggleModelMenu();
     }
   });
   // 与全局右键菜单同款的关闭方式：点外 / Esc / 失焦 / 缩放时关闭（点切换器本身由其 click 切换，不在此关）。

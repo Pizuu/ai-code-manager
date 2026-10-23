@@ -12,6 +12,7 @@ import { detectInstalledClis, probeCliVersion } from '../agent-cli/detect.ts';
 import { expandTemplate } from '../agent-cli/invocation.ts';
 import { listOpencodeModels, readOpencodeDefaultModel } from '../agent-cli/models.ts';
 import { resolveSafe } from '../tools/sandbox.ts';
+import { listProviderModels } from '../agent/providers/list-models.ts';
 import { opencodeLaunchEnv } from '../agent-cli/platform-env.ts';
 import { installHint } from '../agent-cli/presets.ts';
 import { OpencodeServeManager, prepareServeTurn, runServeCliTurn, type PreparedServeTurn } from '../agent-cli/serve-runner.ts';
@@ -75,6 +76,8 @@ export interface HandlerDeps {
   revealPath?: (absPath: string) => void;
   platform: NodeJS.Platform;
   providerFactory?: (id: 'openai' | 'anthropic', config: ProviderConfig) => Provider;
+  /** v1.16：拉取 API 模型列表用的 fetch（测试注入）；缺省为全局 fetch。 */
+  modelsFetch?: typeof fetch;
   /** v1.1：可注入的可执行文件解析依赖、git 可执行文件与 CLI 子进程基础环境（测试用）。 */
   resolveDeps?: ResolveDeps;
   gitBin?: string;
@@ -399,6 +402,18 @@ export function createHandlers(deps: HandlerDeps): HandlerMap {
         return { ok: true, message: 'API 配置测试成功。' };
       } catch {
         return { ok: false, message: 'API 配置测试失败，请检查平台、Base URL、模型、Key 和网络。' };
+      }
+    },
+    'settings:models': async () => {
+      const active = settings.getActive();
+      if (!active.baseUrl.trim()) return { models: [], error: '尚未配置 API Base URL。' };
+      const apiKey = settings.getApiKey(active.provider);
+      if (!apiKey) return { models: [], error: '尚未配置当前 API 平台的 API Key。' };
+      try {
+        const models = await listProviderModels({ provider: active.provider, baseUrl: active.baseUrl, apiKey, ...(deps.modelsFetch ? { fetchImpl: deps.modelsFetch } : {}) });
+        return models.length ? { models } : { models, error: '服务商未返回任何模型。' };
+      } catch (e) {
+        return { models: [], error: e instanceof Error && e.message ? e.message : '模型列表请求失败。' };
       }
     },
     'project:pick': async () => {

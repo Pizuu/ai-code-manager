@@ -10,6 +10,7 @@ const { contextBridge, ipcRenderer } = require('electron') as typeof ElectronMod
 
 const INVOKE_CHANNELS = [
   'settings:test',
+  'settings:models',
   'settings:get',
   'settings:set',
   'project:pick',

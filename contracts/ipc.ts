@@ -27,6 +27,9 @@ export const IPC_CONTRACT_REVISION = 'v1.14' as const;
 //   - 新增 `terminal:open` / `terminal:input` / `terminal:close` 三个通道与 `TerminalInfo` 等类型；
 //   - `AgentEvent` 新增 'terminal-data' / 'terminal-exit' 两个事件变体；
 //   - 未修改或删除任何既有字段。
+// v1.16 = API 模型切换的纯增量（2026-10-23 负责人确认）：新增 `settings:models` 通道
+//   （按当前 API 设置向服务商拉取可用模型列表，失败时 models 为空并给出 error 说明，不抛错）；
+//   切换仍通过既有 `settings:set({ model })` 写全局设置；未修改或删除任何既有字段。
 // v1.7 = 集成分支引用可回退远端的纯增量：`GitSnapshot` 新增 `integrationRef`（实际用于比对的引用，
 // 本地缺失时为 `origin/<分支>`）与 `integrationRefRemote`（是否回退到远端）两个字段；
 // 未修改或删除任何既有字段。
@@ -296,6 +299,9 @@ export interface IpcInvokeMap {
   'settings:get':    { args: [];                         result: PublicSettings };
   'settings:set':    { args: [update: SettingsUpdate];   result: PublicSettings };
   'settings:test':   { args: [];                         result: SettingsTestResult };
+  // ── v1.16（API 模型切换）──
+  /** 按当前 provider / baseUrl / Key 拉取服务商可用模型 ID 列表（去重排序）；未配置或请求失败时 models 为空、error 为中文说明（不含 Key）。 */
+  'settings:models': { args: [];                         result: { models: string[]; error?: string } };
   'project:pick':    { args: [];                         result: ProjectInfo | null };
   'project:current': { args: [];                         result: ProjectInfo | null };
   /** 在系统文件管理器中打开当前项目根目录。 */
