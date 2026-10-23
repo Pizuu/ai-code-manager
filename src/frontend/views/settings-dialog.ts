@@ -201,7 +201,7 @@ export function openSettings(tab: SettingsTab = 'model'): void {
       field('Base URL', baseUrl, '必填，默认空白：填写你所用服务的接口地址（OpenAI 兼容端点或 Anthropic Messages API）。'),
       field('模型', model, '必填，默认空白：按服务商文档填写模型 ID。也可用 /model <模型名> 切换。'),
       h('div', { class: 'field' }, h('label', {}, 'API Key'), key, keyHelp),
-      field('权限模式', mode, '内置 agent：命令执行在任何模式下都需要逐条批准；「仅规划」禁止修改与执行。外部 CLI 的映射见「Agent CLI」分区。')),
+      field('权限模式', mode, '内置 agent：除「全部允许」外，命令执行都需要逐条批准；「全部允许」免审批但仍限制在项目根目录内；「仅规划」禁止修改与执行。外部 CLI 的映射见「Agent CLI」分区。')),
     err,
     h('div', { class: 'actions' },
       addBtn,
