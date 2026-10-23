@@ -1,7 +1,7 @@
 ## 任务
 
 - 任务卡 / issue：#
-- 泳道：`` · 分支：`feat/<泳道>/<任务>` → `dev`
+- 泳道：`` · 分支：`feat/<泳道>/<任务>` → `hark-dev`
 - 对应需求：FR-  · 任务号：T0
 - 执行者：codex / claude / 人类
 
@@ -15,7 +15,7 @@
 - [ ] 未提交 `specs/` 改动（tasks.md 勾选由 coordinator 合入后完成）
 - [ ] `scripts/verify.sh` 全绿
 - [ ] `scripts/check-lane.sh` 全绿（无越界文件）
-- [ ] 已 rebase 到最新 `dev`
+- [ ] 已 rebase 到最新 `hark-dev`
 
 ## 契约
 

@@ -1,0 +1,85 @@
+name: Windows dist
+
+# T041 / T214（卡片 T-012）：在 windows-latest 上执行 `npm run dist`，
+# 产出 NSIS 安装版与 portable 便携版两个 exe，核对 app.asar 内容，并做启动冒烟。
+
+"on":
+  push:
+    branches: [main, hark-dev, manus]
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-dist-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dist:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # 无签名证书：禁止 electron-builder 自动查找签名身份。
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installers (npm run dist)
+        # `--publish never`：CI 中 electron-builder 不得尝试发布。
+        run: npm run dist -- --publish never
+
+      - name: List release output
+        shell: bash
+        run: ls -la release
+
+      - name: Check exe artifacts exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          nsis=(release/*-Setup-*-x64.exe)
+          portable=(release/*-Portable-*-x64.exe)
+          [ ${#nsis[@]} -eq 1 ] || { echo "期望 1 个 NSIS 安装包，实际 ${#nsis[@]}" >&2; exit 1; }
+          [ ${#portable[@]} -eq 1 ] || { echo "期望 1 个 portable exe，实际 ${#portable[@]}" >&2; exit 1; }
+          echo "NSIS:     ${nsis[0]}"
+          echo "Portable: ${portable[0]}"
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-code-manager-setup-x64
+          path: release/*-Setup-*-x64.exe
+          if-no-files-found: error
+
+      - name: Upload portable exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-code-manager-portable-x64
+          path: release/*-Portable-*-x64.exe
+          if-no-files-found: error
+
+      - name: Check app.asar contents (T214)
+        run: node scripts/check-asar.ts
+
+      - name: Smoke - launch unpacked app
+        run: node scripts/smoke-exe.ts "release/win-unpacked/AI Code Manager.exe" --ms 20000
+
+      - name: Smoke - launch portable exe (experimental)
+        # 便携版先自解压再拉起应用，启动器行为未在 runner 上验证过；失败会显示为警告而非阻断，
+        # 以 win-unpacked 冒烟（与便携版内容相同）为准。确认稳定后去掉 continue-on-error。
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=$(ls release/*-Portable-*-x64.exe | head -n1)
+          node scripts/smoke-exe.ts "$exe" --ms 45000

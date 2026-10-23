@@ -1,0 +1,6 @@
+[
+  { "relPath": "src/frontend/api.ts", "size": 612, "kind": "text", "content": "/**\n * 渲染进程访问主进程的唯一入口。\n */\nimport type { RendererApi } from '../../contracts/ipc.ts';\n", "truncated": false },
+  { "relPath": "docs/logo.png", "size": 20480, "kind": "binary", "content": "", "truncated": false },
+  { "relPath": "data/huge.log", "size": 3500000, "kind": "too-large", "content": "", "truncated": false },
+  { "relPath": "data/big.json", "size": 900000, "kind": "text", "content": "{\n  \"items\": [\n", "truncated": true }
+]

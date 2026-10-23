@@ -6,7 +6,7 @@
 | 对应需求 | FR-xxx / US<n>（specs/<NNN-功能>/spec.md） |
 | 包含任务号 | T0xx, T0yy（来自 specs/<NNN-功能>/tasks.md，同一泳道） |
 | 分支 | `feat/<泳道>/T-000-<简述>` |
-| PR 目标 | `dev` |
+| PR 目标 | `manus`（集成分支，以 `.agents/config.sh` 的 `INTEGRATION_BRANCH` 为准） |
 | 前置任务 | T-xxx（必须已合入）/ 无 |
 | 状态 | ready / in-progress / review / blocked / done |
 | 执行者 | codex / claude / 人类 |

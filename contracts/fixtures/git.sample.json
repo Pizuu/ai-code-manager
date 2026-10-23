@@ -1,0 +1,69 @@
+{
+ "available": true,
+ "generatedAt": "2026-10-20T11:00:00+08:00",
+ "currentBranch": "hark-dev",
+ "integrationBranch": "hark-dev",
+ "mainBranch": "main",
+ "integrationHead": "16859a7",
+ "mainHead": "0a1b2c3",
+ "integrationAheadOfMain": 42,
+ "mainAheadOfIntegration": 0,
+ "branches": [
+  {
+   "name": "hark-dev",
+   "sha": "16859a7000000000000000000000000000000000",
+   "short": "16859a7",
+   "time": "2026-10-20T10:40:00+08:00",
+   "subject": "chore(infra): gitignore 忽略 release/",
+   "kind": "integration",
+   "lane": null,
+   "task": null,
+   "ahead": 0,
+   "behind": 0,
+   "mergedIntoIntegration": true,
+   "worktree": null,
+   "current": true
+  }
+ ],
+ "commits": [
+  {
+   "sha": "16859a7000000000000000000000000000000000",
+   "short": "16859a7",
+   "parents": [
+    "5365250000000000000000000000000000000000"
+   ],
+   "author": "Hark Coordinator",
+   "time": "2026-10-20T10:40:00+08:00",
+   "subject": "chore(infra): gitignore 忽略 release/",
+   "refs": [
+    "HEAD -> hark-dev"
+   ]
+  }
+ ],
+ "merges": [
+  {
+   "sha": "731cfef000000000000000000000000000000000",
+   "short": "731cfef",
+   "time": "2026-10-20T10:20:00+08:00",
+   "subject": "merge: int/T-010-closeout",
+   "branch": "int/T-010-closeout",
+   "tip": "431d325",
+   "commitCount": 1
+  }
+ ],
+ "mainMerges": [],
+ "worktrees": [
+  {
+   "path": "/home/me/ai-code-manager",
+   "branch": "hark-dev",
+   "head": "16859a7",
+   "dirtyCount": 0,
+   "isMain": true
+  }
+ ],
+ "tags": [],
+ "remotes": [],
+ "dirtyCount": 0,
+ "pullRequests": null,
+ "ci": null
+}

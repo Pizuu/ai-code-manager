@@ -1,0 +1,62 @@
+/* Web 预览「UI 定位」与修改记录器样式（仅 npm run web 加载，不进打包）。
+ * 层级：操作条 > 修改记录卡片 > 工具条 > 悬停框 > 临时标记层；原生 modal 弹窗打开时节点挂入弹窗进入 Top Layer。 */
+.loc-action-bar{z-index:2147483647}
+.loc-record-panel{z-index:2147483646}
+.loc-box{z-index:2147483644}
+.loc-record-layer{z-index:2147483643}
+[data-locator-ui][hidden]{display:none !important}
+
+.loc-active,.loc-active *{cursor:crosshair !important}
+.loc-active [data-locator-ui],.loc-active [data-locator-ui] *{cursor:default !important}
+.loc-active button[data-locator-ui],.loc-active [data-locator-ui] button,.loc-active [data-locator-ui] button *{cursor:pointer !important}
+.loc-active input[data-locator-ui]{cursor:text !important}
+
+/* 悬停高亮 */
+.loc-box{position:fixed;pointer-events:none;outline:2px solid #2C84DB;background:rgba(44,132,219,.10);border-radius:2px}
+.loc-tip{position:absolute;left:-2px;top:-24px;white-space:nowrap;background:#1B67B2;color:#fff;font:11px/22px var(--mono);padding:0 8px;border-radius:var(--border-radius-xs)}
+.loc-tip.below{top:auto;bottom:-24px}
+
+/* 卡片（修改记录） */
+.loc-panel{position:fixed;right:16px;bottom:96px;width:520px;max-width:calc(100vw - 32px);max-height:calc(100vh - 140px);overflow:auto;background:var(--color-background-primary);border:var(--border-width-regular) solid var(--color-border-tertiary);border-radius:var(--border-radius-xl);box-shadow:var(--shadow-lg);padding:12px 14px;font:var(--font-caption)/1.5 var(--sans);color:var(--color-text-primary);text-align:left}
+.loc-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.loc-head-r{display:flex;align-items:center;gap:8px}
+.loc-x{flex:none;width:24px;height:24px;margin-left:auto;display:grid;place-items:center;padding:0;border:0;border-radius:var(--border-radius-sm);background:none;cursor:pointer;color:var(--color-text-tertiary)}
+.loc-x:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.loc-status{color:var(--color-text-success);font-size:var(--font-caption);white-space:nowrap}
+
+/* 修改记录卡片：默认右上角，标题栏可拖动 */
+.loc-record-panel{top:16px;right:16px;bottom:auto;width:420px;max-height:calc(100vh - 200px)}
+.loc-drag{cursor:move;user-select:none;-webkit-user-select:none;touch-action:none;margin:-12px -14px 8px;padding:10px 14px 6px}
+.loc-active .loc-drag{cursor:move !important}
+.loc-record-panel.dragging{box-shadow:var(--shadow-lg),0 0 0 1px var(--color-border-info)}
+.loc-copy-all{border:var(--border-width-regular) solid var(--color-background-inverse);background:var(--color-background-inverse);color:var(--color-text-inverse);border-radius:var(--border-radius-md);height:26px;padding:0 10px;cursor:pointer;font-weight:var(--font-weight-semibold)}
+.loc-record-list{display:flex;flex-direction:column}
+.loc-record{display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
+.loc-trash{flex:none;width:22px;height:22px;display:grid;place-items:center;border:0;border-radius:var(--border-radius-sm);background:none;color:var(--color-text-tertiary);cursor:pointer;padding:0}
+.loc-trash:hover{background:var(--color-background-danger);color:var(--color-text-danger)}
+.loc-record-text{flex:1;min-width:0;font:11px/22px var(--mono);white-space:pre-wrap;word-break:break-all;user-select:text}
+.loc-empty{color:var(--color-text-tertiary);padding:4px 0;border-top:var(--border-width-regular) solid var(--color-border-tertiary)}
+
+/* 固定操作条：点击点右侧 */
+.loc-action-bar{position:fixed;left:0;top:0;width:max-content;max-width:min(420px,calc(100vw - 16px));display:flex;flex-direction:column;gap:6px;background:var(--color-background-primary);border:var(--border-width-regular) solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);box-shadow:var(--shadow-lg);padding:6px;font:var(--font-caption)/1.4 var(--sans);color:var(--color-text-primary)}
+.loc-action-row{display:flex;align-items:center;gap:4px}
+.loc-act{height:28px;padding:0 10px;border:var(--border-width-regular) solid var(--color-border-tertiary);border-radius:var(--border-radius-md);background:var(--color-background-primary);cursor:pointer;color:var(--color-text-secondary)}
+.loc-act:hover{background:var(--color-background-secondary)}
+.loc-act.on{background:var(--color-background-secondary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:var(--font-weight-semibold)}
+.loc-action-row .loc-status{margin-left:6px}
+.loc-action-row .loc-x{margin-left:6px}
+.loc-editor{display:flex;gap:6px;min-width:220px}
+.loc-note{flex:1;width:0;min-width:0;height:28px;padding:0 8px;border:var(--border-width-regular) solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);font:inherit;outline:none}
+.loc-note:focus{border-color:var(--color-border-info)}
+.loc-save{flex:none;height:28px;padding:0 12px;border:0;border-radius:var(--border-radius-md);background:var(--color-background-inverse);color:var(--color-text-inverse);cursor:pointer;font-weight:var(--font-weight-semibold)}
+
+/* 临时标记：独立覆盖层，不拦截指针 */
+.loc-record-layer{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.loc-record-layer *{pointer-events:none}
+.loc-record-marker{position:absolute;box-sizing:border-box;border-radius:3px}
+.loc-record-marker.modify{border:2px solid #2C84DB}
+.loc-record-marker.remove{border:2px solid #D44949}
+.loc-record-note{position:absolute;left:-2px;bottom:100%;margin-bottom:2px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 6px;border-radius:var(--border-radius-xs);font:11px/18px var(--sans);color:#3D3D3A;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.loc-record-marker.below .loc-record-note{bottom:auto;top:100%;margin:2px 0 0}
+.loc-record-marker.modify .loc-record-note{background:#FBF3D5;border:var(--border-width-regular) solid #E5D48F}
+.loc-record-marker.remove .loc-record-note{background:#FBE6E3;border:var(--border-width-regular) solid #EBB4AD}

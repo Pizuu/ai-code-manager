@@ -1,0 +1,511 @@
+/**
+ * 工作台外框（FR-101–FR-103，ADR 0005）：图标栏 .rail、项目栏 .explorer、页头 .wh、状态栏 .status，
+ * DOM 结构与类名逐一对应 HTML 原型的 rail() / explorer() / header() / statusbar()。三个导航项 = 三个板块。
+ */
+import type { FileNode } from '../../../contracts/ipc.ts';
+import { api, errorText } from '../api.ts';
+import { sendAttrs } from '../lib/context-send.ts';
+import { clear, h } from '../lib/dom.ts';
+import { fileIcon } from '../lib/file-icons.ts';
+import { icon, svgEl, type IconName } from '../lib/icons.ts';
+import { sessionStateCounts } from '../lib/session-activity.ts';
+import { store, type ViewId } from '../store.ts';
+
+export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
+/** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
+const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '泳道看板', 'list'], ['session', '任务会话', 'sess'], ['git', 'Git', 'git'], ['agents', 'Agents', 'wt']];
+/** 文件树整棵目录树折叠状态（仅本机界面偏好）。 */
+const TREE_COLLAPSED_KEY = 'acm.explorer.treeCollapsed';
+export interface ShellHooks {
+  onNewSession(): void;
+  onOpenSettings(): void;
+  /** 单击文件：在任务会话中列打开只读代码标签（003）。 */
+  onFileClick(relPath: string): void;
+  onSessionView?(): void;
+  onError(text: string): void;
+}
+
+export interface ShellView {
+  /** 三个板块的内容容器。 */
+  views: Record<ViewId, HTMLElement>;
+  setView(v: ViewId): void;
+  refreshWorkspace(): Promise<void>;
+  setFileStates(states: ReadonlyArray<{ path: string; mode: 'readonly' | 'editing'; dirty: boolean }>): void;
+}
+
+/**
+ * 应用 Logo：圆角方形底（accent → 紫罗兰 #7c5cff 斜向渐变，底色自带、不依赖主题）内嵌白色
+ * Git 分叉 + 节点字形——一条主干（上下两节点）自中段分出一支（右侧节点），寓意分支管理 + AI 节点。
+ * 渐变 id 全局唯一（acm-logo-grad），不与页面其它 SVG 冲突。
+ */
+function appLogo(size = 38): SVGElement {
+  const grad = svgEl('linearGradient', { id: 'acm-logo-grad', x1: '0', y1: '0', x2: '1', y2: '1' });
+  grad.append(
+    svgEl('stop', { offset: '0%', style: 'stop-color:var(--accent)' }),
+    svgEl('stop', { offset: '100%', style: 'stop-color:#7c5cff' }),
+  );
+  const defs = svgEl('defs');
+  defs.append(grad);
+  const node = (cx: number, cy: number) => svgEl('circle', { cx, cy, r: 2.7, fill: 'none', stroke: '#fff', 'stroke-width': 2 });
+  const svg = svgEl('svg', { class: 'app-logo', width: size, height: size, viewBox: '0 0 32 32', 'aria-hidden': 'true' });
+  svg.append(
+    defs,
+    svgEl('rect', { x: 0, y: 0, width: 32, height: 32, rx: 9, fill: 'url(#acm-logo-grad)' }),
+    svgEl('path', { d: 'M10 11.2v9.6M10 15c0 5.2 4.6 1 9.8 1', fill: 'none', stroke: '#fff', 'stroke-width': 2.2, 'stroke-linecap': 'round' }),
+    node(10, 8.5), node(10, 23.5), node(22.5, 16),
+  );
+  return svg;
+}
+
+export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
+  clear(app);
+  app.className = 'app';
+
+  // ── 主题偏好（应用内手动切换）：localStorage 'acm.theme' = 'light' | 'dark'；无值 = 跟随系统
+  // （不写 data-theme，styles.css 的深色变量块经 @media (prefers-color-scheme: dark) + :root:not([data-theme]) 生效；
+  // 写了 data-theme 则由 :root[data-theme='dark'] / 基础浅色 + color-scheme 强制口径压过系统）。
+  // 在构建早期、首帧前应用，保证首屏不闪。注意：桌面端主进程窗口背景（nativeTheme）仍跟随系统，本切换只管应用内主题。
+  const THEME_KEY = 'acm.theme';
+  type ThemeName = 'light' | 'dark';
+  const storedTheme = localStorage.getItem(THEME_KEY);
+  if (storedTheme === 'light' || storedTheme === 'dark') document.documentElement.setAttribute('data-theme', storedTheme);
+  /** 当前生效主题：手动偏好优先，否则按系统配色推导。 */
+  const currentTheme = (): ThemeName => {
+    const attr = document.documentElement.getAttribute('data-theme');
+    if (attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  };
+
+  // ── rail（原型 rail()）──
+  // 板块图标与项目栏导航同序（泳道看板 → 任务会话 → Git 与集成，T-039）；切换项目入口在项目选择器与 ⋯ 菜单
+  const railView = {} as Record<ViewId, HTMLAnchorElement>;
+  const railBtn = (name: IconName, title: string, onClick: () => void) => h('a', { class: 'ri', title, on: { click: onClick } }, icon(name));
+  const railToggle = railBtn('menu', '展开侧栏', () => {
+    explorer.toggleAttribute('hidden');
+    syncRailToggle();
+  });
+  const syncRailToggle = () => {
+    const expanded = !explorer.hidden;
+    railToggle.replaceChildren(icon(expanded ? 'side' : 'menu'));
+    railToggle.title = expanded ? '收起侧栏' : '展开侧栏';
+    railToggle.setAttribute('aria-expanded', String(expanded));
+    for (const id of Object.keys(railView) as ViewId[]) railView[id].hidden = expanded;
+  };
+  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', git: 'code', agents: 'wt' };
+  for (const [id, label] of NAV) railView[id] = railBtn(RAIL_ICON[id], label, () => setView(id));
+  // P0-3：任务会话图标上的活动徽标（运行中 / 待批准 / 出错）
+  const railBadge = h('span', { class: 'ri-badge', attrs: { hidden: '' } });
+  railBadge.hidden = true;
+  railView.session.append(railBadge);
+  // 主题切换按钮（rail 底部组、设置齿轮上方）：图标 = 点击后要去的状态（深色显 sun、浅色显 moon），两态切换并落盘。
+  const themeBtn = h('a', { class: 'ri', on: { click: () => {
+    const next: ThemeName = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(THEME_KEY, next);
+    syncThemeBtn();
+  } } });
+  const syncThemeBtn = () => {
+    const dark = currentTheme() === 'dark';
+    themeBtn.replaceChildren(icon(dark ? 'sun' : 'moon'));
+    themeBtn.title = `切换主题（当前：${dark ? '深色' : '浅色'}）`;
+  };
+  syncThemeBtn();
+  const filesBtn = h('a', { class: 'ri', title: '打开文件列表', on: { click: () => {
+    const opening = explorer.hidden;
+    explorer.hidden = !opening;
+    if (opening) {
+      setTreeCollapsed(false);
+      void renderTree();
+    }
+    syncRailToggle();
+  } } }, icon('file'));
+  const rail = h('nav', { class: 'rail' },
+    railToggle,
+    h('div', { class: 'gap26' }),
+    ...NAV.map(([id]) => railView[id]),
+    h('div', { class: 'sp' }),
+    themeBtn,
+    filesBtn,
+    h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
+  );
+
+  // ── explorer（原型 explorer()）──
+  // 顶部品牌区：应用 logo + 名称（纯展示，无点击行为）
+  const brand = h('div', { class: 'brand' },
+    appLogo(),
+    h('div', { class: 'brand-tx' }, h('b', {}, 'AI Code Manager'), h('span', {}, '桌面 AI 编程助手')));
+  const pname = h('b');
+  const pdesc = h('span');
+  const navloc = h('div', { class: 'navloc' });
+  const navItems = {} as Record<ViewId, HTMLAnchorElement>;
+  const nav = h('div', { class: 'nav' });
+  const fileStates = new Map<string, { mode: 'readonly' | 'editing'; dirty: boolean }>();
+  for (const [id, label, ic, parent] of NAV) {
+    navItems[id] = h('a', { class: parent ? 'sub' : '', title: parent ? `${VIEW_TITLES[parent]} › ${label}` : label, on: { click: () => setView(id) } }, icon(ic), h('span', {}, label));
+    nav.append(navItems[id]);
+  }
+  // 项目文件树：目录默认全部折叠（用户要求）：只显示第一层，目录由用户点击逐个展开 / 折叠。
+  const tree = h('div', { class: 'tree' });
+  tree.hidden = localStorage.getItem(TREE_COLLAPSED_KEY) === '1';
+  const pselCaret = h('button', { class: 'psel-caret', title: '折叠 / 展开项目文件', attrs: { type: 'button', 'aria-expanded': String(!tree.hidden) } }, icon('caret'));
+  const setTreeCollapsed = (collapsed: boolean) => {
+    tree.hidden = collapsed;
+    pselCaret.setAttribute('aria-expanded', String(!collapsed));
+    localStorage.setItem(TREE_COLLAPSED_KEY, collapsed ? '1' : '0');
+  };
+  pselCaret.addEventListener('click', (ev) => { ev.stopPropagation(); setTreeCollapsed(!tree.hidden); });
+  pselCaret.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); setTreeCollapsed(!tree.hidden); }
+  });
+  // 点击打开文件夹作为工程根目录（pickProject 在后段定义，闭包引用）
+  const psel = h('div', { class: 'psel', title: '点击打开文件夹作为工程根目录', attrs: { role: 'button', tabindex: '0' }, on: { click: () => void pickProject(), keydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); void pickProject(); } } } },
+    h('div', { class: 'pid' }, pname, pdesc), pselCaret);
+  const explorer = h('aside', { class: 'explorer' }, brand, navloc, nav, tree, psel);
+  syncRailToggle();
+
+  // ── 分支下拉：点击页头面包屑的分支 chip 展开本地分支列表，选中走 git:checkout 切换并全量同步 ──
+  const brMenu = h('div', { class: 'ctxmenu brmenu', attrs: { role: 'menu' } });
+  brMenu.hidden = true;
+  document.body.append(brMenu);
+  const closeBrMenu = () => { brMenu.hidden = true; };
+  /** 分支是否可切换：Git 快照可用且至少有 1 个本地分支（页头 chip 的可点态与 caret 显隐同口径）。 */
+  const canSwitchBranch = (): boolean => {
+    const g = store.state.git;
+    return Boolean(g?.available && g.branches.length > 0);
+  };
+  const checkoutBranch = async (branch: string) => {
+    try {
+      store.state.git = await api.invoke('git:checkout', branch);
+      // 全局同步：目录树缓存失效重读 + refreshWorkspace 重拉 board/git 并 emit('workspace')（页头、状态栏、各视图随之更新）
+      kidsCache.clear();
+      void renderTree();
+      await refreshWorkspace();
+      hooks.onError(`已切换到分支「${branch}」。`);
+    } catch (e) {
+      hooks.onError(errorText(e));
+    }
+  };
+  /** 菜单锚点由调用方给出（页头分支 chip），菜单落在锚点正下方。 */
+  const toggleBrMenu = (ev: Event, anchor: HTMLElement) => {
+    ev.stopPropagation();
+    const g = store.state.git;
+    if (!g?.available || g.branches.length === 0) return;
+    if (!brMenu.hidden) { closeBrMenu(); return; }
+    closeFeatMenu();
+    brMenu.replaceChildren(...g.branches.map((b) => h('button', {
+      class: `mi${b.current ? ' on' : ''}`,
+      attrs: { type: 'button', role: 'menuitem', ...(b.current ? { disabled: '' } : {}) },
+      on: { click: () => { closeBrMenu(); void checkoutBranch(b.name); } },
+    }, h('span', {}, b.current ? `✓ ${b.name}` : b.name))));
+    const r = anchor.getBoundingClientRect();
+    brMenu.hidden = false;
+    brMenu.style.left = `${Math.max(8, r.right - brMenu.offsetWidth)}px`;
+    brMenu.style.top = `${r.bottom + 4}px`;
+  };
+  document.addEventListener('click', (ev) => { if (!brMenu.hidden && !brMenu.contains(ev.target as Node)) closeBrMenu(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeBrMenu(); });
+
+  // ── workspace header（原型 header()）──
+  const crumbProject = h('span');
+  const crumbFeature = h('b');
+  /** 规格名旁的切换指示（caret）；可选规格不足 2 个时隐藏，菜单逻辑在下方功能下拉一节。 */
+  const featCaret = h('span', { class: 'feat-caret', title: '切换功能规格' }, icon('caret', 12));
+  featCaret.hidden = true;
+  /** 面包屑当前分支 chip：文案 + 切换指示（caret）；可切换时整块可点，展开本地分支列表（菜单落在 chip 下方）。 */
+  const crumbChipLabel = h('span');
+  const crumbChipCaret = h('span', { class: 'br-chip-caret' }, icon('caret', 12));
+  crumbChipCaret.hidden = true;
+  const crumbChip = h('span', { class: 'chip br-chip', title: '切换分支' }, crumbChipLabel, crumbChipCaret);
+  crumbChip.addEventListener('click', (ev) => { if (canSwitchBranch()) toggleBrMenu(ev, crumbChip); });
+  crumbChip.addEventListener('keydown', (ev) => {
+    if ((ev.key === 'Enter' || ev.key === ' ') && canSwitchBranch()) { ev.preventDefault(); toggleBrMenu(ev, crumbChip); }
+  });
+  const header = h('header', { class: 'wh' },
+    h('div', {}, h('div', { class: 'crumb' }, icon('box', 16), crumbProject, h('span', { class: 'crumb-sep', attrs: { 'aria-hidden': 'true' } }, '/'), crumbFeature, featCaret, crumbChip)),
+    h('div', { class: 'wact' }));
+
+  // ── 功能下拉：点击面包屑规格名（crumbFeature / caret）展开规格列表，选中走 board:setFeature 切换并全量同步 ──
+  const featMenu = h('div', { class: 'ctxmenu featmenu', attrs: { role: 'menu' } });
+  featMenu.hidden = true;
+  document.body.append(featMenu);
+  const closeFeatMenu = () => { featMenu.hidden = true; };
+  const selectFeature = async (featureId: string | null) => {
+    try {
+      store.state.board = await api.invoke('board:setFeature', { featureId });
+      // 全局同步：emit('workspace') 后页头（面包屑 / 快照时间）、状态栏与看板（.fo 标题、阶段、tasks 计数读 snap.feature）随返回快照重渲；
+      // setFeature 已返回完整新快照，不再叠加 refreshWorkspace 重拉（与 git:checkout 不同，那里看板数据还需按新分支重新推导）
+      store.emit('workspace');
+      hooks.onError(featureId ? `已切换到功能「${featureId}」。` : '已切换为自动选择最新功能。');
+    } catch (e) {
+      hooks.onError(errorText(e));
+    }
+  };
+  const toggleFeatMenu = (ev: Event) => {
+    ev.stopPropagation();
+    const b = store.state.board;
+    const features = b?.features ?? [];
+    if (!b || features.length <= 1) return;
+    if (!featMenu.hidden) { closeFeatMenu(); return; }
+    closeBrMenu();
+    const curId = b.feature?.id ?? null;
+    const latest = features.at(-1);
+    // 快照不区分「显式选了最新规格」与「自动（最新）」：当前规格即最新一项时 ✓ 落在底部「自动（最新）」行，
+    // 最新规格行本身仍可点击（显式钉住该规格，语义与自动不同但当前快照表现一致）
+    const autoOn = curId !== null && curId === latest?.id;
+    const featItem = (label: string, sub: string, on: boolean, run: () => void) => h('button', {
+      class: `mi${on ? ' on' : ''}`,
+      attrs: { type: 'button', role: 'menuitem', ...(on ? { disabled: '' } : {}) },
+      on: { click: () => { closeFeatMenu(); run(); } },
+    }, h('span', {}, on ? `✓ ${label}` : label), h('span', { class: 'mute' }, sub));
+    featMenu.replaceChildren(
+      ...features.map((ft) => featItem(ft.id, ft.title, !autoOn && ft.id === curId, () => void selectFeature(ft.id))),
+      featItem('自动（最新）', latest ? `${latest.id}${latest.title ? ` · ${latest.title}` : ''}` : '', autoOn, () => void selectFeature(null)));
+    const r = crumbFeature.getBoundingClientRect();
+    featMenu.hidden = false;
+    featMenu.style.left = `${Math.max(8, r.right - featMenu.offsetWidth)}px`;
+    featMenu.style.top = `${r.bottom + 4}px`;
+  };
+  crumbFeature.addEventListener('click', toggleFeatMenu);
+  featCaret.addEventListener('click', toggleFeatMenu);
+  document.addEventListener('click', (ev) => { if (!featMenu.hidden && !featMenu.contains(ev.target as Node)) closeFeatMenu(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeFeatMenu(); });
+
+  const views: Record<ViewId, HTMLElement> = {
+    board: h('div', { class: 'ws-view wb', attrs: { id: 'wb-board' } }),
+    session: h('div', { class: 'ws-view sess', attrs: { id: 'wb-session' } }),
+    git: h('div', { class: 'ws-view wb', attrs: { id: 'wb-git' } }),
+    agents: h('div', { class: 'ws-view wb', attrs: { id: 'wb-agents' } }),
+  };
+  const statusL = h('span');
+  /** 规格进度行（原看板 .prog 移入）：状态栏最右端常驻，类名沿用 .prog，布局覆盖在 styles.css 的 .status .prog。 */
+  const statusProg = h('span', { class: 'prog' });
+  const status = h('footer', { class: 'status' }, statusL, statusProg);
+  const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.git, views.agents, status);
+  app.append(rail, explorer, ws);
+
+  // ── 渲染 ──
+  const renderProject = () => {
+    const p = store.state.project;
+    const pkgDesc = store.state.board?.feature?.title ?? '';
+    pname.textContent = p?.name ?? '未打开项目';
+    pdesc.textContent = p ? p.root : '点击选择项目文件夹';
+    pdesc.title = p ? p.root : '';
+    crumbProject.textContent = p?.name ?? '未打开项目';
+    void pkgDesc;
+  };
+
+  const renderChrome = () => {
+    const b = store.state.board;
+    const g = store.state.git;
+    const f = b?.feature;
+    crumbFeature.textContent = f ? f.id : '—';
+    crumbFeature.title = f ? `${f.id}${f.title ? ` · ${f.title}` : ''}` : '';
+    const canSwitchFeature = (b?.features.length ?? 0) > 1;
+    featCaret.hidden = !canSwitchFeature;
+    crumbFeature.classList.toggle('feat-on', canSwitchFeature);
+    const crumbBranch = g?.currentBranch ?? b?.integrationBranch ?? g?.integrationBranch ?? '';
+    crumbChipLabel.textContent = crumbBranch;
+    crumbChip.hidden = crumbBranch === '';
+    // 分支 chip 的可切换态：Git 可用且有本地分支时可点（显示 caret + role/tabindex），否则纯展示
+    const canSwitch = canSwitchBranch();
+    crumbChipCaret.hidden = !canSwitch;
+    crumbChip.classList.toggle('br-on', canSwitch);
+    if (canSwitch) { crumbChip.setAttribute('role', 'button'); crumbChip.setAttribute('tabindex', '0'); }
+    else { crumbChip.removeAttribute('role'); crumbChip.removeAttribute('tabindex'); }
+    if (g?.available) {
+      statusL.replaceChildren(h('span', { class: 'dot grn' }), `本地工作区 ${g.currentBranch ?? ''}（${g.worktrees.length} 个 worktree · ${g.dirtyCount} 个未提交文件）`);
+    } else {
+      statusL.replaceChildren(h('span', { class: 'dot' }), store.state.project ? (store.state.workspaceError ?? g?.reason ?? '读取中…') : '未打开项目');
+    }
+    renderProg();
+    renderActivity();
+    renderProject();
+  };
+
+  // 当前会话错误日志层（errPop）已整体迁入对话区，此处不再持有；会话关注徽标改由
+  // lib/session-activity.ts 的 sessionStateCounts 提供。
+
+  /**
+   * P0-3：活动指示——图标栏徽标（需要关注的会话数 = 出错 + 回答中）。数字出自
+   * sessionStateCounts；对话区 .ctx 条的三态计数圆点组随其一并移除，徽标口径不变。
+   */
+  const renderActivity = () => {
+    const approvals = [...store.state.approvals.values()];
+    // 图标栏徽标：需要关注的会话数 = 出错（红）+ 回答中（黄）；回答完成不计入，为 0 时隐藏
+    const { nErr, nRun } = sessionStateCounts({
+      sessions: store.state.sessions,
+      running: store.state.running,
+      approvalSessionIds: approvals.map((a) => a.sessionId),
+      errorsOf: (id) => store.errorsOf(id),
+    });
+    const total = nErr + nRun;
+    railBadge.hidden = total === 0;
+    railBadge.textContent = total > 99 ? '99+' : String(total);
+    railBadge.className = `ri-badge${nErr ? ' err' : nRun ? ' pend' : ''}`;
+    railView.session.title = total
+      ? `${VIEW_TITLES.session}：${total} 个会话需要关注（出错 ${nErr} · 回答中 ${nRun}）（点击查看）`
+      : VIEW_TITLES.session;
+  };
+
+  /**
+   * 规格进度行（原看板 .prog，本批移入状态栏右端常驻）：内容与推导口径与看板原实现逐字一致，
+   * 数据取 store.state.board，随 renderChrome（workspace / project 事件）刷新；无看板数据时隐藏
+   * （与原 .prog 的出现条件对齐：没打开项目时看板里也没有这一行）。
+   */
+  const renderProg = () => {
+    const b = store.state.board;
+    statusProg.hidden = !b;
+    if (!b) return;
+    const F = b.feature;
+    const cards = b.cards;
+    const integ = b.integrationBranch;
+    const contractCard = cards.find((c) => c.lane === 'contracts' && c.status === 'merged') ?? cards.find((c) => c.lane === 'contracts');
+    const frozen = contractCard?.status === 'merged';
+    const stg = h('div', { class: 'stg' });
+    for (const s of F?.stages ?? []) stg.append(h('span', { class: s.done ? 'ok' : '', title: s.detail }, `${s.label}${s.key === 'checklists' ? ` ${s.detail}` : ''} ${s.done ? '✓' : '○'}`));
+    // 当前阶段由真实 stages 推导：第一个未完成的阶段；七步全完成 = 规格准备结束、已进入实施（Implement）；无 stages 回退 '—'
+    const currentStage = (F?.stages ?? []).find((s) => !s.done)?.label ?? ((F?.stages ?? []).length ? 'Implement' : '—');
+    // 契约段按状态着色（已合入绿 var(--green) / 未合入琥珀 var(--amber)，与 .st-dot 同源）；无契约卡时兜底显示全板真实合入统计，不留空白
+    const contractSeg = contractCard
+      ? h('span', { class: contractCard.merge ? 'grn' : 'amb' }, `${contractCard.id} · ${contractCard.merge ? `merge ${contractCard.merge.short} 已合入 ${integ}` : '未合入'}`)
+      : h('span', { class: 'ink2' }, `已合入 ${cards.filter((c) => c.status === 'merged').length}/${cards.length} 卡`);
+    statusProg.replaceChildren(
+      icon('check'),
+      h('span', {}, `契约 IPC ${b.contractVersion ?? '?'}${frozen ? ' 已冻结' : ' 未冻结'}`),
+      contractSeg,
+      stg,
+      h('span', { class: 'chip acc', title: 'specs tasks.md 勾选数' }, `当前：${currentStage} · tasks.md ${F?.tasksDone ?? 0}/${F?.tasksTotal ?? 0}`),
+      h('span', { class: 'mute' }, '按序合入 → Converge'));
+  };
+
+  const nodeAttrs = (n: FileNode) => sendAttrs({ kind: 'file', path: n.relPath, dir: n.kind === 'dir' });
+  /** 展开的目录（relPath），初始为空 = 全部折叠；目录单击折叠 / 展开，子项按需读取并缓存。 */
+  const expanded = new Set<string>();
+  const kidsCache = new Map<string, FileNode[]>();
+  const fileNodeEl = (n: FileNode, depth: number) => {
+    const dir = n.kind === 'dir';
+    const auth = depth === 0 && n.name === 'contracts';
+    const tag = auth && store.state.board?.contractVersion ? h('span', { class: 'tag' }, ` ↗ 契约 ${store.state.board.contractVersion}`) : null;
+    const open = dir && expanded.has(n.relPath);
+    const el = h('div', { class: `te click${auth ? ' auth' : ''}${dir ? ' dir' : ''}${open ? ' open' : ''}`, title: n.relPath, attrs: { ...nodeAttrs(n), ...(dir ? { 'aria-expanded': String(open) } : {}) } },
+      dir ? h('span', { class: 'tw' }, icon('caret', 12)) : h('span', { class: 'tw' }),
+      fileIcon(n.name, { dir, open, size: 14 }), h('span', { class: 'nm' }, `${n.name}${dir ? '/' : ''}`),
+      !dir && fileStates.has(n.relPath) ? h('span', { class: `file-state-dot ${fileStates.get(n.relPath)?.mode ?? 'readonly'}${fileStates.get(n.relPath)?.dirty ? ' dirty' : ''}`, title: fileStates.get(n.relPath)?.dirty ? '已修改未保存' : fileStates.get(n.relPath)?.mode === 'editing' ? '编辑中' : '只读' }) : null,
+      tag);
+    if (!dir) {
+      const state = fileStates.get(n.relPath);
+      el.classList.toggle('file-open', Boolean(state));
+      el.classList.toggle('file-editing', state?.mode === 'editing');
+      el.classList.toggle('file-dirty', Boolean(state?.dirty));
+    }
+    el.style.paddingLeft = `${4 + depth * 14}px`;
+    el.addEventListener('click', () => {
+      if (!dir) return hooks.onFileClick(n.relPath);
+      if (open) expanded.delete(n.relPath);
+      else expanded.add(n.relPath);
+      void renderTree();
+    });
+    return el;
+  };
+
+  // 按名称顺序（目录与文件混排，同 git ls-tree）
+  const byName = (a: FileNode, b: FileNode) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  const kidsOf = async (rel: string): Promise<FileNode[]> => {
+    let k = kidsCache.get(rel);
+    if (!k) {
+      k = (await api.invoke('fs:tree', rel)).sort(byName);
+      kidsCache.set(rel, k);
+    }
+    return k;
+  };
+  let treeToken = 0;
+  const renderTree = async () => {
+    const token = ++treeToken;
+    if (!store.state.project) {
+      tree.replaceChildren(h('div', { class: 'mute pad8' }, '打开项目后显示目录结构。'));
+      return;
+    }
+    try {
+      const rows: HTMLElement[] = [];
+      const walk = async (rel: string, depth: number): Promise<void> => {
+        for (const n of await kidsOf(rel)) {
+          rows.push(fileNodeEl(n, depth));
+          if (n.kind === 'dir' && expanded.has(n.relPath)) await walk(n.relPath, depth + 1);
+        }
+      };
+      await walk('', 0);
+      if (token === treeToken) tree.replaceChildren(...rows);
+    } catch (e) {
+      if (token === treeToken) tree.replaceChildren(h('div', { class: 'mute pad8' }, errorText(e)));
+    }
+  };
+
+  const setView = (v: ViewId) => {
+    if (v === 'session') hooks.onSessionView?.();
+    store.state.view = v;
+    for (const id of Object.keys(views) as ViewId[]) {
+      views[id].hidden = id !== v;
+      navItems[id].classList.toggle('on', id === v);
+      // 子视图打开时父项保持「展开中」弱高亮
+      navItems[id].classList.toggle('parent-on', NAV.some(([cid, , , p]) => cid === v && p === id));
+      railView[id].classList.toggle('on', id === v);
+    }
+    navloc.textContent = `当前 · ${VIEW_TITLES[v]}`;
+    store.emit('view');
+    if (v !== 'session' && !store.state.board) void refreshWorkspace();
+  };
+
+  let loading: Promise<void> | null = null;
+  const refreshWorkspace = async (): Promise<void> => {
+    if (loading) return loading;
+    loading = (async () => {
+      try {
+        const [board, git] = await Promise.all([api.invoke('board:get'), api.invoke('git:get')]);
+        store.state.board = board;
+        store.state.git = git;
+        store.state.workspaceError = null;
+      } catch (e) {
+        store.state.workspaceError = errorText(e);
+        hooks.onError(errorText(e));
+      } finally {
+        loading = null;
+      }
+      store.emit('workspace');
+    })();
+    return loading;
+  };
+
+  const pickProject = async () => {
+    try {
+      const info = await api.invoke('project:pick');
+      if (info) {
+        store.state.project = info;
+        store.emit('project');
+      }
+    } catch (e) {
+      hooks.onError(errorText(e));
+    }
+  };
+
+  store.on('workspace', renderChrome);
+  // P1-3：活动徽标 / 状态栏计数随运行态、审批与消息实时更新；三色圆与错误层另随会话增删与错误条目变化刷新
+  for (const t of ['running', 'approvals', 'current', 'messages', 'sessions', 'errors'] as const) store.on(t, renderActivity);
+  // P1-8：窗口获得焦点时刷新工作区快照（看板 / Git 可能已被外部改动）；侧栏文件树同步重读（缓存失效 + 重渲）
+  window.addEventListener('focus', () => { kidsCache.clear(); void renderTree(); void refreshWorkspace(); });
+  store.on('project', () => {
+    kidsCache.clear();
+    // 打开 / 切换项目回到默认：全部折叠（展开状态不跨项目保留）
+    expanded.clear();
+    renderChrome();
+    void renderTree();
+    void refreshWorkspace();
+  });
+  renderChrome();
+  void renderTree();
+  const setFileStates = (states: ReadonlyArray<{ path: string; mode: 'readonly' | 'editing'; dirty: boolean }>) => {
+    fileStates.clear();
+    for (const state of states) fileStates.set(state.path, { mode: state.mode, dirty: state.dirty });
+    void renderTree();
+  };
+  return { views, setView, refreshWorkspace, setFileStates };
+}

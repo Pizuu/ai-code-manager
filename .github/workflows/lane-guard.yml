@@ -2,7 +2,10 @@ name: Lane guard
 
 "on":
   pull_request:
-    branches: [dev, main]
+    # 集成分支名以 .agents/config.sh 的 INTEGRATION_BRANCH 为唯一权威（当前 manus）。
+    # 这里同时列出已知的历史名，避免集成分支改名期间漏触发；
+    # scripts/check-branch-config.sh 会校验本列表与 config.sh 一致，不一致即 CI 失败。
+    branches: [manus, hark-dev, main]
 
 permissions:
   contents: read
@@ -14,12 +17,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Read the integration branch from .agents/config.sh
+        id: cfg
+        run: |
+          # shellcheck source=/dev/null
+          source .agents/config.sh
+          echo "name=$INTEGRATION_BRANCH" >> "$GITHUB_OUTPUT"
+      - name: Check the integration branch name stays in sync
+        run: bash scripts/check-branch-config.sh
       - name: Check changed files stay inside the lane
         run: bash scripts/check-lane.sh "" "${{ github.head_ref }}"
         env:
           GITHUB_HEAD_REF: ${{ github.head_ref }}
       - name: Only the owner merges into main
-        if: github.base_ref == 'main' && github.head_ref != 'dev'
+        if: github.base_ref == 'main' && github.head_ref != steps.cfg.outputs.name
         run: |
-          echo "PRs into main must come from dev." >&2
+          echo "PRs into main must come from ${{ steps.cfg.outputs.name }} (the integration branch in .agents/config.sh)." >&2
           exit 1

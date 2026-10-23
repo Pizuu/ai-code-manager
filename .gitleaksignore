@@ -1,0 +1,2 @@
+# 误报：localStorage 存储键名 'acm.favorites.v1'，不是密钥
+26b3ee3e3aeee116e7fdcc0920b5603ed1c05c7c:src/frontend/lib/favorites.ts:generic-api-key:17
