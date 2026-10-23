@@ -2,7 +2,6 @@
  * Electron 主进程入口：安全窗口（宪法 十二）、app:// 协议提供界面文件、IPC 注册、主题跟随系统。
  */
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, net, protocol, safeStorage, shell } from 'electron';
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { AgentEvent, IpcInvokeChannel } from '../../contracts/ipc.ts';
@@ -100,16 +99,6 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-async function restoreLastProject(settings: SettingsStore, state: AppState): Promise<void> {
-  const last = settings.getActive().lastProjectPath;
-  if (!last) return;
-  try {
-    if ((await fs.stat(last)).isDirectory()) state.setProject(last);
-  } catch (err) {
-    console.warn(`上次打开的项目不可用：${(err as Error).message}`);
-  }
-}
-
 async function bootstrap(): Promise<void> {
   nativeTheme.themeSource = 'system';
   registerAppProtocol();
@@ -123,7 +112,7 @@ async function bootstrap(): Promise<void> {
   }
   const sessions = new SessionStore(path.join(userData, 'sessions'));
   const state = new AppState();
-  await restoreLastProject(settings, state);
+  // 启动时不自动打开任何项目（包括上次的项目）：工作空间为空，由用户手动打开文件夹。
 
   // T127（实验）：opencode serve 常驻进程在退出时结束进程树
   const serveManager = new OpencodeServeManager({ platform: process.platform });

@@ -15,7 +15,7 @@
  *   - `agentCli:models` 恒返回 `{ models: [] }`（不启动本机 CLI 枚举模型，与 detect 同口径）；
  *   - `agent:send` 当会话 agent 为外部 CLI（cli:*）时被服务器拒绝（E_CLI 错误 + 同内容的 error 事件），绝不启动真实 CLI 进程；
  *   - `agentCli:save` / `agentCli:delete` 是设置数据，随 settings 真实落盘。
- * - `project:pick` 无系统对话框：恒返回 null（项目由 `--project` 参数在启动时确定）；
+ * - 默认无项目（不再回退到应用根）；`project:pick` 无系统对话框：恒返回 null（项目只能由 `--project` 参数在启动时手动指定）；
  *   `project:openRoot` 为 no-op。
  * - `files:pick`（v1.12）无系统对话框：浏览器侧适配器直接返回空数组（按取消处理），不发请求。
  * - `files:import`（v1.14）无本地文件系统：浏览器侧适配器直接抛错（Web 预览不支持导入文件），不发请求。

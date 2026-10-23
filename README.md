@@ -54,7 +54,7 @@ npm run test            # 单元 + 集成测试（node:test）
 npm run build           # tsc → dist/
 bash scripts/verify.sh  # 以上四步一键执行
 bash scripts/security-check.sh
-npm run web             # Web 预览（仅开发）：http://127.0.0.1:5173/，可加 -- --port 5180 --project <目录>
+npm run web             # Web 预览（仅开发）：http://127.0.0.1:5173/，默认不打开任何项目，需加 -- --project <目录> 手动指定（可另加 --port 5180）
 ```
 
 **测试规则**：简单 UI 修改（只改 CSS / 文案 / DOM 布局，不涉及 IPC、安全、数据逻辑）不要求新增或修改测试，但仍需 lint + typecheck + build 通过（宪法 五、ADR 0007）。
@@ -62,7 +62,7 @@ npm run web             # Web 预览（仅开发）：http://127.0.0.1:5173/，�
 ### Web 预览与 UI 定位
 
 - `npm run web` 启动本地服务器（只监听 `127.0.0.1` 并校验 Host；静态文件只接受 GET / HEAD），浏览器打开后即是与桌面版相同的渲染层源码（服务器对 `.ts` 做原地类型擦除，行号与源文件一致）。
-- 自 2026-10-20（契约 web-dev v2，ADR 0008 修订注记）：服务器进程内运行与桌面端相同的真实后端——项目、文件、tasks、看板、Git、设置、会话与内置 agent 均为真实数据并真实落盘（数据目录与桌面端 userData 等价，`AICM_DATA_DIR` 可覆盖；`--project` 换项目目录）。仅 Agent CLI 例外：不检查、不启动，`agent:send` 到外部 CLI 会话会被拒绝；Web 预览无 safeStorage，API Key 不能在此保存或使用。
+- 自 2026-10-20（契约 web-dev v2，ADR 0008 修订注记）：服务器进程内运行与桌面端相同的真实后端——项目、文件、tasks、看板、Git、设置、会话与内置 agent 均为真实数据并真实落盘（数据目录与桌面端 userData 等价，`AICM_DATA_DIR` 可覆盖；默认无项目，`--project` 手动指定项目目录）。仅 Agent CLI 例外：不检查、不启动，`agent:send` 到外部 CLI 会话会被拒绝；Web 预览无 safeStorage，API Key 不能在此保存或使用。
 - 右下角点「UI 定位」：鼠标悬停的元素高亮并显示 `文件:行`；点击后弹出面板，含源文件:行、CSS 选择器与祖先链，「复制」得到 `src/frontend/views/board-view.ts:29  div.matrix > … > span.id` 这样的一行，直接发给 AI 说明要改哪里。Esc 退出。
 - Web 预览只用于开发，`src/frontend/web/` 不被 Electron 入口引用，打包时排除。
 
