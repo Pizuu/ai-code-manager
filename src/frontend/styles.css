@@ -1222,3 +1222,5 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 
 /* 上下文面板「文件」「DIFF」超过 6 条时固定高度、列表内滚动（max-height 由 JS 按前 6 条实测，此处为兜底） */
 .ctxp .ctx-scroll{max-height:228px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+/* 文件类型图标随所在行的文件名字号缩放（资源管理器、上下文「文件」「DIFF」共用），与文字视觉等高 */
+.ficon{flex:none;width:1.2em;height:1.2em;vertical-align:-.2em}

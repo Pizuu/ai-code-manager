@@ -71,7 +71,7 @@ const SHAPES: Record<FileIconKind, Shape> = {
   archive: { d: [...PAGE, 'M11 3v2h2v2h-2v2h2v2h-2'], rects: [[10.2, 13, 3.6, 4, 0.8]] },
 };
 
-/** 生成单色文件类型图标；宽高默认 14，与原 file / dir 图标一致。 */
+/** 生成单色文件类型图标；width/height 属性只是兜底，实际尺寸由 CSS `.ficon`（1.2em）随文件名字号缩放。 */
 export function fileIcon(path: string, opts: { dir?: boolean; open?: boolean; size?: number } = {}): SVGElement {
   const kind = fileIconKind(path, opts.dir, opts.open);
   const size = opts.size ?? 14;
