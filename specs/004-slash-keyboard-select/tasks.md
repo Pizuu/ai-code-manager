@@ -23,4 +23,4 @@ description: "Task list for 004-slash-keyboard-select"
 
 ## Phase 3: 收尾
 
-- [ ] T404 [lane:docs] 全量验证（eslint/tsc/build/全量测试）+ web 预览冒烟按 plan 的 Verification 清单逐项核对；spec.md 状态 Draft → Done、本文件勾选回写；CHANGELOG 与测试矩阵如有对应条目同步（无则注明）
+- [x] T404 [lane:docs] 全量验证（eslint/tsc/build/全量测试）+ web 预览冒烟按 plan 的 Verification 清单逐项核对；spec.md 状态 Draft → Done、本文件勾选回写；CHANGELOG 与测试矩阵如有对应条目同步（无则注明）（应负责人要求统一勾选 2026-10-23；单测/验收未单独补）
