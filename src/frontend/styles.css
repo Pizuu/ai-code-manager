@@ -1078,32 +1078,6 @@ select.chip{height:var(--h-ctl);padding:0 10px;border-radius:var(--border-radius
 .turn .md blockquote{margin:8px 0;padding-left:12px;border-left:2px solid var(--color-border-tertiary);color:var(--color-text-tertiary)}
 .turn .md a{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
 
-/* 快速教程步进器（lib/tour.ts）：层级口径——应用内容最高 z-index 为 5（.tip）、右键菜单 .ctxmenu 为 1000、
-   设置对话框是原生 <dialog>（top layer 恒在最上）。教程取遮罩 900 / 高亮 901 / 卡片·菜单 902：
-   盖住全部应用内容，但不压右键菜单与原生对话框（教程中误开它们时仍可正常操作/关闭）。 */
-.tour-mask{position:fixed;inset:0;background:rgba(20,20,19,.45);z-index:900}
-.tour-hl{position:relative;z-index:901;box-shadow:0 0 0 2px var(--accent),0 0 0 6px var(--asoft),0 0 24px 6px rgba(198,97,63,.35);border-radius:8px}
-.tour-card{position:fixed;width:320px;z-index:902;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:14px 16px;font-size:12px;color:var(--ink)}
-.tour-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
-.tour-name{color:var(--accent);font-weight:600;font-size:12px}
-.tour-x{border:0;background:none;color:var(--mute);font-size:16px;line-height:1;cursor:pointer;padding:2px 4px;border-radius:6px}
-.tour-x:hover{color:var(--ink);background:var(--chip)}
-.tour-title{font-size:14px;font-weight:600;margin-bottom:4px}
-.tour-text{color:var(--ink2);line-height:1.6}
-.tour-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px}
-.tour-prog{color:var(--mute);font-size:11px}
-.tour-btns{display:inline-flex;gap:8px}
-.tour-btn{height:28px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font-size:12px;font-weight:600;cursor:pointer}
-.tour-btn:hover{border-color:var(--accent);color:var(--accent)}
-.tour-btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
-.tour-btn.pri:hover{color:#fff;opacity:.92}
-.tour-btn[disabled]{color:var(--mute);cursor:not-allowed;opacity:.55}
-.tour-btn[disabled]:hover{border-color:var(--line);color:var(--mute)}
-.tour-menu{position:fixed;width:300px;z-index:902;background:var(--bg);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:5px;display:flex;flex-direction:column;gap:2px}
-.tour-mi{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;border:0;background:none;border-radius:8px;padding:8px 10px;cursor:pointer;font:inherit}
-.tour-mi:hover{background:var(--asoft)}
-.tour-mi-name{font-size:12px;font-weight:600;color:var(--ink)}
-.tour-mi-desc{font-size:11px;color:var(--mute);line-height:1.5}
 
 /* 审批卡定位高亮（chat.ts focusApproval，与看板 .card.flash 同口径） */
 .appr-flash{outline:2px solid var(--accent);outline-offset:2px}
@@ -1224,3 +1198,7 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 .ctxp .ctx-scroll{max-height:228px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 /* 文件类型图标随所在行的文件名字号缩放（资源管理器、上下文「文件」「DIFF」共用），与文字视觉等高 */
 .ficon{flex:none;width:1.2em;height:1.2em;vertical-align:-.2em}
+/* 上下文「DIFF」行字号较小（caption），图标仍按「文件」栏目的正文字号取 1.2em，两栏图标等大 */
+.ctxp .dlist .ctx-link .ficon{width:calc(var(--font-body) * 1.2);height:calc(var(--font-body) * 1.2)}
+/* rail 图标统一按「Agent」板块图标（20px）尺寸显示 */
+.rail .ri svg{width:20px;height:20px}

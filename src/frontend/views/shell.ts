@@ -9,7 +9,6 @@ import { clear, h } from '../lib/dom.ts';
 import { fileIcon } from '../lib/file-icons.ts';
 import { icon, svgEl, type IconName } from '../lib/icons.ts';
 import { sessionStateCounts } from '../lib/session-activity.ts';
-import { mountTourButton } from '../lib/tour.ts';
 import { store, type ViewId } from '../store.ts';
 
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
@@ -129,9 +128,6 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     filesBtn,
     h('a', { class: 'ri', title: '设置', on: { click: () => hooks.onOpenSettings() } }, icon('gear')),
   );
-  // 快速教程（高亮步进器，lib/tour.ts）：放在设置按钮下方并固定于 rail 最底部，navigate 透传 setView 供跨视图步骤切换。
-  const tourBtn = mountTourButton(rail, { navigate: (v) => setView(v) });
-  rail.append(tourBtn);
 
   // ── explorer（原型 explorer()）──
   // 顶部品牌区：应用 logo + 名称（纯展示，无点击行为）
