@@ -214,6 +214,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   let modelMenuMode: 'list' | 'custom' = 'list';
   /** 最近一次 agentCli:models 的结果（null = 尚未拉到；拉取失败按空数组，静默）。 */
   let modelCandidates: string[] | null = null;
+  /** 各 CLI 最近一次拉到的非空候选列表：再次打开菜单先用缓存即时显示，后台再刷新。 */
+  const modelCache = new Map<string, string[]>();
   const closeModelMenu = () => {
     modelMenu.hidden = true;
     modelMenuFor = null;
@@ -1018,10 +1020,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const cfg = settings()?.agentClis?.find((x) => x.id === target.cliId);
     const override = s.cliModel?.trim() ? s.cliModel : undefined;
     const cfgModel = cfg?.model?.trim() ? cfg.model : undefined;
-    const items: HTMLElement[] = [
-      modelMenuItem('CLI 默认', cfgModel ? `解析为配置模型 ${cfgModel}` : '使用 CLI 自身默认模型', !override, () => void applySessionModel(null)),
-    ];
-    items.push(buildModelSelect(loading, cfgModel, override));
+    const items: HTMLElement[] = [buildModelSelect(loading, cfgModel, override)];
+    // 列表为空（拉取失败 / 超时）时给一个重试入口，不必关掉菜单重开
+    if (!loading && !(modelCandidates ?? []).length) items.push(modelMenuItem('重新加载模型列表', '', false, () => fetchModels(target)));
     items.push(modelMenuItem('切换 API/CLI…', '同时更新当前会话和新会话默认值', false, () => { closeModelMenu(); openAgentMenu(); }, store.state.running.has(s.id)));
     modelMenu.replaceChildren(...items);
     positionModelMenu();
@@ -1034,16 +1035,21 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     if (!s || !isCli(agent, st)) return;
     const target = { sessionId: s.id, cliId: agent.slice(4) };
     modelMenuFor = target;
-    modelCandidates = null;
+    modelCandidates = modelCache.get(target.cliId) ?? null;
     modelMenu.hidden = false;
-    buildModelMenu(true);
+    fetchModels(target);
+  };
+
+  /** 拉候选模型：有缓存先显示缓存，后台刷新；无缓存显示加载中。失败不清掉已有缓存。 */
+  const fetchModels = (target: { sessionId: string; cliId: string }) => {
+    buildModelMenu(modelCandidates === null || !modelCandidates.length);
     void (async () => {
-      // 拉取失败静默（then 的第二分支）：菜单只保留「CLI 默认 / 配置 / 自定义…」。
       const list = await api.invoke('agentCli:models', target.cliId).then(
         (r) => r.models,
         () => [] as string[]);
+      if (list.length) modelCache.set(target.cliId, list);
       if (modelMenuFor !== target) return;
-      modelCandidates = list;
+      modelCandidates = list.length ? list : (modelCache.get(target.cliId) ?? []);
       if (!modelMenu.hidden && modelMenuMode === 'list') buildModelMenu(false);
     })();
   };
