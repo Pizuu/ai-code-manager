@@ -5,7 +5,7 @@
  * v1.8：改为主流对话样式（回合制）——用户消息为右侧气泡，助手消息为「头部（头像 / 名称 / 时间 / 操作）+
  * 正文」的回合；工具调用收进可折叠的「思考」区（默认折叠，有待批准时自动展开，见 lib/chat-turn.ts）。
  */
-import type { AgentRef, BoardCard, ChatMessage, PermissionMode, ToolCallRecord } from '../../../contracts/ipc.ts';
+import type { AgentRef, BoardCard, ChatMessage, PermissionMode, Session, ToolCallRecord } from '../../../contracts/ipc.ts';
 import { toast } from '../lib/toast.ts';
 import { apiVendor } from '../lib/api-vendor.ts';
 import { api, errorText } from '../api.ts';
@@ -85,6 +85,8 @@ export interface ChatHooks {
   onOpenAttachment?(path: string): void;
   onOpenSettings?(): void;
   onNewSession(): void;
+  /** 空对话（未选中会话）发送时按需建会话；未提供或返回 null 时不发送。 */
+  ensureSession?(): Promise<Session | null>;
   onToggleList(): void;
   /** 点击对话区红点时跳到目标出错会话（session-view 透传其 selectSession）；未提供时红点只开关错误日志层。 */
   onJumpToSession?(id: string): void;
@@ -770,7 +772,8 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     const cli = isCli(agent, st);
     const running = store.isRunning();
     stopBtn.hidden = !running;
-    sendBtn.disabled = running || !s;
+    // 空对话也可发送：首条消息时按需建会话
+    sendBtn.disabled = running;
     thTitle.textContent = s ? s.title : '';
     const estimatedTokens = s ? estimateConversationTokens(s.messages) : 0;
     ctxUsage.hidden = !s;
@@ -778,7 +781,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     ctxUsage.title = '对话文本 Token 数估算值，仅供参考；不包含系统提示词及模型隐藏开销。';
     textarea.placeholder = ``;
     if (st) modeSel.value = st.permissionMode;
-    agentPick.hidden = !s;
+    agentPick.hidden = !st;
     agentPick.disabled = running;
     agentPick.textContent = agentDisplayName(agent, st?.agentClis ?? []);
     agentPick.title = running ? '会话运行中不可切换 Agent' : '切换 API / CLI（同时应用到当前会话和新会话默认值）';
@@ -944,7 +947,19 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const applyAgent = async (chosen: AgentRef): Promise<void> => {
     const session = store.state.current;
     const st = settings();
-    if (!session || !st) return;
+    if (!st) return;
+    // 空对话：只改新会话默认 Agent，首条消息建会话时生效
+    if (!session) {
+      closeAgentMenu();
+      try {
+        store.state.settings = await api.invoke('settings:set', { defaultAgent: chosen });
+        store.emit('settings');
+        renderHeader();
+      } catch (error) {
+        notify(errorText(error));
+      }
+      return;
+    }
     const sessionId = session.id;
     const previousDefault = st.defaultAgent ?? 'builtin';
     if (store.state.running.has(sessionId)) {
@@ -999,9 +1014,9 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
   const openAgentMenu = () => {
     const session = store.state.current;
     const st = settings();
-    if (!session || !st || store.state.running.has(session.id)) return;
+    if (!st || (session && store.state.running.has(session.id))) return;
     closeModelMenu();
-    const current = session.agent ?? st.defaultAgent ?? 'builtin';
+    const current = session?.agent ?? st.defaultAgent ?? 'builtin';
     const choices: Array<{ value: AgentRef; label: string; detail: string }> = [
       { value: 'builtin', label: 'API', detail: apiVendor(st.provider, st.baseUrl) },
       ...(st.agentClis ?? []).map((cli) => ({ value: `cli:${cli.id}` as AgentRef, label: cli.name, detail: cli.model ? `CLI · ${cli.model}` : 'CLI · 使用其默认模型' })),
@@ -1012,7 +1027,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
       on: { click: () => void applyAgent(value) },
     }, h('span', {}, `${value === current ? '✓ ' : ''}${label}`), h('span', { class: 'mute' }, detail)));
     agentMenu.replaceChildren(...items);
-    agentMenuSessionId = session.id;
+    agentMenuSessionId = session?.id ?? null;
     agentMenu.hidden = false;
     agentPick.setAttribute('aria-expanded', 'true');
     positionAgentMenu();
@@ -1334,8 +1349,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     // 托盘附件只挂普通发送：重提路径发的就是消息原文（已含尾随引用块），不经托盘、不清托盘。
     const withTray = !reaskLatest && pendingAttachments.length > 0;
     // 准入：正文与待发送附件至少有一项（只有附件也能发）。
-    if ((!raw && !withTray) || !store.state.current) return;
-    const s = store.state.current;
+    if (!raw && !withTray) return;
     const composed = withTray ? composeMessageWithAttachments(raw, pendingAttachments) : raw;
     textarea.value = '';
     renderSlashMenu();
@@ -1350,6 +1364,13 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     // 被本地斜杠命令消化（未发送）：命令已执行，预置使命结束；托盘保留（附件根本没发出）。
     if (text === null) {
       clearPrime();
+      return;
+    }
+    // 默认对话为空：首条消息发出时才建会话（归属当前项目）
+    const s = store.state.current ?? await hooks.ensureSession?.() ?? null;
+    if (!s) {
+      textarea.value = raw;
+      autoGrow();
       return;
     }
     const setup = agentSetupHint(s.agent ?? settings()?.defaultAgent ?? 'builtin', settings());

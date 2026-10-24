@@ -7,7 +7,7 @@
  * v1.6（ADR 0010）曾有中列顶部「对话 / 终端」分段切换；现已删除切换条，界面恒为对话模式
  * （终端列与 mountTerminal 本体保留、恒隐藏）。
  */
-import type { AgentRef, BoardCard, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
+import type { AgentRef, BoardCard, Session, SessionSummary, TodoItem } from '../../../contracts/ipc.ts';
 import { api, errorText } from '../api.ts';
 import { agentName } from '../lib/agent-label.ts';
 import { PR_LINE, STATUS_META } from '../lib/board-format.ts';
@@ -17,6 +17,7 @@ import { clear, h } from '../lib/dom.ts';
 import { fileIcon } from '../lib/file-icons.ts';
 import { favoriteMessageId, listFavorites, onFavoritesChanged, removeFavorite } from '../lib/favorites.ts';
 import { icon } from '../lib/icons.ts';
+import { sessionsOfProject } from '../lib/project-sessions.ts';
 import { store } from '../store.ts';
 import { decideApproval, MODE_LABELS, mountChat, type ChatView } from './chat.ts';
 import { mountCodeView } from './code-view.ts';
@@ -41,6 +42,8 @@ function fmtDuration(ms: number): string {
 export interface SessionHooks {
   selectSession(id: string): Promise<void>;
   newSession(): Promise<void>;
+  /** 空对话里发首条消息时按需建会话（归属当前项目）。 */
+  ensureSession(): Promise<Session | null>;
   openBoard(): void;
   /** 在看板中定位并高亮指定任务卡（任务上下文头部任务号点击）。 */
   focusCard(id: string): void;
@@ -83,6 +86,8 @@ export function linkedCardFor(title: string | undefined, cards: readonly BoardCa
 export function mountSessionView(container: HTMLElement, hooks: SessionHooks): SessionView {
   clear(container);
   let query = '';
+  /** 当前项目的会话（会话历史与项目绑定）。 */
+  const projectSessions = () => sessionsOfProject(store.state.sessions, store.state.project?.root);
   const linkedCard = () => linkedCardFor(store.state.current?.title, store.state.board?.available ? store.state.board.cards : []);
 
   // ── 左列 ──
@@ -220,6 +225,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     onOpenAttachment: openFile,
     onOpenSettings: hooks.onOpenSettings,
     onNewSession: () => void hooks.newSession(),
+    ensureSession: () => hooks.ensureSession(),
     onToggleList: () => slist.toggleAttribute('hidden'),
     // 对话区红点点击跳出错会话：与会话列表条目点击同路（selectSession）。
     onJumpToSession: (id) => { void hooks.selectSession(id).catch((e: unknown) => chat.notify(errorText(e))); },
@@ -273,18 +279,15 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
       const wasCurrent = store.state.current?.id === s.id;
       store.state.sessions = store.state.sessions.filter((x) => x.id !== s.id);
       store.emit('sessions');
-      if (wasCurrent) {
-        const next = store.state.sessions[0];
-        if (next) await hooks.selectSession(next.id);
-        else await hooks.newSession();
-      }
+      // 删的是当前会话：回到空对话（默认对话为空），不自动跳到别的会话
+      if (wasCurrent) await hooks.newSession();
     } catch (e) {
       chat.notify(errorText(e));
     }
   };
 
   const renderTodoDock = () => {
-    const sessionTodos = new Map(store.state.sessions.map((session) => [session.id, session.todos ?? []]));
+    const sessionTodos = new Map(projectSessions().map((session) => [session.id, session.todos ?? []]));
     const current = store.state.current;
     if (current) sessionTodos.set(current.id, current.todos);
     const entries = [...sessionTodos.entries()].flatMap(([sessionId, todos]) => todos.map((todo) => ({ sessionId, todo })));
@@ -338,7 +341,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const renderList = () => {
     const cur = store.state.current?.id;
     const q = query.trim().toLowerCase();
-    const items = store.state.sessions.filter((s) => !q || s.title.toLowerCase().includes(q));
+    const items = projectSessions().filter((s) => !q || s.title.toLowerCase().includes(q));
     // 置顶的排在前面，其余保持原顺序（sort 稳定）
     items.sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
     // 新建按钮 title 标注当前使用中的默认 agent（settings 未加载时退回 plain 文案）；

@@ -4,6 +4,7 @@
  */
 import type { AgentEvent, BoardCard, ChatMessage, Session } from '../../contracts/ipc.ts';
 import { LiveSessionCache } from './lib/live-sessions.ts';
+import { sameProject, sessionsOfProject } from './lib/project-sessions.ts';
 import { api, errorText } from './api.ts';
 import { agentError, sessionErrorEntries, toolCallError } from './lib/error-log.ts';
 import { store } from './store.ts';
@@ -70,17 +71,40 @@ export async function selectSession(id: string): Promise<void> {
   store.emit('current', 'todos');
 }
 
-async function newSession(): Promise<void> {
+/** 回到空对话（不选中任何会话）：启动、切换项目、删除当前会话后都停在这里，首条消息发出时才建会话。 */
+function clearCurrent(): void {
+  const prev = store.state.current;
+  if (prev && store.state.running.has(prev.id)) liveSessions.leave(prev, '', (sid) => store.state.running.has(sid));
+  store.state.current = null;
+  store.state.notices = [];
+  store.emit('current', 'todos');
+}
+
+/** 建会话（归属当前项目，主进程按 state.project 写 projectPath）并加入列表，返回新会话。 */
+async function createSession(): Promise<Session> {
+  const s = await api.invoke('sessions:create');
+  store.state.sessions.unshift({ id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: 0, ...(s.agent ? { agent: s.agent } : {}) });
+  store.emit('sessions');
+  await selectSession(s.id);
+  return store.state.current ?? s;
+}
+
+/** 空对话里发首条消息时按需建会话。 */
+async function ensureSession(): Promise<Session | null> {
+  if (store.state.current) return store.state.current;
   try {
-    const s = await api.invoke('sessions:create');
-    store.state.sessions.unshift({ id: s.id, title: s.title, projectPath: s.projectPath, updatedAt: s.updatedAt, messageCount: 0, ...(s.agent ? { agent: s.agent } : {}) });
-    store.emit('sessions');
-    await selectSession(s.id);
-    shell.setView('session');
-    sessionView.showChat();
+    return await createSession();
   } catch (e) {
     chat.notify(errorText(e));
+    return null;
   }
+}
+
+/** 「新建会话」= 回到空对话；会话在首条消息发出时创建，避免留下空会话。 */
+async function newSession(): Promise<void> {
+  clearCurrent();
+  shell.setView('session');
+  sessionView.showChat();
 }
 
 async function pickProject(): Promise<void> {
@@ -97,7 +121,7 @@ async function pickProject(): Promise<void> {
 
 /** 看板卡片 → 任务会话：已有标题含该任务号的会话就打开，否则新建并预填消息（首条消息成为标题，从而关联任务上下文）。 */
 async function openCard(card: BoardCard): Promise<void> {
-  const existing = store.state.sessions.find((s) => s.title.includes(card.id));
+  const existing = sessionsOfProject(store.state.sessions, store.state.project?.root).find((s) => s.title.includes(card.id));
   if (existing) {
     await selectSession(existing.id);
     shell.setView('session');
@@ -237,6 +261,7 @@ async function bootstrap(): Promise<void> {
   sessionView = mountSessionView(shell.views.session, {
     selectSession,
     newSession,
+    ensureSession,
     openBoard: () => shell.setView('board'),
     // 先切到看板（视图以 hidden 显隐，隐藏态下 scrollIntoView 无效），再登记定位：看板已挂载，applier 立即消费
     focusCard: (id: string) => { shell.setView('board'); focusBoardCard(id); },
@@ -294,13 +319,13 @@ async function bootstrap(): Promise<void> {
   });
   api.onEvent(handleEvent);
 
-  const first = sessions[0];
-  if (first) await selectSession(first.id);
-  else {
-    store.state.current = await api.invoke('sessions:create');
-    store.state.sessions = [];
-    store.emit('current');
-  }
+  // 默认对话为空：启动不自动打开上次会话、也不预建会话；会话历史按项目归属，在会话列表里选。
+  store.state.current = null;
+  store.emit('current');
+  // 切换 / 打开项目：当前会话不属于新项目时回到空对话（会话列表随项目过滤）。
+  store.on('project', () => {
+    if (store.state.current && !sameProject(store.state.current.projectPath, store.state.project?.root)) clearCurrent();
+  });
   store.emit('settings', 'sessions');
   // 启动恒打开任务会话（用户要求），不再按是否恢复了项目跳泳道看板。
   shell.setView('session');
