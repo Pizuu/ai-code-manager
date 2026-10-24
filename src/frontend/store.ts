@@ -1,6 +1,7 @@
 /**
  * 前端状态与按主题的变更通知。状态只在 main.ts 的事件处理与各视图的用户操作中修改。
  */
+import { appendEntry, parseEntries, type ActivityEntry } from './lib/activity-log.ts';
 import type {
   ApprovalRequest,
   BoardSnapshot,
@@ -80,18 +81,27 @@ export interface UiState {
   board: BoardSnapshot | null;
   git: GitSnapshot | null;
   workspaceError: string | null;
+  /** 审批中心：全流程活动记录（本机 localStorage 持久化，最新在末尾）。 */
+  activity: ActivityEntry[];
 }
 
-/** agents = 「Worktree 与 Agent」（T-040，从 Git 页拆出的子视图，导航中缩进挂在 Git 与集成下）。 */
-/** 两个标签页：看板（原泳道看板 / Agents / Git 合并）与任务会话。 */
-export type ViewId = 'board' | 'session';
+/** 看板（原泳道看板 / Agents / Git 合并）、任务会话，以及任务会话下的子页「审批中心」。 */
+export type ViewId = 'board' | 'session' | 'approvals';
 
-export type Topic = 'settings' | 'project' | 'sessions' | 'current' | 'messages' | 'running' | 'approvals' | 'diffs' | 'terminal' | 'terminals' | 'tasks' | 'todos' | 'view' | 'workspace' | 'errors';
+export type Topic = 'settings' | 'project' | 'sessions' | 'current' | 'messages' | 'running' | 'approvals' | 'diffs' | 'terminal' | 'terminals' | 'tasks' | 'todos' | 'view' | 'workspace' | 'errors' | 'activity';
 
 /** 终端面板保留的最大片段数。 */
 const MAX_TERMINAL_CHUNKS = 5000;
 /** v1.6：单个终端保留的最大输出字符数（超出丢最早的部分）。 */
 const MAX_TERMINAL_BUFFER_CHARS = 200_000;
+
+const ACTIVITY_KEY = 'acm.activity.v1';
+function loadActivity(): ActivityEntry[] {
+  try { return parseEntries(globalThis.localStorage?.getItem(ACTIVITY_KEY) ?? null); } catch { return []; }
+}
+function saveActivity(list: readonly ActivityEntry[]): void {
+  try { globalThis.localStorage?.setItem(ACTIVITY_KEY, JSON.stringify(list)); } catch { /* 存储满 / 不可用时只保留内存 */ }
+}
 
 class Store {
   readonly state: UiState = {
@@ -111,6 +121,7 @@ class Store {
     board: null,
     git: null,
     workspaceError: null,
+    activity: loadActivity(),
   };
 
   private readonly listeners = new Map<Topic, Set<() => void>>();
@@ -202,6 +213,20 @@ class Store {
   // ── v1.7：会话级错误（P1-6）──
 
   /** 追加一条会话错误（同 id 覆盖旧条目）。 */
+  /** 审批中心：追加一条活动记录并落盘。 */
+  logActivity(entry: ActivityEntry): void {
+    this.state.activity = appendEntry(this.state.activity, entry);
+    saveActivity(this.state.activity);
+    this.emit('activity');
+  }
+
+  /** 清空指定会话集合的活动记录（审批中心「清空记录」只清当前项目）。 */
+  clearActivity(sessionIds: ReadonlySet<string>): void {
+    this.state.activity = this.state.activity.filter((e) => !sessionIds.has(e.sessionId));
+    saveActivity(this.state.activity);
+    this.emit('activity');
+  }
+
   addError(sessionId: string, entry: SessionError): void {
     const list = this.state.errors.get(sessionId) ?? [];
     const i = list.findIndex((e) => e.id === entry.id);

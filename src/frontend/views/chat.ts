@@ -7,6 +7,7 @@
  */
 import type { AgentRef, BoardCard, ChatMessage, PermissionMode, Session, ToolCallRecord } from '../../../contracts/ipc.ts';
 import { toast } from '../lib/toast.ts';
+import { makeEntry } from '../lib/activity-log.ts';
 import { apiVendor } from '../lib/api-vendor.ts';
 import { api, errorText } from '../api.ts';
 import { agentSetupHint } from '../lib/agent-config.ts';
@@ -748,6 +749,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     renderAll();
     try {
       await api.invoke('agent:send', { sessionId: s.id, text: prev.content, reaskLatest: true });
+      store.logActivity(makeEntry('sent', s.id, `重新回答：${prev.content}`));
     } catch (e) {
       suppressReanswer = false;
       s.messages.push(...removed);
@@ -1386,6 +1388,7 @@ export function mountChat(container: HTMLElement, hooks: ChatHooks): ChatView {
     renderAll();
     try {
       await api.invoke('agent:send', reaskLatest ? { sessionId: s.id, text, reaskLatest: true } : { sessionId: s.id, text });
+      store.logActivity(makeEntry('sent', s.id, text));
     } catch (e) {
       suppressReanswer = false;
       s.messages.splice(s.messages.indexOf(local), 1);

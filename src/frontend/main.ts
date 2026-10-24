@@ -9,10 +9,12 @@ import { api, errorText } from './api.ts';
 import { agentError, sessionErrorEntries, toolCallError } from './lib/error-log.ts';
 import { store } from './store.ts';
 import { focusBoardCard, mountBoard } from './views/board-view.ts';
-import { type ChatView } from './views/chat.ts';
+import { decideApproval, type ChatView } from './views/chat.ts';
 import { mountAgents } from './views/agents-view.ts';
 import { mountGit } from './views/git-view.ts';
 import { mountKanban } from './views/kanban-view.ts';
+import { mountApprovals } from './views/approvals-view.ts';
+import { approvalSummary, makeEntry } from './lib/activity-log.ts';
 import { formatSendText } from './lib/context-send.ts';
 import { favoriteId, addFavorite, quoteFavoriteId } from './lib/favorites.ts';
 import { installContextMenu } from './views/context-menu.ts';
@@ -154,7 +156,17 @@ function handleEvent(e: AgentEvent): void {
       store.emit('sessions');
       return;
     }
-    case 'status':
+    case 'status': {
+      // 审批中心：运行状态与「接收」（回合结束时取最后一条 assistant 消息摘要）
+      const wasRunning = store.state.running.has(e.sessionId);
+      if (e.running && !wasRunning) store.logActivity(makeEntry('run-start', e.sessionId, '开始回答'));
+      if (!e.running && wasRunning) {
+        const hit = liveSessions.target(s, e.sessionId);
+        const last = hit ? [...hit.session.messages].reverse().find((m) => m.role === 'assistant') : undefined;
+        if (last?.content.trim()) store.logActivity(makeEntry('received', e.sessionId, last.content));
+        store.logActivity(makeEntry('run-end', e.sessionId, '回答结束'));
+      }
+    }
       if (e.running) store.state.running.add(e.sessionId);
       else { store.state.running.delete(e.sessionId); liveSessions.finish(e.sessionId); }
       store.emit('running');
@@ -169,10 +181,14 @@ function handleEvent(e: AgentEvent): void {
       }
       return;
     case 'approval-request':
+      if (!store.state.approvals.has(e.approval.id)) store.logActivity(makeEntry('approval-request', e.sessionId, approvalSummary(e.approval), undefined, e.approval.id));
       store.state.approvals.set(e.approval.id, e.approval);
       store.emit('approvals');
       return;
-    case 'approval-resolved':
+    case 'approval-resolved': {
+      const a = store.state.approvals.get(e.approvalId);
+      store.logActivity(makeEntry(e.approved ? 'approval-approved' : 'approval-rejected', e.sessionId, a ? approvalSummary(a) : e.approvalId, undefined, e.approvalId));
+    }
       store.state.approvals.delete(e.approvalId);
       store.emit('approvals');
       return;
@@ -238,6 +254,7 @@ function handleEvent(e: AgentEvent): void {
     case 'error':
       // P1-6：Agent 报错计入该会话的错误条目（可追溯）
       store.addError(e.sessionId, agentError(e.sessionId + ':' + e.message.slice(0, 64), e.message, new Date().toISOString()));
+      store.logActivity(makeEntry('error', e.sessionId, e.message));
       if (isCurrent) chat.notify(e.message);
       break;
     default:
@@ -324,6 +341,12 @@ async function bootstrap(): Promise<void> {
     openSettings: (tab) => openSettings(tab),
     notify: (t) => chat.notify(t, 'info'),
   }, kanban.hosts.infra);
+  mountApprovals(shell.views.approvals, {
+    openSession: (id) => { void selectSession(id).then(() => shell.setView('session')); },
+    decide: (id, ok) => void decideApproval(id, ok),
+    stop: (id) => { void api.invoke('agent:stop', id).catch((e: unknown) => chat.notify(errorText(e))); },
+    openProject: () => void pickProject(),
+  });
   mountGit(kanban.hosts.git, { openBoard: () => gotoSection('tasks'), openAgents: () => gotoSection('infra'), openProject: () => void pickProject(), notify: (t) => chat.notify(t, 'info') });
   api.onEvent(handleEvent);
 

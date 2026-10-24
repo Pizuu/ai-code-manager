@@ -12,9 +12,9 @@ import { sessionStateCounts } from '../lib/session-activity.ts';
 import { sessionsOfProject } from '../lib/project-sessions.ts';
 import { store, type ViewId } from '../store.ts';
 
-export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '看板', session: '任务会话' };
+export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '看板', session: '任务会话', approvals: '审批中心' };
 /** 导航项：[板块, 名称, 图标, 父板块]。有父板块的项在项目栏缩进显示为其子入口（T-040）。 */
-const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '看板', 'list'], ['session', '任务会话', 'sess']];
+const NAV: ReadonlyArray<readonly [ViewId, string, IconName, ViewId?]> = [['board', '看板', 'list'], ['session', '任务会话', 'sess'], ['approvals', '审批中心', 'check', 'session']];
 /** 文件树整棵目录树折叠状态（仅本机界面偏好）。 */
 const TREE_COLLAPSED_KEY = 'acm.explorer.treeCollapsed';
 export interface ShellHooks {
@@ -92,12 +92,16 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     railToggle.setAttribute('aria-expanded', String(expanded));
     for (const id of Object.keys(railView) as ViewId[]) railView[id].hidden = expanded;
   };
-  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat' };
+  const RAIL_ICON: Readonly<Record<ViewId, IconName>> = { board: 'grid', session: 'chat', approvals: 'check' };
   for (const [id, label] of NAV) railView[id] = railBtn(RAIL_ICON[id], label, () => setView(id));
   // P0-3：任务会话图标上的活动徽标（运行中 / 待批准 / 出错）
   const railBadge = h('span', { class: 'ri-badge', attrs: { hidden: '' } });
   railBadge.hidden = true;
   railView.session.append(railBadge);
+  // 审批中心：待审批数徽标（rail 图标 + 项目栏导航项）
+  const apprRailBadge = h('span', { class: 'ri-badge pend', attrs: { hidden: '' } });
+  apprRailBadge.hidden = true;
+  railView.approvals.append(apprRailBadge);
   // 主题切换按钮（rail 底部组、设置齿轮上方）：图标 = 点击后要去的状态（深色显 sun、浅色显 moon），两态切换并落盘。
   const themeBtn = h('a', { class: 'ri', on: { click: () => {
     const next: ThemeName = currentTheme() === 'dark' ? 'light' : 'dark';
@@ -145,6 +149,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     navItems[id] = h('a', { class: parent ? 'sub' : '', title: parent ? `${VIEW_TITLES[parent]} › ${label}` : label, on: { click: () => setView(id) } }, icon(ic), h('span', {}, label));
     nav.append(navItems[id]);
   }
+  const apprNavBadge = h('span', { class: 'nav-badge', attrs: { hidden: '' } });
+  apprNavBadge.hidden = true;
+  navItems.approvals.append(apprNavBadge);
   // 项目文件树：目录默认全部折叠（用户要求）：只显示第一层，目录由用户点击逐个展开 / 折叠。
   const tree = h('div', { class: 'tree' });
   tree.hidden = localStorage.getItem(TREE_COLLAPSED_KEY) === '1';
@@ -274,12 +281,13 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const views: Record<ViewId, HTMLElement> = {
     board: h('div', { class: 'ws-view wb', attrs: { id: 'wb-board' } }),
     session: h('div', { class: 'ws-view sess', attrs: { id: 'wb-session' } }),
+    approvals: h('div', { class: 'ws-view wb', attrs: { id: 'wb-approvals' } }),
   };
   const statusL = h('span');
   /** 规格进度行（原看板 .prog 移入）：状态栏最右端常驻，类名沿用 .prog，布局覆盖在 styles.css 的 .status .prog。 */
   const statusProg = h('span', { class: 'prog' });
   const status = h('footer', { class: 'status' }, statusL, statusProg);
-  const ws = h('main', { class: 'ws' }, header, views.board, views.session, status);
+  const ws = h('main', { class: 'ws' }, header, views.board, views.session, views.approvals, status);
   app.append(rail, explorer, ws);
 
   // ── 渲染 ──
@@ -342,6 +350,13 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     railBadge.hidden = total === 0;
     railBadge.textContent = total > 99 ? '99+' : String(total);
     railBadge.className = `ri-badge${nErr ? ' err' : nRun ? ' pend' : ''}`;
+    const projIds = new Set(sessionsOfProject(store.state.sessions, store.state.project?.root).map((x) => x.id));
+    const nAppr = approvals.filter((a) => projIds.has(a.sessionId)).length;
+    apprRailBadge.hidden = nAppr === 0;
+    apprRailBadge.textContent = nAppr > 99 ? '99+' : String(nAppr);
+    apprNavBadge.hidden = nAppr === 0;
+    apprNavBadge.textContent = String(nAppr);
+    railView.approvals.title = nAppr ? `${VIEW_TITLES.approvals}：${nAppr} 项待审批` : VIEW_TITLES.approvals;
     railView.session.title = total
       ? `${VIEW_TITLES.session}：${total} 个会话需要关注（出错 ${nErr} · 回答中 ${nRun}）（点击查看）`
       : VIEW_TITLES.session;
@@ -452,7 +467,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
     }
     navloc.textContent = `当前 · ${VIEW_TITLES[v]}`;
     store.emit('view');
-    if (v !== 'session' && !store.state.board) void refreshWorkspace();
+    if (v === 'board' && !store.state.board) void refreshWorkspace();
   };
 
   let loading: Promise<void> | null = null;
