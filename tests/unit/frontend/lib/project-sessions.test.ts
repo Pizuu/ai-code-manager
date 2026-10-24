@@ -2,14 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sameProject, sessionsOfProject } from '../../../../src/frontend/lib/project-sessions.ts';
 
-test('按项目过滤会话；无项目只留 projectPath 为 null 的会话', () => {
+test('按项目过滤会话；未打开项目时为空', () => {
   const list = [
     { id: 'a', projectPath: 'C:\\code\\one' },
     { id: 'b', projectPath: 'C:\\code\\two' },
     { id: 'c', projectPath: null },
   ];
   assert.deepEqual(sessionsOfProject(list, 'C:\\code\\one').map((s) => s.id), ['a']);
-  assert.deepEqual(sessionsOfProject(list, null).map((s) => s.id), ['c']);
+  assert.deepEqual(sessionsOfProject(list, null), []);
+  assert.deepEqual(sessionsOfProject(list, ''), []);
   assert.deepEqual(sessionsOfProject(list, 'D:\\none'), []);
 });
 

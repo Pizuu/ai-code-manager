@@ -9,6 +9,7 @@ import { clear, h } from '../lib/dom.ts';
 import { fileIcon } from '../lib/file-icons.ts';
 import { icon, svgEl, type IconName } from '../lib/icons.ts';
 import { sessionStateCounts } from '../lib/session-activity.ts';
+import { sessionsOfProject } from '../lib/project-sessions.ts';
 import { store, type ViewId } from '../store.ts';
 
 export const VIEW_TITLES: Readonly<Record<ViewId, string>> = { board: '泳道看板', session: '任务会话', git: 'Git 分支与集成', agents: 'Agents' };
@@ -332,8 +333,9 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
   const renderActivity = () => {
     const approvals = [...store.state.approvals.values()];
     // 图标栏徽标：需要关注的会话数 = 出错（红）+ 回答中（黄）；回答完成不计入，为 0 时隐藏
+    // 徽标只统计当前项目的会话；未打开项目时为 0
     const { nErr, nRun } = sessionStateCounts({
-      sessions: store.state.sessions,
+      sessions: sessionsOfProject(store.state.sessions, store.state.project?.root),
       running: store.state.running,
       approvalSessionIds: approvals.map((a) => a.sessionId),
       errorsOf: (id) => store.errorsOf(id),
@@ -489,7 +491,7 @@ export function mountShell(app: HTMLElement, hooks: ShellHooks): ShellView {
 
   store.on('workspace', renderChrome);
   // P1-3：活动徽标 / 状态栏计数随运行态、审批与消息实时更新；三色圆与错误层另随会话增删与错误条目变化刷新
-  for (const t of ['running', 'approvals', 'current', 'messages', 'sessions', 'errors'] as const) store.on(t, renderActivity);
+  for (const t of ['running', 'approvals', 'current', 'messages', 'sessions', 'errors', 'project'] as const) store.on(t, renderActivity);
   // P1-8：窗口获得焦点时刷新工作区快照（看板 / Git 可能已被外部改动）；侧栏文件树同步重读（缓存失效 + 重渲）
   window.addEventListener('focus', () => { kidsCache.clear(); void renderTree(); void refreshWorkspace(); });
   store.on('project', () => {

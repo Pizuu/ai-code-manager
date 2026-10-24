@@ -92,6 +92,11 @@ async function createSession(): Promise<Session> {
 /** 空对话里发首条消息时按需建会话。 */
 async function ensureSession(): Promise<Session | null> {
   if (store.state.current) return store.state.current;
+  // 所有会话记录都与项目绑定：未打开项目不建会话，保持为空
+  if (!store.state.project) {
+    chat.notify('请先打开项目文件夹，会话记录会绑定到该项目。', 'info');
+    return null;
+  }
   try {
     return await createSession();
   } catch (e) {
@@ -324,7 +329,7 @@ async function bootstrap(): Promise<void> {
   store.emit('current');
   // 切换 / 打开项目：当前会话不属于新项目时回到空对话（会话列表随项目过滤）。
   store.on('project', () => {
-    if (store.state.current && !sameProject(store.state.current.projectPath, store.state.project?.root)) clearCurrent();
+    if (store.state.current && (!store.state.project || !sameProject(store.state.current.projectPath, store.state.project.root))) clearCurrent();
   });
   store.emit('settings', 'sessions');
   // 启动恒打开任务会话（用户要求），不再按是否恢复了项目跳泳道看板。
