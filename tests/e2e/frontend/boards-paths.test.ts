@@ -336,14 +336,14 @@ test('FR-101 三板块导航与状态保持 + Git 分支图渲染', {
     await textarea.fill(draft);
 
     // → 看板：会话视图隐藏、看板卡片渲染
-    await navTo(page, '泳道看板');
+    await navTo(page, '看板');
     await page.locator('#wb-board').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#wb-session').evaluate((el) => (el as HTMLElement).hidden, null), true, '切到看板后会话视图应隐藏');
     await page.locator('#wb-board a.card').filter({ hasText: CARD_ID }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('#wb-board a.card').filter({ hasText: 'T-102' }).waitFor({ state: 'visible', timeout: 10_000 });
 
     // → Git：分支图真实渲染（SVG 节点 / 连线 / 合并或 HEAD 环 / 提交行与分支标注）
-    await navTo(page, 'Git');
+    await navTo(page, '看板');
     await page.locator('#wb-git').waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.querySelectorAll('#graph svg circle.cn').length >= 5, null, { timeout: 30_000 });
     const graph = await page.evaluate(() => {
@@ -399,7 +399,7 @@ test('FR-109 看板卡片 → 任务会话（预填、标题关联、任务卡�
     await openFixtureProject(page);
 
     // 看板点卡 → 切到任务会话并预填（不自动发送）
-    await navTo(page, '泳道看板');
+    await navTo(page, '看板');
     await page.locator('#wb-board a.card').filter({ hasText: CARD_ID }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('#wb-board a.card').filter({ hasText: CARD_ID }).click();
     await page.locator('#wb-session').waitFor({ state: 'visible' });
@@ -422,7 +422,7 @@ test('FR-109 看板卡片 → 任务会话（预填、标题关联、任务卡�
     assert.ok(sysbText.includes(CARD_GOAL), '任务卡摘要应含卡片目标，实际 ' + JSON.stringify(sysbText));
 
     // 再次点同一张卡 → 打开已有会话（标题不变、输入框不再预填）
-    await navTo(page, '泳道看板');
+    await navTo(page, '看板');
     await page.locator('#wb-board a.card').filter({ hasText: CARD_ID }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('#wb-board a.card').filter({ hasText: CARD_ID }).click();
     await page.locator('#wb-session').waitFor({ state: 'visible' });

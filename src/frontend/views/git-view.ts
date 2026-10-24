@@ -13,7 +13,7 @@ import { store } from '../store.ts';
 
 export interface GitHooks {
   openBoard(): void;
-  /** 打开「Worktree 与 Agent」视图（T-040 从本页拆出）。 */
+  /** 跳到「Worktree 与配置」（合并后的看板页内）。 */
   openAgents(): void;
   openProject(): void;
   notify(text: string): void;
@@ -317,7 +317,7 @@ export function mountGit(container: HTMLElement, hooks: GitHooks): void {
   store.on('workspace', render);
   store.on('project', render);
   store.on('view', () => {
-    if (store.state.view === 'git') requestAnimationFrame(redraw);
+    if (store.state.view === 'board') requestAnimationFrame(redraw);
   });
   render();
 }

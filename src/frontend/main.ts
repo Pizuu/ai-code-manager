@@ -12,6 +12,7 @@ import { focusBoardCard, mountBoard } from './views/board-view.ts';
 import { type ChatView } from './views/chat.ts';
 import { mountAgents } from './views/agents-view.ts';
 import { mountGit } from './views/git-view.ts';
+import { mountKanban } from './views/kanban-view.ts';
 import { formatSendText } from './lib/context-send.ts';
 import { favoriteId, addFavorite, quoteFavoriteId } from './lib/favorites.ts';
 import { installContextMenu } from './views/context-menu.ts';
@@ -46,10 +47,9 @@ function originOf(el: Element): string {
   if (el.closest('.ctxp')) return '任务会话 · 上下文';
   if (el.closest('.slist')) return '任务会话 · 会话列表';
   if (el.closest('.chat')) return '任务会话 · 对话';
-  const id = el.closest('.ws-view')?.id;
-  if (id === 'wb-board') return VIEW_TITLES.board;
-  if (id === 'wb-git') return VIEW_TITLES.git;
-  if (id === 'wb-agents') return VIEW_TITLES.agents;
+  const sec = el.closest('.kb-sec')?.querySelector('.kb-h')?.textContent;
+  if (sec) return `${VIEW_TITLES.board} · ${sec}`;
+  if (el.closest('.ws-view')?.id === 'wb-board') return VIEW_TITLES.board;
   return 'AI Code Manager';
 }
 
@@ -310,10 +310,12 @@ async function bootstrap(): Promise<void> {
       }
     },
   });
-  mountBoard(shell.views.board, { openGit: () => shell.setView('git'), openProject: () => void pickProject(), openCard: (c) => void openCard(c) });
-  mountGit(shell.views.git, { openBoard: () => shell.setView('board'), openAgents: () => shell.setView('agents'), openProject: () => void pickProject(), notify: (t) => chat.notify(t, 'info') });
-  mountAgents(shell.views.agents, {
-    openGit: () => shell.setView('git'),
+  // 看板标签页 = 任务进度 / Agent 执行 / 集成与 Git / Worktree 与配置 四节（见 kanban-view.ts）
+  const kanban = mountKanban(shell.views.board);
+  const gotoSection = (sec: Parameters<typeof kanban.scrollTo>[0]) => { shell.setView('board'); kanban.scrollTo(sec); };
+  mountBoard(kanban.hosts.tasks, { openGit: () => gotoSection('git'), openProject: () => void pickProject(), openCard: (c) => void openCard(c) });
+  mountAgents(kanban.hosts.agents, {
+    openGit: () => gotoSection('git'),
     openProject: () => void pickProject(),
     openFile: (rel) => {
       shell.setView('session');
@@ -321,7 +323,8 @@ async function bootstrap(): Promise<void> {
     },
     openSettings: (tab) => openSettings(tab),
     notify: (t) => chat.notify(t, 'info'),
-  });
+  }, kanban.hosts.infra);
+  mountGit(kanban.hosts.git, { openBoard: () => gotoSection('tasks'), openAgents: () => gotoSection('infra'), openProject: () => void pickProject(), notify: (t) => chat.notify(t, 'info') });
   api.onEvent(handleEvent);
 
   // 默认对话为空：启动不自动打开上次会话、也不预建会话；会话历史按项目归属，在会话列表里选。

@@ -380,6 +380,9 @@ test('Electron 核心路径：选目录 → 提问 → 批准/拒绝编辑 → �
     assert.equal(await page.locator('#settings-dialog[open]').count(), 0, '已配置时重启不应再弹出设置');
     await page.waitForFunction((name) => document.querySelector('.explorer .psel .pid')?.textContent?.includes(name), 'demo-project', { timeout: 10_000 });
     await showSession(page);
+    // 默认对话为空：重启不自动打开上次会话；会话历史绑定项目，在会话列表里点开恢复
+    assert.equal(await page.locator('.chat .ubub').count(), 0, '重启后对话区默认为空');
+    await page.locator('.slist a.si').filter({ hasText: '把 hello.txt 改成大写' }).click({ timeout: 10_000 });
     await page.locator('.chat .ubub').filter({ hasText: '把 hello.txt 改成大写' }).waitFor({ state: 'visible', timeout: 10_000 });
     // 过程区已无标题行、不再折叠：工具卡片直接可见，且同一回合只有一个过程区
     await page.locator('.chat .verify.tool[data-call="call_edit1"]').waitFor({ state: 'visible', timeout: 5_000 });

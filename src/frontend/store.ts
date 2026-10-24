@@ -83,7 +83,8 @@ export interface UiState {
 }
 
 /** agents = 「Worktree 与 Agent」（T-040，从 Git 页拆出的子视图，导航中缩进挂在 Git 与集成下）。 */
-export type ViewId = 'board' | 'session' | 'git' | 'agents';
+/** 两个标签页：看板（原泳道看板 / Agents / Git 合并）与任务会话。 */
+export type ViewId = 'board' | 'session';
 
 export type Topic = 'settings' | 'project' | 'sessions' | 'current' | 'messages' | 'running' | 'approvals' | 'diffs' | 'terminal' | 'terminals' | 'tasks' | 'todos' | 'view' | 'workspace' | 'errors';
 

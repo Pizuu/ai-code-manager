@@ -105,7 +105,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
   const todoDock = h('div', { class: 'slist-todos' });
   let todoDockOpen = false;
   const slist = h('div', { class: 'slist' },
-    h('div', { class: 'hd' }, h('span', {}, '任务会话'), newBtn), search, list);
+    h('div', { class: 'hd' }, h('span', {}, '任务会话'), newBtn), search, list, todoDock);
 
   const chatCol = h('section', { class: 'chat' });
   const termCol = h('section', { class: 'termv-wrap' });
@@ -597,8 +597,6 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     }));
     ctxp.append(h('div', { class: 'h ctx-section-title' }, h('span', {}, '收藏'), h('span', { class: 'mute' }, String(currentFavorites.length))), favoriteLinks);
 
-    ctxp.append(todoDock);
-
   };
 
   let ctxFrame = 0;
@@ -617,7 +615,7 @@ export function mountSessionView(container: HTMLElement, hooks: SessionHooks): S
     scheduleCtx();
   });
 
-  for (const t of ['sessions', 'current', 'running', 'approvals', 'settings', 'workspace', 'project', 'errors'] as const) store.on(t, renderList);
+  for (const t of ['sessions', 'current', 'running', 'approvals', 'settings', 'workspace', 'project', 'errors', 'todos'] as const) store.on(t, renderList);
   // 收藏增减后底部行的收藏条数实时刷新（renderList 只读 favorites 现值重渲，不回写收藏，无循环）
   onFavoritesChanged(() => { renderList(); scheduleCtx(); });
   for (const t of ['current', 'messages', 'todos', 'diffs', 'tasks', 'running', 'approvals', 'settings', 'workspace', 'project'] as const) store.on(t, scheduleCtx);

@@ -1202,3 +1202,19 @@ mark.source-highlight{background:color-mix(in srgb,var(--color-border-warning) 4
 .ctxp .dlist .ctx-link .ficon{width:calc(var(--font-body) * 1.2);height:calc(var(--font-body) * 1.2)}
 /* rail 图标统一按「Agent」板块图标（20px）尺寸显示 */
 .rail .ri svg{width:20px;height:20px}
+
+/* ── 看板标签页（kanban-view.ts）：原泳道看板 / Agents / Git 合并为一页，四节按重要性自上而下 ── */
+#wb-board:not([hidden]){display:block;overflow:auto;scroll-behavior:smooth}
+.kb-jump{position:sticky;top:0;z-index:5;display:flex;gap:8px;padding:10px 24px;background:var(--color-background-primary);border-bottom:var(--border-width-regular) solid var(--color-border-tertiary)}
+.kb-jump .btn{cursor:pointer}
+.kb-sec{padding-top:8px}
+.kb-sec+.kb-sec{border-top:var(--border-width-regular) solid var(--color-border-tertiary);margin-top:8px}
+.kb-h{padding:14px 24px 0;font-size:var(--font-heading-sm);font-weight:var(--font-weight-semibold)}
+.kb-tasks .pad{padding-top:12px}
+.kb-one{display:block;padding:0 24px 16px}
+.kb-one>div:first-child{height:auto}
+/* 集成与 Git 节：给定高度承接原全高 flex 布局；「按序集成」放左列（集成顺序比提交图更重要） */
+#wb-git:not([hidden]){height:clamp(520px,72vh,860px)}
+.kb-git #wb-git>.gx{grid-template-columns:430px minmax(0,1fr)}
+.kb-git #wb-git>.gx>.gcol:last-child{order:-1}
+#wb-agents:not([hidden]){display:block}

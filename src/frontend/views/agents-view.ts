@@ -39,7 +39,11 @@ function readAssignments(text: string): Map<string, string> {
   return out;
 }
 
-export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
+/**
+ * infra 提供时（合并后的「看板」页）：左栏 Worktree / 多 Agent 配置渲染进 infra（页底「Worktree 与配置」节），
+ * 右栏 泳道与 Agent / Agent 工作情况渲染进 container（「Agent 执行」节）；未提供时保持原两栏布局。
+ */
+export function mountAgents(container: HTMLElement, hooks: AgentsHooks, infra?: HTMLElement): void {
   /** 最近一次读取的 config.sh 赋值；null = 未读取 / 读取失败（cfgErr 给出原因）。 */
   let cfg: Map<string, string> | null = null;
   let cfgErr = '';
@@ -67,6 +71,7 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
 
   const render = () => {
     clear(container);
+    if (infra) clear(infra);
     const g = store.state.git;
     const b = store.state.board;
     if (!store.state.project) {
@@ -196,9 +201,16 @@ export function mountAgents(container: HTMLElement, hooks: AgentsHooks): void {
 
     // ── 右栏：泳道与 Agent（整块换列至此），其下接 Agent 工作情况 ──
     const right = h('div', { class: 'cfgcol' });
-    right.append(lanesSec, table, agentsSec, agentsList);
+    // 合并看板页内按重要性：先「谁在做什么」（Agent 工作情况），再泳道分配表
+    if (infra) right.append(agentsSec, agentsList, lanesSec, table);
+    else right.append(lanesSec, table, agentsSec, agentsList);
 
-    container.append(h('div', { class: 'gx agx' }, left, right));
+    if (infra) {
+      container.append(h('div', { class: 'agx kb-one' }, right));
+      infra.append(h('div', { class: 'agx kb-one' }, left));
+    } else {
+      container.append(h('div', { class: 'gx agx' }, left, right));
+    }
   };
 
   store.on('workspace', () => {
